@@ -1,0 +1,49 @@
+{
+    "name": "ptadmin/core",
+    "description": "PTAdmin core package with Admin, Addon, Schema and Core runtime.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "authors": [
+        {
+            "name": "Zane",
+            "email": "873934580@qq.com"
+        }
+    ],
+    "require": {
+        "composer/semver": "^3.4",
+        "php": ">=8.1 <9.0",
+        "ext-json": "*",
+        "ext-mbstring": "*",
+        "ext-openssl": "*",
+        "laravel/framework": ">=10.0 <11.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0",
+        "phpunit/phpunit": "^10.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "PTAdmin\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "PTAdmin\\Core\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "PTAdmin\\Core\\Providers\\PTAdminServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": "phpunit -c phpunit.xml.dist"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

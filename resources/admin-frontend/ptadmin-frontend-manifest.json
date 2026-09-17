@@ -1,0 +1,41 @@
+{
+  "manifest_version": 1,
+  "frontend_version": "0.1.0",
+  "backend_constraint": ">=0.1.0 <1.0.0",
+  "api_protocol": 1,
+  "schema_protocol": 1,
+  "entry": "./index.html",
+  "files": [
+    {
+      "path": "assets/BootstrapErrorPage-Bj1S8MnJ.js",
+      "size": 635,
+      "sha256": "3fe3681cd55b95d1fcd2d2de57d35a608ca690c508e6ac51fecf6a69b6ed4ec1"
+    },
+    {
+      "path": "assets/LoginPage-DLOISBS3.js",
+      "size": 6949,
+      "sha256": "3a12cb523ecf8e8b02898143069fa883554d8290ef0371bd9226dc140f30a2bc"
+    },
+    {
+      "path": "assets/index-6EB2SfbI.css",
+      "size": 487549,
+      "sha256": "6a6cb0eef3898396e22d3448f2a470ce9bbd9e5b3a42716b3ac668f12dd23998"
+    },
+    {
+      "path": "assets/index-CMUEtaXX.js",
+      "size": 1945661,
+      "sha256": "f303f8ab01a437509eaaedf1b3845fcefac9b38acd1555d4cb8626cc5fdb4eaa"
+    },
+    {
+      "path": "favicon.svg",
+      "size": 351,
+      "sha256": "06bdc4bcd6608de1d5d28479b94298c46eb39279669f9e58b9f9f9ba8970094a"
+    },
+    {
+      "path": "index.html",
+      "size": 1862,
+      "sha256": "3a6a224ca22e516bbb46d6e0bb5eedb6af8824e4780c4678548bf1a36a989e64"
+    }
+  ],
+  "artifact_sha256": "6219e030a7bd90baf2f6c40051029f8e9ccb22dc3a7f55ed2966be2d610226f9"
+}
