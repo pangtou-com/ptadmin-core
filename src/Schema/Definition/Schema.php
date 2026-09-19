@@ -68,7 +68,18 @@ final class Schema extends DataObject
             $schema['constraints'] = Protocol::withoutEmpty((array) $schema['constraints']);
         }
         if (isset($schema['views']) && is_array($schema['views'])) {
-            $schema['views'] = Protocol::withoutEmpty((array) $schema['views']);
+            $schema['views'] = Protocol::withoutEmpty((array) $schema['views'], [
+                'page',
+                'pages',
+                'search',
+                'searches',
+                'table',
+                'tables',
+                'form',
+                'forms',
+                'detail',
+                'details',
+            ]);
         }
         if (isset($schema['fields'])) {
             $schema['fields'] = array_map(static fn (array $field): array => Field::serializeDefinition($field), $schema['fields']);

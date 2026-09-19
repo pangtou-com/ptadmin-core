@@ -126,13 +126,13 @@ final class Protocol
                 $value = self::sortMap($value);
             }
             if ($key === 'capabilities') {
-                $value = self::ordered($value, ['allow_import', 'allow_export', 'allow_duplicate', 'allow_print', 'allow_recycle', 'allow_draft', 'track_mode']);
+                $value = self::ordered($value, ['allow_import', 'allow_export', 'allow_duplicate', 'allow_print', 'allow_recycle', 'soft_delete', 'allow_draft', 'track_mode']);
             }
             if ($key === 'state') {
                 $value = self::ordered($value, ['field', 'default_value', 'values']);
             }
             if ($key === 'tree') {
-                $value = self::ordered($value, ['enabled', 'parent_field', 'order_field']);
+                $value = self::ordered($value, ['enabled', 'key_field', 'parent_field', 'order_field']);
             }
             if ($key === 'constraints') {
                 $value = self::ordered($value, ['indexes', 'uniques']);

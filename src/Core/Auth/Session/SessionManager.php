@@ -67,21 +67,21 @@ final class SessionManager
     public function resolve(string $token): array
     {
         if ('' === $token) {
-            throw new InvalidSessionException('Session token is missing.');
+            throw new InvalidSessionException('登录会话不存在，请重新登录。');
         }
 
         $row = $this->database->table($this->table)
             ->where('token_hash', $this->tokens->hash($token))
             ->first();
         if (null === $row) {
-            throw new InvalidSessionException('Session token is invalid.');
+            throw new InvalidSessionException('登录会话无效，请重新登录。');
         }
 
         $now = $this->now();
         if (null !== $row->revoked_at
             || $this->parse((string) $row->expires_at) <= $now
             || $this->parse((string) $row->absolute_expires_at) <= $now) {
-            throw new InvalidSessionException('Session token has expired or been revoked.');
+            throw new InvalidSessionException('登录会话已过期或被撤销，请重新登录。');
         }
 
         $this->database->table($this->table)->where('id', $row->id)->update([

@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use PTAdmin\Admin\Models\Admin;
+use PTAdmin\Admin\Navigation\MenuSynchronizer;
 use PTAdmin\Core\Config\ConfigService;
 use PTAdmin\Core\Http\AdminFrontendRouteRegistrar;
 use PTAdmin\Core\Install\Exceptions\InvalidInstallStateException;
@@ -33,6 +34,7 @@ final class InstallService
         private AdminSchemaSynchronizer $adminSchemas,
         private SchemaSourceDiscovery $schemaSources,
         private SchemaFileSynchronizer $schemaSynchronizer,
+        private MenuSynchronizer $menus,
     ) {
     }
 
@@ -96,7 +98,7 @@ final class InstallService
             $this->progress($progress, 'schema_ready');
 
             $this->progress($progress, 'config_syncing');
-            $configDefinitions = $this->seedConfigDefinitions();
+            $configDefinitions = $this->syncConfigDefinitions();
             $state = $this->stateStore->writeState(array_merge($state, [
                 'stage' => 'config_ready',
                 'config_definitions' => $configDefinitions,
@@ -107,8 +109,8 @@ final class InstallService
             $this->progress($progress, 'admin_creating');
             $result = DB::transaction(function () use ($username, $password, $nickname, $email, $mobile): array {
                 $admin = $this->resolveFounder($username, $password, $nickname, $email, $mobile);
-
-                $resources = $this->seedAuthorization($admin->getKey());
+                $menuResult = $this->menus->syncCore();
+                $resources = ['resource_count' => count($menuResult['resource_keys'])];
 
                 return [
                     'admin' => [
@@ -173,7 +175,7 @@ final class InstallService
         }
     }
 
-    private function seedConfigDefinitions(): int
+    public function syncConfigDefinitions(): int
     {
         $definitions = [
             [
@@ -324,253 +326,23 @@ final class InstallService
     }
 
     /**
-     * 创建系统角色、首个管理员的角色关系和核心菜单资源。
-     * @return array{role:string, resource_count:int}
+     * 在数据库迁移完成后幂等同步后台内置权限资源。
+     *
+     * @return array{resource_count:int}
      */
-    private function seedAuthorization(int|string $adminId): array
+    public function syncAuthorizationResources(): array
     {
-        $now = now();
-        DB::table('admin_roles')->updateOrInsert(
-            ['code' => 'founder'],
-            [
-                'name' => '创始人',
-                'status' => true,
-                'is_system' => true,
-                'sort' => 0,
-                'deleted_at' => null,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]
-        );
-        $roleId = (int) DB::table('admin_roles')->where('code', 'founder')->value('id');
-        DB::table('admin_user_roles')->updateOrInsert(
-            ['admin_id' => (int) $adminId, 'role_id' => $roleId],
-            ['created_at' => $now, 'updated_at' => $now]
-        );
-
-        $resources = $this->coreResources();
-        foreach ($resources as $resource) {
-            DB::table('admin_resources')->updateOrInsert(
-                ['resource_key' => $resource['resource_key']],
-                $resource + ['deleted_at' => null, 'created_at' => $now, 'updated_at' => $now]
-            );
-            $resourceId = (int) DB::table('admin_resources')
-                ->where('resource_key', $resource['resource_key'])
-                ->value('id');
-            DB::table('admin_grants')->updateOrInsert(
-                [
-                    'subject_type' => 'role',
-                    'subject_id' => (string) $roleId,
-                    'resource_id' => $resourceId,
-                ],
-                [
-                    'effect' => 'allow',
-                    'abilities_json' => json_encode(['*'], JSON_THROW_ON_ERROR),
-                    'priority' => 100,
-                    'expires_at' => null,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ]
-            );
+        $founderId = Admin::query()
+            ->where('is_founder', true)
+            ->where('status', true)
+            ->orderBy('id')
+            ->value('id');
+        if (null === $founderId) {
+            throw new RuntimeException('未找到可用的创始人账号，无法同步后台权限资源。');
         }
 
-        return ['role' => 'founder', 'resource_count' => count($resources)];
-    }
+        $resourceKeys = $this->menus->syncCore()['resource_keys'];
 
-    /** @return array<int, array<string, mixed>> */
-    private function coreResources(): array
-    {
-        return [
-            [
-                'resource_key' => 'dashboard',
-                'title' => '仪表盘',
-                'type' => 'page',
-                'parent_key' => '',
-                'path' => '/',
-                'meta_json' => json_encode(['page_type' => 'dashboard', 'icon' => 'layout-dashboard'], JSON_THROW_ON_ERROR),
-                'is_menu' => true,
-                'status' => true,
-                'sort' => 10,
-            ],
-            [
-                'resource_key' => 'admin.users',
-                'title' => '管理员',
-                'type' => 'page',
-                'parent_key' => '',
-                'path' => '/admin/users',
-                'meta_json' => json_encode(['page_type' => 'schema.resource', 'resource_key' => 'admin.management_users', 'icon' => 'users'], JSON_THROW_ON_ERROR),
-                'is_menu' => true,
-                'status' => true,
-                'sort' => 20,
-            ],
-            [
-                'resource_key' => 'admin.roles',
-                'title' => '角色权限',
-                'type' => 'page',
-                'parent_key' => '',
-                'path' => '/admin/roles',
-                'meta_json' => json_encode(['page_type' => 'schema.resource', 'resource_key' => 'admin.management_roles', 'icon' => 'shield-check'], JSON_THROW_ON_ERROR),
-                'is_menu' => true,
-                'status' => true,
-                'sort' => 30,
-            ],
-            [
-                'resource_key' => 'admin.menus',
-                'title' => '菜单管理',
-                'type' => 'page',
-                'parent_key' => '',
-                'path' => '/admin/menus',
-                'meta_json' => json_encode(['page_type' => 'schema.resource', 'resource_key' => 'admin.management_menus', 'icon' => 'list-tree'], JSON_THROW_ON_ERROR),
-                'is_menu' => true,
-                'status' => true,
-                'sort' => 35,
-            ],
-            [
-                'resource_key' => 'admin.logs',
-                'title' => '日志中心',
-                'type' => 'page',
-                'parent_key' => '',
-                'path' => '/admin/logs',
-                'meta_json' => json_encode(['page_type' => 'logs.center', 'icon' => 'scroll-text'], JSON_THROW_ON_ERROR),
-                'is_menu' => true,
-                'status' => true,
-                'sort' => 36,
-            ],
-            [
-                'resource_key' => 'admin.tenants',
-                'title' => '租户管理',
-                'type' => 'page',
-                'parent_key' => '',
-                'path' => '/admin/tenants',
-                'meta_json' => json_encode(['page_type' => 'schema.resource', 'resource_key' => 'admin.management_tenants', 'icon' => 'building-2'], JSON_THROW_ON_ERROR),
-                'is_menu' => true,
-                'status' => true,
-                'sort' => 40,
-            ],
-            [
-                'resource_key' => 'admin.organizations',
-                'title' => '组织管理',
-                'type' => 'page',
-                'parent_key' => '',
-                'path' => '/admin/organizations',
-                'meta_json' => json_encode(['page_type' => 'schema.resource', 'resource_key' => 'admin.management_organizations', 'icon' => 'network'], JSON_THROW_ON_ERROR),
-                'is_menu' => true,
-                'status' => true,
-                'sort' => 41,
-            ],
-            [
-                'resource_key' => 'admin.departments',
-                'title' => '部门管理',
-                'type' => 'page',
-                'parent_key' => '',
-                'path' => '/admin/departments',
-                'meta_json' => json_encode(['page_type' => 'schema.resource', 'resource_key' => 'admin.management_departments', 'icon' => 'network'], JSON_THROW_ON_ERROR),
-                'is_menu' => true,
-                'status' => true,
-                'sort' => 42,
-            ],
-            [
-                'resource_key' => 'admin.notifications',
-                'title' => '通知场景',
-                'type' => 'page',
-                'parent_key' => '',
-                'path' => '/admin/notifications',
-                'meta_json' => json_encode(['page_type' => 'schema.resource', 'resource_key' => 'admin.notification_scenes', 'icon' => 'bell'], JSON_THROW_ON_ERROR),
-                'is_menu' => true,
-                'status' => true,
-                'sort' => 43,
-            ],
-            [
-                'resource_key' => 'admin.notification_templates',
-                'title' => '通知模板',
-                'type' => 'page',
-                'parent_key' => 'admin.notifications',
-                'path' => '/admin/notifications/templates',
-                'meta_json' => json_encode(['page_type' => 'schema.resource', 'resource_key' => 'admin.notification_templates', 'icon' => 'file-text'], JSON_THROW_ON_ERROR),
-                'is_menu' => true,
-                'status' => true,
-                'sort' => 44,
-            ],
-            ...array_map(static fn (array $resource): array => [
-                'resource_key' => $resource['key'],
-                'title' => $resource['title'],
-                'type' => 'system',
-                'parent_key' => $resource['parent'],
-                'path' => '',
-                'meta_json' => json_encode([], JSON_THROW_ON_ERROR),
-                'is_menu' => false,
-                'status' => true,
-                'sort' => $resource['sort'],
-            ], [
-                ['key' => 'admin.management_users', 'title' => '管理员数据管理', 'parent' => 'admin.users', 'sort' => 21],
-                ['key' => 'admin.management_roles', 'title' => '角色数据管理', 'parent' => 'admin.roles', 'sort' => 31],
-                ['key' => 'admin.management_menus', 'title' => '权限资源数据管理', 'parent' => 'admin.menus', 'sort' => 36],
-                ['key' => 'admin.login_logs', 'title' => '登录日志查询', 'parent' => 'admin.logs', 'sort' => 37],
-                ['key' => 'admin.operation_records', 'title' => '操作记录查询', 'parent' => 'admin.logs', 'sort' => 38],
-                ['key' => 'admin.management_tenants', 'title' => '租户数据管理', 'parent' => 'admin.tenants', 'sort' => 45],
-                ['key' => 'admin.management_organizations', 'title' => '组织数据管理', 'parent' => 'admin.organizations', 'sort' => 46],
-                ['key' => 'admin.management_departments', 'title' => '部门数据管理', 'parent' => 'admin.departments', 'sort' => 47],
-                ['key' => 'admin.dashboard_widgets', 'title' => '仪表盘组件配置', 'parent' => 'dashboard', 'sort' => 48],
-                ['key' => 'admin.notification_scenes', 'title' => '通知场景数据管理', 'parent' => 'admin.notifications', 'sort' => 49],
-                ['key' => 'admin.notification_messages', 'title' => '通知消息查询', 'parent' => 'admin.notifications', 'sort' => 50],
-                ['key' => 'admin.notification_receipts', 'title' => '通知回执查询', 'parent' => 'admin.notifications', 'sort' => 51],
-                ['key' => 'admin.notification_deliveries', 'title' => '通知投递记录查询', 'parent' => 'admin.notifications', 'sort' => 52],
-            ]),
-            [
-                'resource_key' => 'schema.resources',
-                'title' => 'Schema 资源',
-                'type' => 'page',
-                'parent_key' => '',
-                'path' => '/schema/resources',
-                'meta_json' => json_encode(['page_type' => 'schema.resource', 'resource_key' => 'schema.resource', 'icon' => 'blocks'], JSON_THROW_ON_ERROR),
-                'is_menu' => true,
-                'status' => true,
-                'sort' => 40,
-            ],
-            [
-                'resource_key' => 'admin.config',
-                'title' => '系统配置',
-                'type' => 'page',
-                'parent_key' => '',
-                'path' => '',
-                'meta_json' => json_encode([], JSON_THROW_ON_ERROR),
-                'is_menu' => false,
-                'status' => true,
-                'sort' => 50,
-            ],
-            [
-                'resource_key' => 'tasks',
-                'title' => '任务中心',
-                'type' => 'page',
-                'parent_key' => '',
-                'path' => '/tasks',
-                'meta_json' => json_encode(['page_type' => 'task.center', 'icon' => 'list-checks'], JSON_THROW_ON_ERROR),
-                'is_menu' => true,
-                'status' => true,
-                'sort' => 60,
-            ],
-            [
-                'resource_key' => 'core.tasks',
-                'title' => '后台任务',
-                'type' => 'system',
-                'parent_key' => '',
-                'path' => '',
-                'meta_json' => json_encode([], JSON_THROW_ON_ERROR),
-                'is_menu' => false,
-                'status' => true,
-                'sort' => 65,
-            ],
-            ...array_map(static fn (string $key): array => [
-                'resource_key' => $key,
-                'title' => '任务权限 '.$key,
-                'type' => 'system',
-                'parent_key' => 'core.tasks',
-                'path' => '',
-                'meta_json' => json_encode([], JSON_THROW_ON_ERROR),
-                'is_menu' => false,
-                'status' => true,
-                'sort' => 70,
-            ], ['core.update', 'admin.frontend', 'addon.manage', 'addon.download', 'addon.install', 'addon.update', 'addon.uninstall', 'addon.frontend', 'addon.enable', 'addon.disable']),
-        ];
+        return ['resource_count' => count($resourceKeys)];
     }
 }

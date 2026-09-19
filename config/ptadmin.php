@@ -7,10 +7,6 @@ return [
     'api_url' => env('PTADMIN_API_URL', ''),
     'route_prefix' => env('PTADMIN_ROUTE_PREFIX', 'ptadmin'),
     'web_prefix' => env('PTADMIN_WEB_PREFIX', 'admin'),
-    'application_identity_path' => env(
-        'PTADMIN_APPLICATION_IDENTITY_PATH',
-        storage_path('app/ptadmin/ptadmin.json')
-    ),
     'backend_version' => env('PTADMIN_CORE_VERSION', '0.1.0'),
     'api_protocol' => (int) env('PTADMIN_API_PROTOCOL', 1),
     'schema_protocol' => (int) env('PTADMIN_SCHEMA_PROTOCOL', 1),

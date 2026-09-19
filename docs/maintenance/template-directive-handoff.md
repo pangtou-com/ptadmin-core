@@ -165,6 +165,75 @@ deprecated
 
 `as` 是所有 loop 指令的运行时保留参数，不由插件重复声明；`@pt:empty` 和 `@pt:end` 的说明由文档生成器自动补充。
 
+参数值解析必须支持字符串、数字、布尔值、`null`、数组字面量和变量引用。变量引用支持 `$item`、`$item.title`、`$page.seo.description`，数组可以递归包含变量。参数解析先生成受限 AST，再做类型校验，不允许 `eval`、方法调用或任意 PHP 表达式。
+
+## Core 内置指令
+
+Core 在插件注册前使用同一 Registry 注册内置指令，并保留以下模板别名：
+
+```text
+seo
+img
+images
+file
+files
+dump
+```
+
+插件不能覆盖这些别名。
+
+### 统一媒体指令
+
+`img`、`images`、`file`、`files` 四个指令使用完全一致的参数：
+
+```text
+value
+key
+label
+attrs
+limit
+empty
+separator
+```
+
+标准媒体对象为：
+
+```php
+[
+    'key' => '/uploads/cover.jpg',
+    'label' => '文章封面',
+]
+```
+
+输出契约：
+
+```text
+img     -> 一个 <img>
+images  -> 多个 <img>
+file    -> 一个 <a>
+files   -> 多个 <a>
+```
+
+`images` 和 `files` 是批量输出指令，不是 loop 指令，不使用 `as`、`@pt:empty`、`@pt:end`，也不嵌套其他指令。`key` 默认读取地址字段，`label` 默认读取显示文本字段；图片的 `label` 输出为 `alt`，文件的 `label` 输出为链接文本。
+
+### 媒体 value 自动解析
+
+`value` 省略时，按以下顺序解析：
+
+1. 最近循环上下文的当前项。
+2. 宿主提供的当前媒体上下文。
+3. Schema 标记的唯一媒体字段或集合字段。
+4. 没有明确结果时输出空内容并记录开发诊断。
+
+显式 `value=null` 禁止自动解析。运行时不得扫描所有字段，也不得根据 `cover`、`thumbnail`、`gallery`、`attachments` 等名称进行不确定猜测；多个候选字段必须要求显式 `value`。
+
+媒体渲染器必须限制 URL 协议、转义属性值、拒绝 `on*` 事件属性，并将 `empty`、`separator` 按普通文本处理。媒体指令只消费传入值或 Schema 上下文，不直接查询数据库或文件表。
+
+### 其他内置指令
+
+- `seo()` 输出当前页面 SEO 头部；支持 `only` 数组和 `data` 变量，不通过输出指令隐式修改全局状态。
+- `dump()` 仅用于开发调试，生产环境不输出敏感上下文；支持 `context`、`label` 和 `once`。
+
 ### 注册类示意
 
 一个注册类可以定义多个指令：
@@ -206,6 +275,8 @@ final class CmsTemplateDirectives implements AddonTemplateDirectiveInterface
 4. 当前重复名称会在全局注册过程中直接抛错，需要增加插件级临时注册和一次性提交。
 5. 现有 `AddonRuntimeRegistrarTest` 中通过 manifest 声明指令的测试需要迁移到目录自动发现测试。
 6. `ptadmin-dev/addons/Demo/manifest.json` 不应新增 `directives` 字段；Demo 指令类应放到 `Directives/`。
+7. 需要增加参数 AST、变量上下文解析和数组字面量解析，不允许恢复旧编译器的任意 PHP 表达式能力。
+8. 需要增加 Core 内置指令注册器和媒体渲染器，四个媒体指令共享统一参数模型。
 
 ## 实现顺序
 
@@ -217,8 +288,11 @@ final class CmsTemplateDirectives implements AddonTemplateDirectiveInterface
 4. 修改 Runtime Registrar，固定扫描 `Directives/*.php`，校验接口并按排序加载。
 5. 实现完整名称和显式 alias 的唯一性校验。
 6. 增加注册元数据导出，为文档和 IDE 提供稳定数组或 DTO。
-7. 再实现模板解析器、`TemplateDirectiveInvocation`、`{$item.title}` 输出和 loop 上下文。
-8. 在 `ptadmin-dev/addons/Demo` 增加 `demo_banner` 和 `demo_articles` 验收案例。
+7. 实现参数 AST、数组和变量引用解析，并接入 `TemplateDirectiveInvocation`。
+8. 实现 Core 内置 `seo`、`img`、`images`、`file`、`files`、`dump` 注册和安全渲染。
+9. 实现媒体上下文自动解析、显式 `value=null` 语义和歧义诊断。
+10. 实现模板解析器、`{$item.title}` 输出和 loop 上下文。
+11. 在 `ptadmin-dev/addons/Demo` 增加 `demo_banner` 和 `demo_articles` 验收案例。
 
 ## 必须覆盖的测试
 
@@ -232,8 +306,12 @@ final class CmsTemplateDirectives implements AddonTemplateDirectiveInterface
 - alias 冲突导致注册失败，并报告两个冲突来源。
 - 参数类型、必填、默认值、枚举和范围校验。
 - 参数说明和示例可以导出为文档元数据。
+- 字符串、数组、嵌套数组和变量引用参数的 AST 解析与类型校验。
 - `as`、默认 `field`、`@pt:empty`、嵌套循环变量恢复。
 - `{$item.title}` 默认转义、缺失值和默认值处理。
+- 四个媒体指令的统一参数、单项/集合 HTML 输出和安全属性处理。
+- `value` 自动媒体上下文解析、显式 `value=null`、多候选字段歧义和无上下文诊断。
+- `seo` 的完整/部分输出和 `dump` 的开发环境限制。
 
 ## 边界和禁止事项
 
@@ -258,6 +336,17 @@ final class CmsTemplateDirectives implements AddonTemplateDirectiveInterface
 ```
 
 并能从 Registry 导出 `demo_banner`、`demo_articles` 的类型、说明、参数和 alias 元数据。完成模板编译器后，再补充真实渲染、转义、空数据和嵌套上下文验收。
+
+媒体验收还应覆盖：
+
+```blade
+@pt:img()
+@pt:images(value=$item.images,key="key",label="label",empty="暂无图片")
+@pt:file(value=$item.file)
+@pt:files(empty="暂无附件")
+```
+
+以上调用分别验证自动上下文、显式集合、统一字段映射、空集合处理和批量 HTML 输出，不使用嵌套指令。
 
 ## 本次提交范围
 

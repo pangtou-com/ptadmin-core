@@ -14,6 +14,7 @@ use PTAdmin\Schema\Contract\MoveTreeNodeInput;
 use PTAdmin\Schema\Contract\SchemaError;
 use PTAdmin\Schema\Contracts\SchemaScopeResolverInterface;
 use PTAdmin\Schema\Contracts\SchemaSubjectContextInterface;
+use PTAdmin\Schema\Definition\Schema;
 use PTAdmin\Schema\Meta\Models\Resource;
 use PTAdmin\Schema\Support\Payload;
 
@@ -26,6 +27,7 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         private ?SchemaScopeResolverInterface $scopeResolver = null,
         private ?SchemaSubjectContextInterface $subjectContext = null,
         private ?ServerConstraintApplier $constraintApplier = null,
+        private ?RuntimeResourceHookRegistry $hooks = null,
     ) {
         $this->constraintApplier ??= new ServerConstraintApplier();
     }
@@ -43,7 +45,17 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         if (!array_key_exists('parent_id', $query)) {
             throw $this->error('invalid_input', 'parent_id is required');
         }
-        return $this->listNodes($query, $query['parent_id']);
+        $resolved = $this->resolved((string) ($query['resource'] ?? ''));
+        $parent = $query['parent_id'];
+        $keyField = $this->keyField($resolved['schema']);
+        if ($keyField !== 'id' && (int) $parent > 0) {
+            $parent = DB::table($resolved['resource']->table_name)->where('id', (int) $parent)->value($keyField);
+            if ($parent === null) {
+                throw $this->error('record_not_found', 'record not found');
+            }
+        }
+
+        return $this->listNodes($query, $parent);
     }
     /** 以扁平 items 返回指定节点及后代，并携带 depth 与 ancestor_ids。 */
     public function getSubtree(array|object $query): array
@@ -51,14 +63,15 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         $query = Payload::dto($query, GetTreeSubtreeQuery::class);
         $resolved = $this->resolved((string) ($query['resource'] ?? ''));
         $query['parent_field'] = $this->parentField($resolved['schema']);
-        $query['schema'] = (array) $resolved['schema'];
+        $query['schema'] = $resolved['schema']->toArray();
         $query['schema_object'] = $resolved['schema'];
+        $query['table_name'] = $resolved['resource']->table_name;
         $root = $this->node($query);
         $items = [];
         if (!empty($query['include_root'])) {
             $items[] = $this->nodePayload($root, 0, [], $query);
         }
-        $this->appendFlatChildren($items, $query, (int) $root->id, 0, $query);
+        $this->appendFlatChildren($items, $query, $root->{$this->keyField($resolved['schema'])}, 0, $query);
         return ['items' => $items];
     }
     /** 以嵌套 children 返回整棵树，max_depth 控制递归边界。 */
@@ -70,20 +83,23 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         }
         $resolved = $this->resolved((string) ($query['resource'] ?? ''));
         $query['parent_field'] = $this->parentField($resolved['schema']);
-        $query['schema'] = (array) $resolved['schema'];
+        $query['schema'] = $resolved['schema']->toArray();
         $query['schema_object'] = $resolved['schema'];
+        $query['table_name'] = $resolved['resource']->table_name;
         if (array_key_exists('root_id', $query) && $query['root_id'] !== null) {
             if ((int) $query['root_id'] <= 0) {
                 throw $this->error('invalid_input', 'tree root id is required');
             }
             $root = $this->node($query);
-            $roots = !empty($query['include_root']) ? [['item' => (array) $root]] : $this->listNodes($query, (int) $root->id)['items'];
+            $roots = !empty($query['include_root'])
+                ? [$this->nodePayload($root, 0, [], $query)]
+                : $this->listNodes($query, $root->{$this->keyField($resolved['schema'])})['items'];
         } else {
             $roots = $this->listNodes($query, null)['items'];
         }
         $branches = [];
         foreach ($roots as $root) {
-            $branch = $this->nodePayload((object) $root['item'], 0, [], $query);
+            $branch = $root;
             $this->appendChildren($branch, $query, 0);
             $branches[] = $branch;
         }
@@ -95,9 +111,11 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         $query = Payload::dto($query, GetTreeAncestorsQuery::class);
         $resolved = $this->resolved((string) ($query['resource'] ?? ''));
         $parent = $this->parentField($resolved['schema']);
+        $keyField = $this->keyField($resolved['schema']);
         $query['parent_field'] = $parent;
-        $query['schema'] = (array) $resolved['schema'];
+        $query['schema'] = $resolved['schema']->toArray();
         $query['schema_object'] = $resolved['schema'];
+        $query['table_name'] = $resolved['resource']->table_name;
         $current = $this->node($query);
         $path = [];
         while ($current) {
@@ -110,7 +128,7 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
                 $current = null;
                 continue;
             }
-            $ancestor = DB::table($resolved['resource']->table_name)->where('id', (int) $id);
+            $ancestor = DB::table($resolved['resource']->table_name)->where($keyField, $id);
             $this->applyScope($ancestor, $resolved['resource']->resource_key, 'list', $resolved['schema']);
             $current = $ancestor->first();
         }
@@ -128,7 +146,11 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         }
         $resolved = $this->resolved((string) ($input['resource'] ?? ''));
         $parent = $this->parentField($resolved['schema']);
+        $keyField = $this->keyField($resolved['schema']);
         $input['parent_field'] = $parent;
+        $input['schema'] = $resolved['schema']->toArray();
+        $input['schema_object'] = $resolved['schema'];
+        $input['table_name'] = $resolved['resource']->table_name;
         $id = (int) ($input['id'] ?? 0);
         $builder = DB::table($resolved['resource']->table_name)->where('id', $id);
         if (DB::getSchemaBuilder()->hasColumn($resolved['resource']->table_name, 'deleted_at')) {
@@ -139,18 +161,21 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
             throw $this->error('record_not_found', 'record not found');
         }
         if (array_key_exists('parent_id', $input)) {
-            $newParent = $input['parent_id'];
-            if ($newParent !== null && (int) $newParent === $id) {
+            $newParentId = $input['parent_id'];
+            if ($newParentId !== null && (int) $newParentId === $id) {
                 throw $this->error('invalid_input', 'tree node cannot be its own parent');
             }
-            if ($newParent !== null && (int) $newParent > 0) {
-                $parentBuilder = DB::table($resolved['resource']->table_name)->where('id', (int) $newParent);
+            $newParent = null;
+            if ($newParentId !== null && (int) $newParentId > 0) {
+                $parentBuilder = DB::table($resolved['resource']->table_name)->where('id', (int) $newParentId);
                 $this->applyScope($parentBuilder, $resolved['resource']->resource_key, 'update', $resolved['schema']);
-                if (!$parentBuilder->exists()) {
+                $parentNode = $parentBuilder->first();
+                if (!$parentNode) {
                     throw $this->error('record_not_found', 'tree parent not found');
                 }
+                $newParent = $parentNode->{$keyField};
             }
-            if ($newParent !== null && !$this->isAncestorSafe($resolved['resource']->table_name, $id, (int) $newParent, $parent)) {
+            if ($newParentId !== null && (int) $newParentId > 0 && !$this->isAncestorSafe($resolved['resource']->table_name, $id, (int) $newParentId, $keyField, $parent)) {
                 throw $this->error('invalid_input', 'tree node cannot move under its descendant');
             }
             $builder->update([$parent => $newParent]);
@@ -169,14 +194,14 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
                 throw $this->error('record_not_found', 'tree order anchor not found');
             }
             $node = DB::table($resolved['resource']->table_name)->where('id', $id)->first();
-            if ((int) ($anchor->{$parent} ?? 0) !== (int) ($node->{$parent} ?? 0)) {
+            if (!$this->sameTreeValue($anchor->{$parent} ?? null, $node->{$parent} ?? null)) {
                 throw $this->error('invalid_input', 'tree order anchor must be a sibling');
             }
             $this->reorderSiblings(
                 $resolved['resource']->table_name,
                 $parent,
                 $this->orderField($resolved['schema']),
-                (int) ($node->{$parent} ?? 0),
+                $node->{$parent} ?? null,
                 $id,
                 $anchorId,
                 $beforeId !== null,
@@ -195,19 +220,21 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
             throw $this->error('forbidden', 'scoped subjects cannot rebuild a complete tree');
         }
         $parent = $this->parentField($resolved['schema']);
+        $keyField = $this->keyField($resolved['schema']);
         $rows = DB::table($resolved['resource']->table_name)->get();
         $map = [];
         foreach ($rows as $row) {
-            $map[(int) $row->id] = $row->{$parent} ?? null;
+            $map[(string) $row->{$keyField}] = $row->{$parent} ?? null;
         }
-        foreach ($map as $id => $parentId) {
-            $seen = [$id => true];
-            while ($parentId !== null && (int) $parentId !== 0) {
-                if (!isset($map[(int) $parentId]) || isset($seen[(int) $parentId])) {
+        foreach ($map as $key => $parentKey) {
+            $seen = [$key => true];
+            while (!$this->isRootTreeValue($parentKey)) {
+                $parentKey = (string) $parentKey;
+                if (!array_key_exists($parentKey, $map) || isset($seen[$parentKey])) {
                     throw $this->error('invalid_input', 'tree parent graph is invalid');
                 }
-                $seen[(int) $parentId] = true;
-                $parentId = $map[(int) $parentId];
+                $seen[$parentKey] = true;
+                $parentKey = $map[$parentKey];
             }
         }
         return ['resource' => $resolved['resource']->resource_key, 'count' => count($map)];
@@ -221,17 +248,19 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
             throw $this->error('action_not_available', 'tree is not enabled');
         }
         $field = $this->parentField($resolved['schema']);
+        $keyField = $this->keyField($resolved['schema']);
         $query['parent_field'] = $field;
-        $query['schema'] = (array) $resolved['schema'];
+        $query['schema'] = $resolved['schema']->toArray();
         $query['schema_object'] = $resolved['schema'];
+        $query['table_name'] = $resolved['resource']->table_name;
         $builder = DB::table($resolved['resource']->table_name);
         $hasSoftDeletes = DB::getSchemaBuilder()->hasColumn($resolved['resource']->table_name, 'deleted_at');
         if ($hasSoftDeletes) {
             $builder->whereNull('deleted_at');
         }
-        if ($parent === null || (int) $parent === 0) {
+        if ($this->isRootTreeValue($parent)) {
             $builder->where(static function ($nested) use ($field): void {
-                $nested->whereNull($field)->orWhere($field, 0);
+                $nested->whereNull($field)->orWhere($field, 0)->orWhere($field, '');
             });
         } else {
             $builder->where($field, $parent);
@@ -244,9 +273,9 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
             $builder->orderBy($order);
         }
         $table = $resolved['resource']->table_name;
-        $items = $builder->orderBy('id')->get()->map(function ($row) use ($query, $table, $field, $hasSoftDeletes): array {
+        $items = $builder->orderBy('id')->get()->map(function ($row) use ($query, $table, $field, $keyField, $hasSoftDeletes): array {
             $payload = $this->nodePayload($row, 0, [], $query);
-            $children = DB::table($table)->where($field, (int) $row->id);
+            $children = DB::table($table)->where($field, $row->{$keyField});
             if ($hasSoftDeletes) {
                 $children->whereNull('deleted_at');
             }
@@ -264,29 +293,35 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         if ($maxDepth > 0 && $depth >= $maxDepth) {
             return;
         }
-        $children = $this->listNodes($query, $branch['id'])['items'];
+        $keyField = $this->keyField($query['schema_object']);
+        $children = $this->listNodes($query, $branch['item'][$keyField] ?? $branch['id'])['items'];
         $branch['children'] = [];
         $branch['children_count'] = count($children);
         $branch['has_children'] = $children !== [];
         foreach ($children as $child) {
-            $nested = $this->nodePayload((object) $child['item'], $depth + 1, array_merge((array) ($branch['ancestor_ids'] ?? []), [(int) $branch['id']], ), $query);
+            $nested = $child;
+            $nested['depth'] = $depth + 1;
+            $nested['ancestor_ids'] = array_merge((array) ($branch['ancestor_ids'] ?? []), [(int) $branch['id']]);
             $this->appendChildren($nested, $query, $depth + 1);
             $branch['children'][] = $nested;
         }
     }
-    private function appendFlatChildren(array &$items, array $query, int $parentId, int $depth, array $context): void
+    private function appendFlatChildren(array &$items, array $query, mixed $parent, int $depth, array $context): void
     {
         $maxDepth = (int) ($query['max_depth'] ?? 0);
         if ($maxDepth > 0 && $depth >= $maxDepth) {
             return;
         }
-        foreach ($this->listNodes($query, $parentId)['items'] as $child) {
-            $ancestors = array_merge((array) ($context['ancestor_ids'] ?? []), [$parentId]);
-            $payload = $this->nodePayload((object) $child['item'], $depth + 1, $ancestors, $context);
+        foreach ($this->listNodes($query, $parent)['items'] as $child) {
+            $ancestors = array_merge((array) ($context['ancestor_ids'] ?? []), [(int) $child['parent_id']]);
+            $payload = $child;
+            $payload['depth'] = $depth + 1;
+            $payload['ancestor_ids'] = $ancestors;
             $items[] = $payload;
             $nextContext = $context;
             $nextContext['ancestor_ids'] = $ancestors;
-            $this->appendFlatChildren($items, $query, (int) $payload['id'], $depth + 1, $nextContext);
+            $keyField = $this->keyField($query['schema_object']);
+            $this->appendFlatChildren($items, $query, $payload['item'][$keyField] ?? $payload['id'], $depth + 1, $nextContext);
         }
     }
     private function node(array $query): object
@@ -306,7 +341,7 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
     private function nodePayload(object $node, int $depth, array $ancestors, array $context = []): array
     {
         $parentField = (string) ($context['parent_field'] ?? 'parent_id');
-        $parentId = $node->{$parentField} ?? null;
+        $parentValue = $node->{$parentField} ?? null;
         $item = (array) $node;
         $fields = [];
         foreach ((array) (($context['schema'] ?? [])['fields'] ?? []) as $field) {
@@ -326,7 +361,24 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
             }
         }
 
-        return ['id' => (int) $node->id, 'parent_id' => $parentId ?: null, 'depth' => $depth, 'has_children' => false, 'children_count' => 0, 'ancestor_ids' => $ancestors, 'item' => $item];
+        $schema = $context['schema_object'] ?? null;
+        $resourceKey = (string) ($context['resource'] ?? '');
+        if ($schema instanceof Schema && $resourceKey !== '') {
+            $hook = $this->hooks?->get($resourceKey);
+            $item = $hook ? $hook->output($resourceKey, $item, $schema) : $item;
+        }
+
+        $parentId = null;
+        $table = (string) ($context['table_name'] ?? '');
+        if (!$this->isRootTreeValue($parentValue) && $table !== '' && $schema instanceof Schema) {
+            $parentId = DB::table($table)->where($this->keyField($schema), $parentValue)->value('id');
+        }
+
+        return ['id' => (int) $node->id, 'parent_id' => $parentId === null ? null : (int) $parentId, 'depth' => $depth, 'has_children' => false, 'children_count' => 0, 'ancestor_ids' => $ancestors, 'item' => $item];
+    }
+    private function keyField(object $schema): string
+    {
+        return trim((string) (($schema->tree['key_field'] ?? '') ?: 'id'));
     }
     private function parentField(object $schema): string
     {
@@ -336,7 +388,7 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
     {
         return trim((string) (($schema->tree['order_field'] ?? '') ?: 'sort'));
     }
-    private function isAncestorSafe(string $table, int $nodeId, int $parentId, string $parentField): bool
+    private function isAncestorSafe(string $table, int $nodeId, int $parentId, string $keyField, string $parentField): bool
     {
         $seen = [$nodeId => true];
         $current = $parentId;
@@ -349,13 +401,31 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
             if (!$row) {
                 return false;
             }
-            $next = (int) ($row->{$parentField} ?? 0);
-            if ($next === 0) {
+            $next = $row->{$parentField} ?? null;
+            if ($this->isRootTreeValue($next)) {
                 return true;
             }
-            $current = $next;
+            $nextId = DB::table($table)->where($keyField, $next)->value('id');
+            if ($nextId === null) {
+                return false;
+            }
+            $current = (int) $nextId;
         }
         return true;
+    }
+
+    private function isRootTreeValue(mixed $value): bool
+    {
+        return $value === null || $value === '' || $value === 0 || $value === '0';
+    }
+
+    private function sameTreeValue(mixed $left, mixed $right): bool
+    {
+        if ($this->isRootTreeValue($left) && $this->isRootTreeValue($right)) {
+            return true;
+        }
+
+        return (string) $left === (string) $right;
     }
 
     /** @param list<array<string, mixed>> $filters */
@@ -418,7 +488,7 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         string $table,
         string $parentField,
         string $orderField,
-        int $parentId,
+        mixed $parent,
         int $nodeId,
         int $anchorId,
         bool $before,
@@ -429,10 +499,14 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         if (!DB::getSchemaBuilder()->hasColumn($table, $orderField)) {
             throw $this->error('action_not_available', 'tree order field is not available');
         }
-        DB::transaction(function () use ($table, $parentField, $orderField, $parentId, $nodeId, $anchorId, $before, $resourceKey, $schema): void {
+        DB::transaction(function () use ($table, $parentField, $orderField, $parent, $nodeId, $anchorId, $before, $resourceKey, $schema): void {
             $siblingsQuery = DB::table($table)
-                ->where(static function ($builder) use ($parentField, $parentId): void {
-                    $parentId === 0 ? $builder->whereNull($parentField)->orWhere($parentField, 0) : $builder->where($parentField, $parentId);
+                ->where(function ($builder) use ($parentField, $parent): void {
+                    if ($this->isRootTreeValue($parent)) {
+                        $builder->whereNull($parentField)->orWhere($parentField, 0)->orWhere($parentField, '');
+                        return;
+                    }
+                    $builder->where($parentField, $parent);
                 });
             $this->applyScope($siblingsQuery, $resourceKey, 'update', $schema);
             $siblings = $siblingsQuery->orderBy($orderField)->orderBy('id')->lockForUpdate()->pluck('id')->map(static fn ($id): int => (int) $id)->all();
@@ -457,7 +531,7 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         if (!$version) {
             throw $this->error('active_version_not_found', 'active version not found');
         }
-        return ['resource' => $resource, 'schema' => (object) (json_decode(json_encode($version->schema_json), true) ?: [])];
+        return ['resource' => $resource, 'schema' => new Schema((array) $version->schema_json)];
     }
 
     private function applyScope(mixed $builder, string $resourceKey, string $action, object $schema): void

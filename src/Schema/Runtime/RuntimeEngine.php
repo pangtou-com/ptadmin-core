@@ -18,6 +18,7 @@ use PTAdmin\Schema\Contract\SchemaSnapshotQuery;
 use PTAdmin\Schema\Contract\UpdateInput;
 use PTAdmin\Schema\Definition\Schema;
 use PTAdmin\Schema\Contracts\SchemaAuthorizationInterface;
+use PTAdmin\Schema\Contracts\RuntimeResourceRecycleHookInterface;
 use PTAdmin\Schema\Contracts\SchemaScopeResolverInterface;
 use PTAdmin\Schema\Contracts\SchemaSubjectContextInterface;
 use PTAdmin\Schema\Meta\Models\Resource;
@@ -192,7 +193,8 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         $input = Payload::dto($input, DeleteInput::class);
         $resolved = $this->resolved((string) ($input['resource'] ?? ''));
         $this->authorize($resolved['resource']->resource_key, 'delete');
-        if (empty($resolved['schema']->capabilities['allow_recycle']) && DB::getSchemaBuilder()->hasColumn($resolved['resource']->table_name, 'deleted_at')) {
+        if (DB::getSchemaBuilder()->hasColumn($resolved['resource']->table_name, 'deleted_at')
+            && !$this->usesSoftDelete($resolved['schema'], $resolved['resource'])) {
             throw $this->error('invalid_input', 'recycle is not enabled for resource');
         }
         $builder = DB::table($resolved['resource']->table_name)->where('id', (int) ($input['id'] ?? 0));
@@ -206,7 +208,7 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         $hook = $this->hooks?->get($resolved['resource']->resource_key);
         DB::transaction(function () use ($resolved, $builder, $hook, $id): void {
             $hook?->deleting($resolved['resource']->resource_key, $id, $resolved['schema']);
-            if (!empty($resolved['schema']->capabilities['allow_recycle']) && DB::getSchemaBuilder()->hasColumn($resolved['resource']->table_name, 'deleted_at')) {
+            if ($this->usesSoftDelete($resolved['schema'], $resolved['resource'])) {
                 $builder->update(['deleted_at' => now()]);
             } else {
                 $builder->delete();
@@ -231,11 +233,22 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         if (DB::getSchemaBuilder()->hasColumn($resolved['resource']->table_name, 'deleted_at')) {
             $restoreBuilder->whereNotNull('deleted_at');
         }
-        $affected = $restoreBuilder->update(['deleted_at' => null]);
-        if ($affected === 0) {
+        if (!$restoreBuilder->exists()) {
             throw $this->error('record_not_found', 'record not found');
         }
-        return ['success' => true, 'affected' => $affected];
+        $id = (int) ($input['id'] ?? 0);
+        $hook = $this->hooks?->get($resolved['resource']->resource_key);
+        DB::transaction(function () use ($restoreBuilder, $hook, $resolved, $id): void {
+            if ($hook instanceof RuntimeResourceRecycleHookInterface) {
+                $hook->restoring($resolved['resource']->resource_key, $id, $resolved['schema']);
+            }
+            $restoreBuilder->update(['deleted_at' => null]);
+            if ($hook instanceof RuntimeResourceRecycleHookInterface) {
+                $hook->restored($resolved['resource']->resource_key, $id, $resolved['schema']);
+            }
+        });
+
+        return ['success' => true, 'affected' => 1];
     }
 
     /** @param array<string, mixed>|object $input */
@@ -250,11 +263,22 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         $purgeBuilder = DB::table($resolved['resource']->table_name)->where('id', (int) ($input['id'] ?? 0));
         $this->applyScope($purgeBuilder, $input['server_constraint'] ?? null, $resolved['schema']);
         $this->applyScope($purgeBuilder, $this->scopeFor($resolved['resource']->resource_key, 'purge'), $resolved['schema']);
-        $affected = $purgeBuilder->delete();
-        if ($affected === 0) {
+        if (!$purgeBuilder->exists()) {
             throw $this->error('record_not_found', 'record not found');
         }
-        return ['success' => true, 'affected' => $affected];
+        $id = (int) ($input['id'] ?? 0);
+        $hook = $this->hooks?->get($resolved['resource']->resource_key);
+        DB::transaction(function () use ($purgeBuilder, $hook, $resolved, $id): void {
+            if ($hook instanceof RuntimeResourceRecycleHookInterface) {
+                $hook->purging($resolved['resource']->resource_key, $id, $resolved['schema']);
+            }
+            $purgeBuilder->delete();
+            if ($hook instanceof RuntimeResourceRecycleHookInterface) {
+                $hook->purged($resolved['resource']->resource_key, $id, $resolved['schema']);
+            }
+        });
+
+        return ['success' => true, 'affected' => 1];
     }
 
     /** @param array<string, mixed>|object $input */
@@ -383,7 +407,7 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         $resolved = $this->resolved((string) ($query['resource'] ?? ''));
         $this->authorize($resolved['resource']->resource_key, 'view');
         $schema = $resolved['schema'];
-        return ['resource' => $resolved['resource']->resource_key, 'version' => ['version_id' => (int) $resolved['version']->id, 'version' => (int) $resolved['version']->version, 'status' => $resolved['version']->status, 'checksum' => $resolved['version']->checksum], 'features' => $schema->features ?? [], 'capabilities' => $schema->capabilities ?? [], 'state' => $schema->state ?? null, 'tree' => $schema->tree ?? null, 'fields' => $schema->fields ?? [], 'actions' => $schema->actions ?? []];
+        return ['resource' => $resolved['resource']->resource_key, 'version' => ['version_id' => (int) $resolved['version']->id, 'version' => (int) $resolved['version']->version, 'status' => $resolved['version']->status, 'checksum' => $resolved['version']->checksum], 'features' => $schema->features ?? [], 'capabilities' => $schema->capabilities ?? [], 'state' => $schema->state ?? null, 'tree' => $schema->tree ?? null, 'views' => $schema->views ?? [], 'fields' => $schema->fields ?? [], 'actions' => $schema->actions ?? []];
     }
 
     /** @return array{resource:Resource,version:object,schema:Schema} */
@@ -993,6 +1017,11 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         } elseif ($mode !== 'with') {
             $builder->whereNull('deleted_at');
         }
+    }
+    private function usesSoftDelete(Schema $schema, Resource $resource): bool
+    {
+        return DB::getSchemaBuilder()->hasColumn($resource->table_name, 'deleted_at')
+            && (!empty($schema->capabilities['allow_recycle']) || !empty($schema->capabilities['soft_delete']));
     }
     private function applyStateKinds($builder, mixed $kinds, Schema $schema): void
     {

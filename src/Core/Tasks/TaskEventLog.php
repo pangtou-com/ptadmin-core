@@ -14,8 +14,19 @@ final class TaskEventLog
     {
         $this->store = $store;
     }
-
-    /** @param array<string, mixed> $data */
+    
+    /**
+     * @param string $taskId
+     * @param string $type
+     * @param string $stage
+     * @param string $status
+     * @param int|float $progress
+     * @param string $message
+     * @param array<string, mixed> $data
+     * @param string|null $requestId
+     * @return array
+     * @throws \JsonException
+     */
     public function append(
         string $taskId,
         string $type,

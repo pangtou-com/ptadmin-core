@@ -35,9 +35,8 @@ final class AdminSchemaDefinitions
                                 ['type' => 'field', 'field' => 'status'],
                                 ['type' => 'field', 'field' => 'password', 'component' => 'password'],
                             ]],
-                            ['type' => 'section', 'title' => '角色与组织', 'span' => 24, 'children' => [
+                            ['type' => 'section', 'title' => '角色', 'span' => 24, 'children' => [
                                 ['type' => 'field', 'field' => 'role_ids'],
-                                ['type' => 'field', 'field' => 'organization_relations', 'component' => 'organization-relation-editor', 'span' => 24],
                             ]],
                             ['type' => 'section', 'title' => '直接授权', 'span' => 24, 'children' => [
                                 ['type' => 'field', 'field' => 'permissions', 'component' => 'permission-grant-editor', 'span' => 24],
@@ -56,12 +55,10 @@ final class AdminSchemaDefinitions
                         ['name' => 'login_ip', 'type' => 'string', 'label' => '最近登录 IP', 'persisted' => true, 'readonly' => true, 'formable' => false, 'listable' => true],
                         ['name' => 'password', 'type' => 'string', 'label' => '密码', 'persisted' => false, 'required' => true, 'formable' => true, 'listable' => false, 'extensions' => ['secret' => ['readable' => false]], 'validation' => [['type' => 'complexity', 'params' => ['min_length' => 6, 'max_length' => 4096], 'message' => '密码长度必须为 6 到 4096 个字符']]],
                         ['name' => 'role_ids', 'type' => 'integer', 'label' => '角色', 'persisted' => false, 'multiple' => true, 'formable' => true, 'listable' => false, 'reference' => ['resource' => 'admin.management_roles', 'value_field' => 'id', 'label_field' => 'name']],
-                        ['name' => 'organization_relations', 'type' => 'json', 'label' => '组织归属', 'persisted' => false, 'formable' => true, 'listable' => false, 'extensions' => ['component' => 'organization-relation-editor']],
                         ['name' => 'permissions', 'type' => 'json', 'label' => '直接授权', 'persisted' => false, 'formable' => true, 'listable' => false, 'extensions' => ['component' => 'permission-grant-editor']],
                     ],
                     'actions' => [
                         'sync_roles' => ['label' => '设置角色'],
-                        'sync_organization_relations' => ['label' => '设置组织归属'],
                         'sync_permissions' => ['label' => '设置直接授权'],
                         'reset_password' => ['label' => '重置密码'],
                         'revoke_sessions' => ['label' => '撤销会话'],
@@ -85,10 +82,7 @@ final class AdminSchemaDefinitions
                                 ['type' => 'field', 'field' => 'code'],
                                 ['type' => 'field', 'field' => 'name'],
                                 ['type' => 'field', 'field' => 'description', 'span' => 24],
-                                ['type' => 'field', 'field' => 'tenant_id'],
                                 ['type' => 'field', 'field' => 'status'],
-                                ['type' => 'field', 'field' => 'scope_mode'],
-                                ['type' => 'field', 'field' => 'scope_value_json', 'component' => 'authorization-scope-value-editor'],
                                 ['type' => 'field', 'field' => 'sort'],
                             ]],
                             ['type' => 'section', 'title' => '资源授权', 'span' => 24, 'children' => [
@@ -100,9 +94,6 @@ final class AdminSchemaDefinitions
                         $this->string('code', '角色编码', true, true, true, true, ['trim' => true, 'case' => 'lower'], [['type' => 'format', 'value' => 'identifier', 'message' => '角色编码必须是小写标识符'], ['type' => 'max_length', 'value' => 100, 'message' => '角色编码不能超过 100 个字符']]),
                         $this->string('name', '角色名称', true, true, true, true, [], [['type' => 'max_length', 'value' => 100, 'message' => '角色名称不能超过 100 个字符']]),
                         ['name' => 'description', 'type' => 'text', 'label' => '角色说明', 'persisted' => true, 'formable' => true, 'listable' => false],
-                        ['name' => 'tenant_id', 'type' => 'integer', 'label' => '所属租户', 'persisted' => true, 'formable' => true, 'listable' => true, 'searchable' => true, 'reference' => ['resource' => 'admin.management_tenants', 'value_field' => 'id', 'label_field' => 'name']],
-                        $this->select('scope_mode', '默认数据范围', 'all', [['value' => 'all', 'label' => '全部数据'], ['value' => 'self', 'label' => '仅本人'], ['value' => 'tenant', 'label' => '指定租户'], ['value' => 'organization', 'label' => '指定组织'], ['value' => 'department', 'label' => '指定部门'], ['value' => 'assigned', 'label' => '已分配组织范围']]),
-                        ['name' => 'scope_value_json', 'type' => 'json', 'label' => '默认范围参数', 'persisted' => true, 'formable' => true, 'listable' => false, 'extensions' => ['component' => 'authorization-scope-value-editor']],
                         $this->boolean('status', '角色状态', true),
                         ['name' => 'is_system', 'type' => 'boolean', 'label' => '系统角色', 'persisted' => true, 'readonly' => true, 'formable' => false, 'listable' => true, 'searchable' => true, 'sortable' => true],
                         ['name' => 'sort', 'type' => 'integer', 'label' => '排序', 'persisted' => true, 'default' => 0, 'formable' => true, 'listable' => true, 'sortable' => true],
@@ -116,19 +107,88 @@ final class AdminSchemaDefinitions
                 'schema' => [
                     'name' => 'management_menus',
                     'title' => '菜单与权限资源',
-                    'description' => '管理菜单节点和服务端权限资源。',
-                    'features' => ['layout' => 'grouped'],
-                    'capabilities' => ['allow_recycle' => true],
+                    'description' => '以同一棵稳定资源树管理后台导航和服务端权限资源。',
+                    'features' => ['layout' => 'single'],
+                    'capabilities' => ['soft_delete' => true],
+                    'tree' => [
+                        'enabled' => true,
+                        'key_field' => 'resource_key',
+                        'parent_field' => 'parent_key',
+                        'order_field' => 'sort',
+                    ],
+                    'views' => [
+                        'searches' => false,
+                        'page' => [
+                            'table' => 'default',
+                            'createForm' => 'default',
+                            'updateForm' => 'default',
+                        ],
+                        'tables' => ['default' => [
+                            'mode' => 'tree',
+                            'tree' => ['default_expand' => 'all', 'expand_column' => 'title'],
+                            'fields' => ['title', 'resource_key', 'type', 'path', 'status'],
+                            'pagination' => false,
+                            'toolbar' => [
+                                'left' => [['action' => 'create', 'title' => '新增资源']],
+                                'right' => [['action' => 'reload', 'title' => '刷新']],
+                                'batch' => [],
+                            ],
+                            'selection' => false,
+                            'operate' => [
+                                ['action' => 'update', 'title' => '编辑'],
+                                ['action' => 'delete', 'title' => '删除', 'show_when' => ['field' => 'is_core', 'op' => 'neq', 'value' => true]],
+                            ],
+                        ]],
+                        'forms' => ['default' => [
+                        'title' => '资源配置',
+                        'wrapper' => ['type' => 'dialog', 'props' => ['width' => '760px']],
+                        'span' => 12,
+                        'gap' => 18,
+                        'props' => ['labelPosition' => 'top'],
+                        'children' => [
+                            ['type' => 'section', 'title' => '资源信息', 'span' => 24, 'children' => [
+                                ['type' => 'field', 'field' => 'resource_key', 'span' => 12],
+                                ['type' => 'field', 'field' => 'title', 'span' => 12],
+                                ['type' => 'field', 'field' => 'type', 'span' => 12],
+                                ['type' => 'field', 'field' => 'parent_key', 'span' => 12],
+                            ]],
+                            ['type' => 'section', 'title' => '页面与导航', 'span' => 24, 'show_when' => ['field' => 'type', 'op' => 'neq', 'value' => 'action'], 'children' => [
+                                ['type' => 'field', 'field' => 'is_menu', 'span' => 12],
+                                ['type' => 'field', 'field' => 'path', 'span' => 12],
+                                ['type' => 'field', 'field' => 'page_key', 'span' => 12, 'show_when' => ['field' => 'type', 'op' => 'eq', 'value' => 'page']],
+                                ['type' => 'field', 'field' => 'target_resource_key', 'span' => 12, 'show_when' => ['field' => 'type', 'op' => 'eq', 'value' => 'schema']],
+                                ['type' => 'field', 'field' => 'external_url', 'span' => 12, 'show_when' => ['field' => 'type', 'op' => 'eq', 'value' => 'external']],
+                                ['type' => 'field', 'field' => 'icon', 'span' => 12, 'show_when' => ['field' => 'is_menu', 'op' => 'eq', 'value' => true]],
+                            ]],
+                            ['type' => 'section', 'title' => '状态与排序', 'span' => 24, 'children' => [
+                                ['type' => 'field', 'field' => 'status', 'span' => 12],
+                                ['type' => 'field', 'field' => 'sort', 'span' => 12],
+                            ]],
+                        ],
+                    ]]],
+                    // move_menu 仅保留给已发布客户端过渡，实际执行仍走统一资源移动逻辑。
+                    'actions' => [
+                        'move_resource' => ['label' => '移动资源'],
+                        'move_menu' => ['label' => '移动资源'],
+                    ],
                     'fields' => [
                         $this->string('resource_key', '资源编码', true, true, true, true, ['trim' => true, 'case' => 'lower'], [['type' => 'pattern', 'value' => '^[a-z][a-z0-9._-]{1,190}$', 'message' => '资源编码格式不正确']]),
                         $this->string('title', '资源名称', true, true, true, true, [], [['type' => 'max_length', 'value' => 150, 'message' => '资源名称不能超过 150 个字符']]),
-                        $this->select('type', '资源类型', 'page', [['value' => 'page', 'label' => '页面'], ['value' => 'system', 'label' => '系统权限'], ['value' => 'action', 'label' => '操作权限']]),
-                        $this->string('parent_key', '父资源编码', false, true, true, false, ['trim' => true], [['type' => 'max_length', 'value' => 191, 'message' => '父资源编码不能超过 191 个字符']]),
+                        $this->select('type', '资源类型', 'page', [['value' => 'group', 'label' => '导航分组'], ['value' => 'schema', 'label' => 'Schema 资源'], ['value' => 'page', 'label' => '内部页面'], ['value' => 'external', 'label' => '外部链接'], ['value' => 'action', 'label' => '操作权限']]),
+                        ['name' => 'parent_key', 'type' => 'string', 'label' => '父资源', 'persisted' => true, 'formable' => true, 'listable' => true, 'searchable' => true, 'sortable' => false, 'normalize' => ['trim' => true], 'validation' => [['type' => 'max_length', 'value' => 191, 'message' => '父资源编码不能超过 191 个字符']], 'reference' => ['resource' => 'admin.management_menus', 'value_field' => 'resource_key', 'label_field' => 'title']],
                         $this->string('path', '前端相对路径', false, true, false, false, ['trim' => true], [['type' => 'max_length', 'value' => 255, 'message' => '前端路径不能超过 255 个字符']]),
-                        ['name' => 'meta_json', 'type' => 'json', 'label' => '菜单元数据', 'persisted' => true, 'formable' => true, 'listable' => false],
+                        ['name' => 'page_key', 'type' => 'string', 'label' => '页面注册键', 'persisted' => true, 'formable' => true, 'listable' => true, 'searchable' => true, 'normalize' => ['trim' => true], 'validation' => [['type' => 'max_length', 'value' => 150, 'message' => '页面注册键不能超过 150 个字符']]],
+                        // Schema Runtime 资源由独立元数据接口提供，不能通过 Admin 通用 DataAdapter 作为同表引用加载。
+                        ['name' => 'target_resource_key', 'type' => 'string', 'label' => '目标 Schema 资源编码', 'persisted' => false, 'formable' => true, 'listable' => true, 'searchable' => true, 'normalize' => ['trim' => true, 'case' => 'lower'], 'validation' => [['type' => 'max_length', 'value' => 191, 'message' => '目标资源编码不能超过 191 个字符']]],
+                        ['name' => 'icon', 'type' => 'string', 'label' => '菜单图标', 'persisted' => true, 'formable' => true, 'listable' => true, 'normalize' => ['trim' => true], 'validation' => [['type' => 'max_length', 'value' => 100, 'message' => '菜单图标编码不能超过 100 个字符']], 'extensions' => ['component' => 'admin-menu-icon-picker']],
+                        ['name' => 'external_url', 'type' => 'string', 'label' => '外部链接', 'persisted' => false, 'formable' => true, 'listable' => false, 'normalize' => ['trim' => true], 'validation' => [['type' => 'max_length', 'value' => 2048, 'message' => '外部链接不能超过 2048 个字符']]],
+                        ['name' => 'meta_json', 'type' => 'json', 'label' => '菜单元数据', 'persisted' => true, 'readonly' => true, 'formable' => false, 'listable' => false],
                         $this->boolean('is_menu', '显示为菜单', false),
                         $this->boolean('status', '资源状态', true),
-                        ['name' => 'sort', 'type' => 'integer', 'label' => '排序', 'persisted' => true, 'default' => 0, 'formable' => true, 'listable' => true, 'sortable' => true],
+                        ['name' => 'sort', 'type' => 'integer', 'label' => '排序', 'persisted' => true, 'default' => 0, 'formable' => true, 'listable' => true, 'sortable' => true, 'validation' => [['type' => 'min', 'value' => 0, 'message' => '排序值不能小于 0']]],
+                        ['name' => 'is_core', 'type' => 'boolean', 'label' => '核心资源', 'persisted' => false, 'readonly' => true, 'formable' => false, 'listable' => true],
+                        ['name' => 'owner_type', 'type' => 'string', 'label' => '资源来源', 'persisted' => false, 'readonly' => true, 'formable' => false, 'listable' => true],
+                        ['name' => 'owner_code', 'type' => 'string', 'label' => '来源编码', 'persisted' => false, 'readonly' => true, 'formable' => false, 'listable' => false],
                     ],
                 ],
             ],
@@ -173,87 +233,12 @@ final class AdminSchemaDefinitions
                     ],
                 ],
             ],
-            'admin.management_tenants' => $this->tenantDefinition(),
-            'admin.management_organizations' => $this->organizationDefinition(),
-            'admin.management_departments' => $this->departmentDefinition(),
             'admin.dashboard_widgets' => $this->dashboardWidgetDefinition(),
             'admin.notification_scenes' => $this->notificationSceneDefinition(),
             'admin.notification_templates' => $this->notificationTemplateDefinition(),
             'admin.notification_messages' => $this->notificationMessageDefinition(),
             'admin.notification_receipts' => $this->notificationReceiptDefinition(),
             'admin.notification_deliveries' => $this->notificationDeliveryDefinition(),
-        ];
-    }
-
-    /** @return array{table:string,schema:array<string,mixed>} */
-    private function tenantDefinition(): array
-    {
-        return [
-            'table' => 'admin_tenants',
-            'schema' => [
-                'name' => 'management_tenants',
-                'title' => '租户',
-                'description' => '管理后台租户及其全局配置。',
-                'features' => ['layout' => 'single'],
-                'capabilities' => ['allow_recycle' => true],
-                'fields' => [
-                    $this->string('code', '租户编码', true, true, true, true, ['trim' => true, 'case' => 'lower'], [['type' => 'format', 'value' => 'identifier', 'message' => '租户编码必须是小写标识符']]),
-                    $this->string('name', '租户名称', true, true, true, true),
-                    $this->boolean('status', '租户状态', true),
-                    ['name' => 'settings_json', 'type' => 'json', 'label' => '租户配置', 'persisted' => true, 'formable' => true, 'listable' => false],
-                ],
-            ],
-        ];
-    }
-
-    /** @return array{table:string,schema:array<string,mixed>} */
-    private function organizationDefinition(): array
-    {
-        return [
-            'table' => 'admin_organizations',
-            'schema' => [
-                'name' => 'management_organizations',
-                'title' => '组织',
-                'description' => '管理租户下的组织树和组织归属。',
-                'features' => ['layout' => 'grouped'],
-                'tree' => ['enabled' => true, 'parent_field' => 'parent_id', 'order_field' => 'sort'],
-                'capabilities' => ['allow_recycle' => true],
-                'fields' => [
-                    ['name' => 'tenant_id', 'type' => 'integer', 'label' => '租户', 'persisted' => true, 'formable' => true, 'listable' => true, 'searchable' => true, 'reference' => ['resource' => 'admin.management_tenants', 'value_field' => 'id', 'label_field' => 'name']],
-                    ['name' => 'parent_id', 'type' => 'integer', 'label' => '父组织', 'persisted' => true, 'default' => 0, 'formable' => true, 'listable' => false, 'reference' => ['resource' => 'admin.management_organizations', 'value_field' => 'id', 'label_field' => 'name', 'parent_field' => 'parent_id']],
-                    $this->string('code', '组织编码', true, true, true, true, ['trim' => true, 'case' => 'lower'], [['type' => 'format', 'value' => 'identifier', 'message' => '组织编码必须是小写标识符']]),
-                    $this->string('name', '组织名称', true, true, true, true),
-                    $this->boolean('status', '组织状态', true),
-                    ['name' => 'sort', 'type' => 'integer', 'label' => '排序', 'persisted' => true, 'default' => 0, 'formable' => true, 'listable' => true, 'sortable' => true],
-                    ['name' => 'meta_json', 'type' => 'json', 'label' => '扩展信息', 'persisted' => true, 'formable' => true, 'listable' => false],
-                ],
-            ],
-        ];
-    }
-
-    /** @return array{table:string,schema:array<string,mixed>} */
-    private function departmentDefinition(): array
-    {
-        return [
-            'table' => 'admin_departments',
-            'schema' => [
-                'name' => 'management_departments',
-                'title' => '部门',
-                'description' => '管理组织下的部门树和管理员归属范围。',
-                'features' => ['layout' => 'grouped'],
-                'tree' => ['enabled' => true, 'parent_field' => 'parent_id', 'order_field' => 'sort'],
-                'capabilities' => ['allow_recycle' => true],
-                'fields' => [
-                    ['name' => 'tenant_id', 'type' => 'integer', 'label' => '租户', 'persisted' => true, 'formable' => true, 'listable' => true, 'searchable' => true, 'reference' => ['resource' => 'admin.management_tenants', 'value_field' => 'id', 'label_field' => 'name']],
-                    ['name' => 'organization_id', 'type' => 'integer', 'label' => '组织', 'persisted' => true, 'required' => true, 'formable' => true, 'listable' => true, 'searchable' => true, 'reference' => ['resource' => 'admin.management_organizations', 'value_field' => 'id', 'label_field' => 'name']],
-                    ['name' => 'parent_id', 'type' => 'integer', 'label' => '父部门', 'persisted' => true, 'default' => 0, 'formable' => true, 'listable' => false, 'reference' => ['resource' => 'admin.management_departments', 'value_field' => 'id', 'label_field' => 'name', 'parent_field' => 'parent_id']],
-                    $this->string('code', '部门编码', true, true, true, true, ['trim' => true, 'case' => 'lower'], [['type' => 'format', 'value' => 'identifier', 'message' => '部门编码必须是小写标识符']]),
-                    $this->string('name', '部门名称', true, true, true, true),
-                    $this->boolean('status', '部门状态', true),
-                    ['name' => 'sort', 'type' => 'integer', 'label' => '排序', 'persisted' => true, 'default' => 0, 'formable' => true, 'listable' => true, 'sortable' => true],
-                    ['name' => 'meta_json', 'type' => 'json', 'label' => '扩展信息', 'persisted' => true, 'formable' => true, 'listable' => false],
-                ],
-            ],
         ];
     }
 
@@ -270,7 +255,6 @@ final class AdminSchemaDefinitions
                 'fields' => [
                     $this->select('subject_type', '主体类型', 'admin', [['value' => 'admin', 'label' => '管理员'], ['value' => 'role', 'label' => '角色']]),
                     ['name' => 'subject_id', 'type' => 'integer', 'label' => '主体 ID', 'persisted' => true, 'required' => true, 'formable' => true, 'listable' => true, 'searchable' => true],
-                    ['name' => 'tenant_id', 'type' => 'integer', 'label' => '租户 ID', 'persisted' => true, 'formable' => true, 'listable' => true, 'searchable' => true],
                     $this->string('widget_code', '组件编码', true, true, true, true, ['trim' => true]),
                     $this->boolean('enabled', '是否启用', true),
                     ['name' => 'sort', 'type' => 'integer', 'label' => '排序', 'persisted' => true, 'default' => 0, 'formable' => true, 'listable' => true, 'sortable' => true],

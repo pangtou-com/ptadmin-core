@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PTAdmin\Addon;
 
 use Illuminate\Database\ConnectionInterface;
+use PTAdmin\Admin\Navigation\MenuSynchronizer;
 use PTAdmin\Core\Config\ConfigService;
 use PTAdmin\Core\Config\Models\ConfigDefinition;
 use PTAdmin\Schema\Contracts\ResourceServiceInterface;
@@ -20,6 +21,7 @@ final class AddonResourceSynchronizer implements AddonResourceSynchronizerInterf
         private ConnectionInterface $database,
         private SchemaSourceDiscovery $schemaSources,
         private SchemaFileSynchronizer $schemaSynchronizer,
+        private MenuSynchronizer $menus,
     ) {
     }
 
@@ -31,7 +33,6 @@ final class AddonResourceSynchronizer implements AddonResourceSynchronizerInterf
             $ownerCode = strtolower($code);
             $schemaKeys = [];
             $configKeys = [];
-            $adminKeys = [];
             $schemaFiles = $this->schemaSources->discoverDirectory(
                 $directory.'/database/schemas',
                 'addon',
@@ -62,40 +63,8 @@ final class AddonResourceSynchronizer implements AddonResourceSynchronizerInterf
                     $counts['configs']++;
                 }
             }
-            $adminPath = $directory.'/Admin/resources.json';
-            if (is_file($adminPath)) {
-                foreach ($this->objectOrList($adminPath) as $resource) {
-                    $key = trim((string) ($resource['resource_key'] ?? ''));
-                    if ($key === '') throw new AddonManifestException('Admin resource key is required.', 'invalid_admin_resource');
-                    $existing = $this->database->table('admin_resources')->where('resource_key', $key)->first();
-                    if (null !== $existing) {
-                        $existingMeta = json_decode((string) ($existing->meta_json ?? ''), true);
-                        if (!is_array($existingMeta) || ($existingMeta['owner_type'] ?? null) !== 'addon' || ($existingMeta['owner_code'] ?? null) !== $ownerCode) {
-                            throw new AddonManifestException('Admin resource is owned by another component.', 'admin_resource_owner_conflict', ['resource_key' => $key]);
-                        }
-                    }
-                    $meta = is_array($resource['meta'] ?? null) ? $resource['meta'] : [];
-                    $meta['owner_type'] = 'addon';
-                    $meta['owner_code'] = $ownerCode;
-                    $now = now();
-                    $values = [
-                        'title' => (string) ($resource['title'] ?? $key),
-                        'type' => (string) ($resource['type'] ?? 'page'),
-                        'parent_key' => (string) ($resource['parent_key'] ?? ''),
-                        'path' => (string) ($resource['path'] ?? ''),
-                        'meta_json' => json_encode($meta, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                        'is_menu' => (bool) ($resource['is_menu'] ?? false),
-                        'status' => (bool) ($resource['status'] ?? true),
-                        'sort' => (int) ($resource['sort'] ?? 0),
-                        'deleted_at' => null,
-                        'updated_at' => $now,
-                    ];
-                    if (null === $existing) $values['created_at'] = $now;
-                    $this->database->table('admin_resources')->updateOrInsert(['resource_key' => $key], $values);
-                    $adminKeys[] = $key;
-                    $counts['admin_resources']++;
-                }
-            }
+            $menuResult = $this->menus->syncAddon($directory, $code);
+            $counts['admin_resources'] = count($menuResult['resource_keys']);
             $schemaQuery = Resource::query()->where(['owner_type' => 'addon', 'owner_code' => $ownerCode]);
             if ($schemaKeys !== []) $schemaQuery->whereNotIn('resource_key', $schemaKeys);
             foreach ($schemaQuery->get() as $resource) $this->resources->disableResource((string) $resource->resource_key);
@@ -104,12 +73,6 @@ final class AddonResourceSynchronizer implements AddonResourceSynchronizerInterf
             if ($configKeys !== []) $configQuery->whereNotIn('config_key', $configKeys);
             $configQuery->update(['status' => false]);
 
-            foreach ($this->database->table('admin_resources')->get() as $resource) {
-                $meta = json_decode((string) ($resource->meta_json ?? ''), true);
-                if (is_array($meta) && ($meta['owner_type'] ?? null) === 'addon' && ($meta['owner_code'] ?? null) === $ownerCode && !in_array((string) $resource->resource_key, $adminKeys, true)) {
-                    $this->database->table('admin_resources')->where('id', $resource->id)->update(['status' => false, 'updated_at' => now()]);
-                }
-            }
             return $counts;
         });
     }
@@ -122,12 +85,7 @@ final class AddonResourceSynchronizer implements AddonResourceSynchronizerInterf
                 $this->resources->disableResource((string) $resource->resource_key);
             }
             ConfigDefinition::query()->where(['owner_type' => 'addon', 'owner_code' => $ownerCode])->update(['status' => false]);
-            foreach ($this->database->table('admin_resources')->get() as $resource) {
-                $meta = json_decode((string) ($resource->meta_json ?? ''), true);
-                if (is_array($meta) && ($meta['owner_type'] ?? null) === 'addon' && ($meta['owner_code'] ?? null) === $ownerCode) {
-                    $this->database->table('admin_resources')->where('id', $resource->id)->update(['status' => false, 'updated_at' => now()]);
-                }
-            }
+            $this->menus->deactivateAddon($ownerCode);
         });
     }
 

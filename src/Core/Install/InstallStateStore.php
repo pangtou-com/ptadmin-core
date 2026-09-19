@@ -60,9 +60,11 @@ final class InstallStateStore
             && is_string($installed['web_prefix'] ?? null)
             && WebPrefixGenerator::isValid($installed['web_prefix']);
     }
-
+    
     /**
      * @param array<string, mixed> $state
+     * @return array
+     * @throws JsonException
      */
     public function writeState(array $state): array
     {
@@ -71,9 +73,12 @@ final class InstallStateStore
 
         return $state;
     }
-
+    
     /**
+     * @param string $coreVersion
+     * @param string $webPrefix
      * @return array{status:string, core_version:string, web_prefix:string, installed_at:string}
+     * @throws JsonException
      */
     public function markInstalled(string $coreVersion, string $webPrefix): array
     {
@@ -122,9 +127,11 @@ final class InstallStateStore
 
         return $decoded;
     }
-
+    
     /**
+     * @param string $path
      * @param array<string, mixed> $value
+     * @throws JsonException
      */
     private function writeJson(string $path, array $value): void
     {

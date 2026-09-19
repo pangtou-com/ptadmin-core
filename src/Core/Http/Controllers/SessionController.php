@@ -32,7 +32,7 @@ final class SessionController extends Controller
         $session = $request->attributes->get('ptadmin.session');
         $admin = Admin::query()->find($session['subject_id']);
         if (null === $admin || 'admin' !== $session['guard_name']) {
-            return AdminResponse::error(40102, 'The administrator account is unavailable.', null, 401);
+            return AdminResponse::error(40102, '管理员账号不可用，请重新登录。', null, 401);
         }
 
         $permissions = $this->authorization->permissions($admin);
@@ -42,6 +42,7 @@ final class SessionController extends Controller
         return AdminResponse::success('', [
             'user' => $this->authenticator->userPayload($admin),
             'permissions' => $permissions,
+            'roles' => $this->authorization->roles($admin),
             'menus' => $menus,
             'theme' => (array) config('ptadmin.theme', []),
             'layout' => (array) config('ptadmin.layout', []),

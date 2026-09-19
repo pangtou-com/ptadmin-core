@@ -25,14 +25,14 @@ final class AddonLifecycleStoreTest extends TestCase
     public function testLifecycleTransitionsArePersistedAndInvalidTransitionsRejected(): void
     {
         $store = new AddonLifecycleStore($this->directory);
-        self::assertSame('discovered', $store->transition('cms', 'discovered')['state']);
-        self::assertSame('validating', $store->transition('cms', 'validating')['state']);
-        self::assertSame('loading', $store->transition('cms', 'loading')['state']);
-        self::assertSame('ready', $store->transition('cms', 'ready')['state']);
-        self::assertSame('active', $store->transition('cms', 'active')['state']);
+        self::assertSame('discovered', $store->transition('demo', 'discovered')['state']);
+        self::assertSame('validating', $store->transition('demo', 'validating')['state']);
+        self::assertSame('loading', $store->transition('demo', 'loading')['state']);
+        self::assertSame('ready', $store->transition('demo', 'ready')['state']);
+        self::assertSame('active', $store->transition('demo', 'active')['state']);
 
         $this->expectException(AddonManifestException::class);
-        $store->transition('cms', 'discovered');
+        $store->transition('demo', 'discovered');
     }
 
     private function remove(string $path): void

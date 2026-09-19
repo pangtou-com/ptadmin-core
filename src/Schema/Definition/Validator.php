@@ -157,6 +157,15 @@ final class Validator
                 }
             }
         }
+        $extensions = is_array($schema['extensions'] ?? null) ? $schema['extensions'] : [];
+        $authorization = is_array($extensions['authorization'] ?? null) ? $extensions['authorization'] : [];
+        $ownerField = (string) ($authorization['owner_field'] ?? '');
+        if ($ownerField !== '') {
+            $field = $names[$ownerField] ?? null;
+            if (!is_array($field) || empty($field['persisted'])) {
+                $issues[] = $this->issue('invalid_extension', 'extensions.authorization.owner_field', 'authorization owner_field must reference a persisted field');
+            }
+        }
         $this->validateState($schema, $names, $issues);
         $this->validateTree($schema, $names, $issues);
         return $issues;
@@ -207,12 +216,22 @@ final class Validator
         if (empty($tree['enabled'])) {
             return;
         }
-        foreach (['parent_field' => 'parent_id', 'order_field' => 'sort'] as $key => $default) {
-            $name = (string) (($tree[$key] ?? '') ?: $default);
-            $field = $fields[$name] ?? null;
-            if (!$field || empty($field['persisted']) || !empty($field['multiple']) || !in_array($field['type'] ?? '', ['number', 'integer'], true)) {
-                $issues[] = $this->issue('invalid_tree', 'tree.'.$key, 'tree field must exist and use a persisted single number or integer field');
-            }
+        $keyFieldName = (string) (($tree['key_field'] ?? '') ?: 'id');
+        $keyField = $keyFieldName === 'id' ? ['type' => 'integer', 'persisted' => true] : ($fields[$keyFieldName] ?? null);
+        if (!$keyField || empty($keyField['persisted']) || !empty($keyField['multiple']) || !in_array($keyField['type'] ?? '', ['string', 'number', 'integer'], true)) {
+            $issues[] = $this->issue('invalid_tree', 'tree.key_field', 'tree key field must exist and use a persisted single scalar field');
+        }
+
+        $parentFieldName = (string) (($tree['parent_field'] ?? '') ?: 'parent_id');
+        $parentField = $fields[$parentFieldName] ?? null;
+        if (!$parentField || empty($parentField['persisted']) || !empty($parentField['multiple']) || ($parentField['type'] ?? '') !== ($keyField['type'] ?? null)) {
+            $issues[] = $this->issue('invalid_tree', 'tree.parent_field', 'tree parent field must be a persisted single field with the same type as tree.key_field');
+        }
+
+        $orderFieldName = (string) (($tree['order_field'] ?? '') ?: 'sort');
+        $orderField = $fields[$orderFieldName] ?? null;
+        if (!$orderField || empty($orderField['persisted']) || !empty($orderField['multiple']) || !in_array($orderField['type'] ?? '', ['number', 'integer'], true)) {
+            $issues[] = $this->issue('invalid_tree', 'tree.order_field', 'tree order field must exist and use a persisted single number or integer field');
         }
     }
 

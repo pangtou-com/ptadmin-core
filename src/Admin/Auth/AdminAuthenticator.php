@@ -26,7 +26,7 @@ final class AdminAuthenticator
         $admin = Admin::query()->where('username', $username)->first();
         if (null === $admin || !Hash::check($password, (string) $admin->password) || 1 !== (int) $admin->status) {
             $this->recordLogin($admin, $username, false, 'invalid_credentials', $ip, $userAgent);
-            throw new InvalidCredentialsException('Invalid administrator credentials.');
+            throw new InvalidCredentialsException('用户名或密码错误。');
         }
 
         $admin->forceFill([

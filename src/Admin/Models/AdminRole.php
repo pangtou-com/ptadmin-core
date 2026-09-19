@@ -20,7 +20,5 @@ final class AdminRole extends Model
         'status' => 'boolean',
         'is_system' => 'boolean',
         'sort' => 'integer',
-        'tenant_id' => 'integer',
-        'scope_value_json' => 'array',
     ];
 }

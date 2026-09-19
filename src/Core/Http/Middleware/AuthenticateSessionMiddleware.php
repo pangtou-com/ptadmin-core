@@ -34,7 +34,7 @@ final class AuthenticateSessionMiddleware
         $admin = Admin::query()->find($session['subject_id'] ?? null);
         if ('admin' === ($session['guard_name'] ?? null)) {
             if (!$admin instanceof Admin || !(bool) $admin->status) {
-                return AdminResponse::error(40102, 'The administrator account is unavailable.', null, 401);
+                return AdminResponse::error(40102, '管理员账号不可用，请重新登录。', null, 401);
             }
             $this->schemaSubject->set($admin);
         }

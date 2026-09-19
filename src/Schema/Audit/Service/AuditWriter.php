@@ -28,7 +28,7 @@ final class AuditWriter
             throw new \InvalidArgumentException('audit action is required');
         }
         $safe = Redactor::redact($payload, $schema);
-        $columns = ['kind', 'category', 'action', 'status', 'resource_key', 'record_id', 'subject_type', 'subject_id', 'actor_type', 'actor_id', 'request_id', 'trace_id', 'tenant_id', 'remote_ip', 'user_agent', 'payload_json', 'occurred_at'];
+        $columns = ['kind', 'category', 'action', 'status', 'resource_key', 'record_id', 'subject_type', 'subject_id', 'actor_type', 'actor_id', 'request_id', 'trace_id', 'remote_ip', 'user_agent', 'payload_json', 'occurred_at'];
         $values = [];
         foreach (array_slice($columns, 0, -2) as $column) {
             $values[$column] = (string) ($safe[$column] ?? '');
@@ -49,7 +49,7 @@ final class AuditWriter
     {
         $query = Payload::array($query);
         $builder = DB::table('schema_audit_events');
-        foreach (['kind', 'category', 'action', 'status', 'resource_key', 'record_id', 'subject_type', 'subject_id', 'actor_type', 'actor_id', 'request_id', 'trace_id', 'tenant_id'] as $field) {
+        foreach (['kind', 'category', 'action', 'status', 'resource_key', 'record_id', 'subject_type', 'subject_id', 'actor_type', 'actor_id', 'request_id', 'trace_id'] as $field) {
             if (trim((string) ($query[$field] ?? '')) !== '') {
                 $builder->where($field, trim((string) $query[$field]));
             }

@@ -9,8 +9,30 @@ use PTAdmin\Core\Http\Controllers\AddonController;
 use PTAdmin\Core\Http\Controllers\AddonTaskController;
 use PTAdmin\Admin\Http\Controllers\ProfileController;
 use PTAdmin\Admin\Http\Controllers\AdminSessionController;
+use PTAdmin\Admin\Http\Controllers\DashboardController;
 
 $apiPrefix = trim((string) config('ptadmin.api_prefix', 'ptadmin'), '/');
+
+Route::middleware(['ptadmin.request-id', 'ptadmin.session', 'ptadmin.audit'])
+    ->prefix($apiPrefix.'/dashboard')
+    ->as('ptadmin.dashboard.')
+    ->group(static function (): void {
+        Route::get('/', [DashboardController::class, 'show'])
+            ->middleware('ptadmin.permission:dashboard,view')
+            ->name('show');
+        Route::post('application-sync', [DashboardController::class, 'synchronize'])
+            ->middleware('ptadmin.permission:dashboard,view')
+            ->name('application-sync');
+        Route::get('me/widgets', [DashboardController::class, 'settings'])
+            ->middleware('ptadmin.permission:dashboard,view')
+            ->name('widgets.settings');
+        Route::put('me/widgets', [DashboardController::class, 'saveSettings'])
+            ->middleware('ptadmin.permission:admin.dashboard_widgets,update')
+            ->name('widgets.save');
+        Route::post('widgets/query', [DashboardController::class, 'query'])
+            ->middleware('ptadmin.permission:dashboard,view')
+            ->name('widgets.query');
+    });
 
 Route::middleware(['ptadmin.request-id', 'ptadmin.session', 'ptadmin.audit'])
     ->prefix($apiPrefix.'/profile')

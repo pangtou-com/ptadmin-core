@@ -36,7 +36,7 @@ final class AdminFrontendPublisherTest extends TestCase
         );
         $publisher->publishForInstall('admin_'.bin2hex(random_bytes(3)));
         $prefix = (string) basename((string) glob($this->directory.'/public/*', GLOB_ONLYDIR)[0]);
-        $module = $this->directory.'/public/'.$prefix.'/modules/cms';
+        $module = $this->directory.'/public/'.$prefix.'/modules/demo';
         mkdir($module, 0700, true);
         file_put_contents($module.'/manifest.json', '{}');
 

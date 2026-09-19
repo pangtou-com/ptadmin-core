@@ -40,7 +40,6 @@ final class AuthorizationService
             return new AuthorizationDecision(false, 'resource_unavailable');
         }
 
-        $relations = $this->organizationRelations((int) $admin->getKey());
         $direct = $this->grantsForSubject(
             'admin',
             (string) $admin->getKey(),
@@ -48,23 +47,20 @@ final class AuthorizationService
             $ability,
             $admin,
             $context,
-            $relations,
         );
         if ($direct !== []) {
             return $this->resolveGrants($direct, 'direct_grant');
         }
 
         $roleGrants = [];
-        foreach ($this->roleAssignments((int) $admin->getKey(), $context) as $assignment) {
+        foreach ($this->roleAssignments((int) $admin->getKey()) as $roleId) {
             foreach ($this->grantsForSubject(
                 'role',
-                (string) $assignment['role_id'],
+                (string) $roleId,
                 (int) $resource->id,
                 $ability,
                 $admin,
                 $context,
-                $relations,
-                $assignment,
             ) as $grant) {
                 $roleGrants[] = $grant;
             }
@@ -101,6 +97,25 @@ final class AuthorizationService
         return array_values(array_unique($permissions));
     }
 
+    /** @return list<string> */
+    public function roles(Admin $admin): array
+    {
+        if ((bool) $admin->is_founder) {
+            return ['*'];
+        }
+
+        return array_values(array_unique(array_map(
+            static fn (mixed $code): string => (string) $code,
+            $this->database->table('admin_user_roles as relations')
+                ->join('admin_roles as roles', 'roles.id', '=', 'relations.role_id')
+                ->where('relations.admin_id', $admin->getKey())
+                ->where('roles.status', 1)
+                ->whereNull('roles.deleted_at')
+                ->pluck('roles.code')
+                ->all(),
+        )));
+    }
+
     /** @return array<int, array<string, mixed>> */
     public function menus(Admin $admin): array
     {
@@ -118,30 +133,40 @@ final class AuthorizationService
             }
 
             $meta = $this->decode((string) ($resource->meta_json ?? ''));
-            $pageType = $meta['page_type'] ?? null;
-            if (!is_string($pageType) || !in_array($pageType, [
-                'dashboard',
-                'schema.resource',
-                'logs.center',
-                'task.center',
-                'plugin.page',
-                'cloud.market',
-                'external.link',
-            ], true)) {
+            $type = (string) ($resource->type ?? '');
+            if (!in_array($type, ['group', 'schema', 'page', 'external'], true)) {
                 continue;
+            }
+
+            $pageType = $this->legacyPageType($resource, $meta);
+            $path = (string) ($resource->path ?? '');
+            if ($type === 'group' && $path === '') {
+                $path = '/__group/'.rawurlencode((string) $resource->resource_key);
             }
 
             $menu = [
                 'key' => (string) $resource->resource_key,
                 'title' => (string) $resource->title,
-                'path' => $this->menuPath((string) ($resource->path ?? '')),
+                'type' => $type,
+                'path' => $this->menuPath($path),
                 'page_type' => $pageType,
                 'children' => [],
             ];
-            foreach (['resource_key', 'icon'] as $field) {
-                if (is_string($meta[$field] ?? null) && $meta[$field] !== '') {
-                    $menu[$field] = $meta[$field];
-                }
+            $targetResourceKey = (string) ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '');
+            $icon = (string) ($resource->icon ?? $meta['icon'] ?? '');
+            if ($targetResourceKey !== '') {
+                $menu['resource_key'] = $targetResourceKey;
+                $menu['target_resource_key'] = $targetResourceKey;
+            }
+            if ((string) ($resource->page_key ?? '') !== '') {
+                $menu['page_key'] = (string) $resource->page_key;
+            }
+            if ($icon !== '') {
+                $menu['icon'] = $icon;
+            }
+            $externalUrl = (string) ($meta['external_url'] ?? '');
+            if ($externalUrl !== '') {
+                $menu['external_url'] = $externalUrl;
             }
             $menus[] = [
                 'node' => $menu,
@@ -153,8 +178,6 @@ final class AuthorizationService
     }
 
     /**
-     * @param list<object> $relations
-     * @param array<string, mixed>|null $role
      * @return list<AuthorizationGrant>
      */
     private function grantsForSubject(
@@ -164,8 +187,6 @@ final class AuthorizationService
         string $ability,
         Admin $admin,
         ?AuthorizationContext $context,
-        array $relations,
-        ?array $role = null,
     ): array {
         $rows = $this->database->table('admin_grants')
             ->where('subject_type', $subjectType)
@@ -183,21 +204,13 @@ final class AuthorizationService
                 continue;
             }
 
-            $grantTenantId = $this->nullableId($row->tenant_id ?? null)
-                ?? $this->nullableId($role['tenant_id'] ?? null);
-            if ($context?->tenantId !== null && $grantTenantId !== null && $grantTenantId !== $context->tenantId) {
-                continue;
-            }
-
             $conditions = $this->decodeNullable((string) ($row->conditions_json ?? ''));
-            if (!$this->conditionsMatch($conditions, $admin, $ability, $grantTenantId, $context, $relations)) {
+            if (!$this->conditionsMatch($conditions, $admin, $ability, $context)) {
                 continue;
             }
 
-            $scopeType = $this->nullableString($row->scope_type ?? null)
-                ?? $this->nullableString($role['scope_mode'] ?? null);
-            $scopeValue = $this->decodeNullable((string) ($row->scope_value_json ?? ''))
-                ?? $this->decodeNullable((string) ($role['scope_value_json'] ?? ''));
+            $scopeType = $this->nullableString($row->scope_type ?? null);
+            $scopeValue = $this->decodeNullable((string) ($row->scope_value_json ?? ''));
             $grants[] = new AuthorizationGrant(
                 (int) $row->id,
                 $subjectType,
@@ -205,7 +218,6 @@ final class AuthorizationService
                 (string) $row->effect === 'allow' ? 'allow' : 'deny',
                 $abilities,
                 (int) $row->priority,
-                $grantTenantId,
                 $scopeType,
                 $scopeValue,
                 $conditions,
@@ -243,81 +255,35 @@ final class AuthorizationService
         return new AuthorizationDecision(true, $reason.'_allow', $selected);
     }
 
-    /** @return list<array{role_id:int,tenant_id:?int,scope_mode:?string,scope_value_json:?string}> */
-    private function roleAssignments(int $adminId, ?AuthorizationContext $context): array
+    /** @return list<int> */
+    private function roleAssignments(int $adminId): array
     {
-        $rows = $this->database->table('admin_user_roles as relations')
+        return $this->database->table('admin_user_roles as relations')
             ->join('admin_roles as roles', 'roles.id', '=', 'relations.role_id')
             ->where('relations.admin_id', $adminId)
             ->where('roles.status', 1)
             ->whereNull('roles.deleted_at')
-            ->get([
-                'relations.role_id',
-                'relations.tenant_id as relation_tenant_id',
-                'roles.tenant_id as role_tenant_id',
-                'roles.scope_mode',
-                'roles.scope_value_json',
-            ]);
-
-        $assignments = [];
-        foreach ($rows as $row) {
-            $relationTenant = $this->nullableId($row->relation_tenant_id ?? null);
-            $roleTenant = $this->nullableId($row->role_tenant_id ?? null);
-            if ($roleTenant !== null && $relationTenant !== $roleTenant) {
-                continue;
-            }
-            $tenantId = $roleTenant ?? $relationTenant;
-            if ($context?->tenantId !== null && $tenantId !== null && $tenantId !== $context->tenantId) {
-                continue;
-            }
-            $assignments[] = [
-                'role_id' => (int) $row->role_id,
-                'tenant_id' => $tenantId,
-                'scope_mode' => $this->nullableString($row->scope_mode ?? null),
-                'scope_value_json' => $this->nullableString($row->scope_value_json ?? null),
-            ];
-        }
-
-        return $assignments;
-    }
-
-    /** @return list<object> */
-    private function organizationRelations(int $adminId): array
-    {
-        return $this->database->table('admin_user_org_relations')
-            ->where('user_id', $adminId)
-            ->get()
+            ->pluck('relations.role_id')
+            ->map(static fn ($roleId): int => (int) $roleId)
+            ->values()
             ->all();
     }
 
     /**
      * @param array<string, mixed>|list<mixed>|null $conditions
-     * @param list<object> $relations
      */
     private function conditionsMatch(
         ?array $conditions,
         Admin $admin,
         string $ability,
-        ?int $grantTenantId,
         ?AuthorizationContext $context,
-        array $relations,
     ): bool {
         if ($conditions === null || $conditions === []) {
             return true;
         }
 
-        $tenantId = $context?->tenantId ?? $grantTenantId;
-        $matchingRelations = array_values(array_filter(
-            $relations,
-            static fn (object $relation): bool => $tenantId === null || (int) ($relation->tenant_id ?? 0) === $tenantId,
-        ));
         $values = [
             'admin_id' => (int) $admin->getKey(),
-            'tenant_id' => $tenantId,
-            'organization_id' => $context?->organizationId
-                ?? array_values(array_unique(array_map(static fn (object $relation): int => (int) $relation->organization_id, $matchingRelations))),
-            'department_id' => $context?->departmentId
-                ?? array_values(array_unique(array_filter(array_map(static fn (object $relation): ?int => isset($relation->department_id) ? (int) $relation->department_id : null, $matchingRelations)))),
             'ability' => $ability,
         ] + ($context?->attributes ?? []);
 
@@ -348,7 +314,7 @@ final class AuthorizationService
 
         $field = (string) ($condition['field'] ?? '');
         $operator = (string) ($condition['operator'] ?? 'eq');
-        if (!in_array($field, ['admin_id', 'tenant_id', 'organization_id', 'department_id', 'ability'], true)
+        if (!in_array($field, ['admin_id', 'ability'], true)
             || !in_array($operator, ['eq', 'neq', 'in', 'not_in'], true)
         ) {
             return false;
@@ -365,7 +331,7 @@ final class AuthorizationService
     /** @return array<int, list<string>> */
     private function declaredAbilities(Admin $admin): array
     {
-        $roleIds = array_column($this->roleAssignments((int) $admin->getKey(), null), 'role_id');
+        $roleIds = $this->roleAssignments((int) $admin->getKey());
         $rows = $this->database->table('admin_grants')
             ->where(function ($query) use ($admin, $roleIds): void {
                 $query->where(function ($direct) use ($admin): void {
@@ -469,6 +435,22 @@ final class AuthorizationService
         return $path === '' || $path === '/' ? '/' : '/'.ltrim($path, '/');
     }
 
+    /** @param object $resource @param array<string,mixed> $meta */
+    private function legacyPageType(object $resource, array $meta): string
+    {
+        $legacy = (string) ($meta['page_type'] ?? '');
+        if ($legacy !== '') {
+            return $legacy;
+        }
+
+        return match ((string) ($resource->type ?? '')) {
+            'group' => 'navigation.group',
+            'schema' => 'schema.resource',
+            'external' => 'external.link',
+            default => (string) ($resource->page_key ?? 'page'),
+        };
+    }
+
     /** @return array<string, mixed> */
     private function decode(string $value): array
     {
@@ -495,11 +477,6 @@ final class AuthorizationService
         $decoded = json_decode($value, true);
 
         return is_array($decoded) ? $decoded : null;
-    }
-
-    private function nullableId(mixed $value): ?int
-    {
-        return $value === null || $value === '' ? null : (int) $value;
     }
 
     private function nullableString(mixed $value): ?string

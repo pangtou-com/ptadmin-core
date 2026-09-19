@@ -11,10 +11,12 @@ use Throwable;
 
 /**
  * 将安装表单中的数据库设置转换为 Laravel 连接配置，并在迁移前验证连接。
- * 首版只开放 Laravel 标准的 SQLite 和 MySQL，其他驱动待单独验证后再加入。
+ * SQLite 固定使用宿主 storage/database 目录，MySQL 使用安装表单提供的连接信息。
  */
 final class InstallDatabaseConfigurator
 {
+    private const DEFAULT_SQLITE_DATABASE = 'ptadmin.db';
+
     /** @var list<string> PTAdmin 首次迁移会创建的表，用于阻止覆盖既有安装。 */
     private const PTADMIN_TABLES = [
         'schema_resources',
@@ -28,10 +30,6 @@ final class InstallDatabaseConfigurator
         'admin_resources',
         'admin_user_roles',
         'admin_grants',
-        'admin_tenants',
-        'admin_organizations',
-        'admin_departments',
-        'admin_user_org_relations',
         'admin_dashboard_widgets',
         'assets',
         'notification_scenes',
@@ -62,19 +60,21 @@ final class InstallDatabaseConfigurator
         }
 
         $current = (array) config('database.connections.'.$driver, []);
-        $database = trim((string) ($input['db_database'] ?? ($driver === 'sqlite' ? 'ptadmin.db' : 'ptadmin')));
+        $database = trim((string) ($input['db_database'] ?? ($driver === 'sqlite' ? self::DEFAULT_SQLITE_DATABASE : 'ptadmin')));
         $prefix = (string) ($input['db_prefix'] ?? 'pt_');
-        if (preg_match('/[\x00-\x1F\x7F]/', $database) === 1) {
-            throw new InvalidInstallStateException('数据库名称或 SQLite 文件路径包含非法字符。');
-        }
         if (preg_match('/^[A-Za-z0-9_]{0,32}$/', $prefix) !== 1) {
             throw new InvalidInstallStateException('数据表前缀只能包含字母、数字和下划线。');
         }
 
         if ($driver === 'sqlite') {
-            $database = $database === '' ? 'ptadmin.db' : $database;
-            $databasePath = $this->sqlitePath($database);
-            if ($databasePath !== ':memory:' && !is_file($databasePath)) {
+            $database = $database === '' ? self::DEFAULT_SQLITE_DATABASE : $database;
+            if (preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/', $database) !== 1
+                || $database === '.'
+                || $database === '..') {
+                throw new InvalidInstallStateException('SQLite 数据库只能填写文件名，不能包含目录路径。');
+            }
+            $databasePath = storage_path('database/'.$database);
+            if (!is_file($databasePath)) {
                 $directory = dirname($databasePath);
                 if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
                     throw new InvalidInstallStateException('无法创建 SQLite 数据库目录。');
@@ -89,11 +89,15 @@ final class InstallDatabaseConfigurator
                 'prefix' => $prefix,
                 'foreign_key_constraints' => true,
             ];
+            $environmentDatabase = $this->environmentDatabaseValue($databasePath);
         } else {
             $host = trim((string) ($input['db_host'] ?? ($current['host'] ?? '127.0.0.1')));
             $port = trim((string) ($input['db_port'] ?? ($current['port'] ?? '3306')));
             $username = (string) ($input['db_username'] ?? ($current['username'] ?? ''));
             $password = (string) ($input['db_password'] ?? ($current['password'] ?? ''));
+            if (preg_match('/[\x00-\x1F\x7F]/', $database) === 1) {
+                throw new InvalidInstallStateException('数据库名称包含非法字符。');
+            }
             if (preg_match('/[\x00-\x1F\x7F]/', $host.$username.$password) === 1 || str_contains($host, ';')) {
                 throw new InvalidInstallStateException('MySQL 连接信息包含非法字符。');
             }
@@ -118,6 +122,7 @@ final class InstallDatabaseConfigurator
                 'strict' => true,
                 'engine' => null,
             ];
+            $environmentDatabase = $database;
         }
 
         $config = (array) config('database');
@@ -138,7 +143,7 @@ final class InstallDatabaseConfigurator
 
         return [
             'driver' => $driver,
-            'database' => $driver === 'sqlite' ? $this->environmentDatabaseValue($database) : $database,
+            'database' => $environmentDatabase,
             'host' => (string) ($settings['host'] ?? ''),
             'port' => (string) ($settings['port'] ?? ''),
             'username' => (string) ($settings['username'] ?? ''),
@@ -164,18 +169,9 @@ final class InstallDatabaseConfigurator
         return $values;
     }
 
-    private function sqlitePath(string $database): string
-    {
-        if ($database === ':memory:' || str_starts_with($database, DIRECTORY_SEPARATOR) || preg_match('/^[A-Za-z]:[\\\\\/]/', $database) === 1) {
-            return $database;
-        }
-
-        return base_path($database);
-    }
-
     private function environmentDatabaseValue(string $database): string
     {
-        if ($database === ':memory:' || !str_starts_with($database, DIRECTORY_SEPARATOR)) {
+        if (!str_starts_with($database, DIRECTORY_SEPARATOR)) {
             return $database;
         }
 

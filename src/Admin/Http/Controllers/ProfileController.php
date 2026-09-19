@@ -35,7 +35,7 @@ final class ProfileController extends Controller
                 'avatar' => ['nullable', 'string', 'max:255'],
             ]);
         } catch (ValidationException $exception) {
-            return AdminResponse::error(42200, 'The profile payload is invalid.', $exception->errors(), 422);
+            return AdminResponse::error(42200, '个人资料校验失败。', $exception->errors(), 422);
         }
 
         $admin = $this->admin($request);
@@ -52,12 +52,12 @@ final class ProfileController extends Controller
                 'password' => ['required', 'string', 'min:6', 'max:4096', 'confirmed'],
             ]);
         } catch (ValidationException $exception) {
-            return AdminResponse::error(42200, 'The password payload is invalid.', $exception->errors(), 422);
+            return AdminResponse::error(42200, '密码信息校验失败。', $exception->errors(), 422);
         }
 
         $admin = $this->admin($request);
         if (!Hash::check((string) $data['current_password'], (string) $admin->password)) {
-            return AdminResponse::error(42201, 'The current password is incorrect.', ['field' => 'current_password'], 422);
+            return AdminResponse::error(42201, '当前密码不正确。', ['field' => 'current_password'], 422);
         }
         $admin->forceFill(['password' => Hash::make((string) $data['password'])])->save();
         $revoked = $this->sessions->revokeSubject(Admin::class, (int) $admin->getKey(), 'admin');

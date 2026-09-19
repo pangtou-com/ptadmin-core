@@ -5,13 +5,19 @@ declare(strict_types=1);
 namespace PTAdmin\Core\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use PTAdmin\Admin\Auth\AuthorizationService;
 use PTAdmin\Admin\Auth\AdminAuthenticator;
+use PTAdmin\Admin\Dashboard\DashboardService;
 use PTAdmin\Admin\Schema\AdminRuntimeHook;
 use PTAdmin\Admin\Schema\AdminSchemaDefinitions;
 use PTAdmin\Admin\Schema\AdminSchemaSynchronizer;
+use PTAdmin\Admin\Console\Commands\AdminSyncCommand;
+use PTAdmin\Admin\Console\Commands\MenuSyncCommand;
+use PTAdmin\Admin\Navigation\MenuSynchronizer;
 use PTAdmin\Core\Auth\Session\SessionManager;
 use PTAdmin\Core\Auth\SchemaAuthorizationBridge;
+use PTAdmin\Core\Auth\DataScopeRegistry;
 use PTAdmin\Core\Auth\SchemaScopeResolver;
 use PTAdmin\Admin\Http\Middleware\RequirePermissionMiddleware;
 use PTAdmin\Admin\Http\Middleware\RecordAdminOperationMiddleware;
@@ -53,6 +59,9 @@ use PTAdmin\Addon\AddonResourceSynchronizerInterface;
 use PTAdmin\Addon\AddonLock;
 use PTAdmin\Addon\AddonDiscovery;
 use PTAdmin\Addon\AddonRuntimeRegistrar;
+use PTAdmin\Addon\AddonTemplateDirectiveRegistry;
+use PTAdmin\Addon\AddonTemplateRuntime;
+use PTAdmin\Addon\TemplateDirectiveArgumentParser;
 use PTAdmin\Addon\AddonStateManager;
 use PTAdmin\Schema\Providers\SchemaServiceProvider;
 use PTAdmin\Schema\Contracts\SchemaAuthorizationInterface;
@@ -72,11 +81,8 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../../../config/ptadmin.php', 'ptadmin');
         $this->app->register(SchemaServiceProvider::class);
 
-        $this->app->singleton(ApplicationIdentity::class, static function ($app): ApplicationIdentity {
-            return new ApplicationIdentity((string) $app['config']->get(
-                'ptadmin.application_identity_path',
-                storage_path('app/ptadmin/ptadmin.json')
-            ));
+        $this->app->singleton(ApplicationIdentity::class, static function (): ApplicationIdentity {
+            return new ApplicationIdentity(storage_path('ptadmin.json'));
         });
         $this->app->singleton(InstallStateStore::class, static function (): InstallStateStore {
             return new InstallStateStore(storage_path('app/ptadmin/install'));
@@ -167,9 +173,13 @@ final class PTAdminServiceProvider extends ServiceProvider
                 $app,
                 $app->make(AddonDiscovery::class),
                 $app->make(AddonLifecycleStore::class),
-                (string) $app['config']->get('ptadmin.addon.path', base_path('addons'))
+                (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
+                $app->make(AddonTemplateDirectiveRegistry::class)
             );
         });
+        $this->app->singleton(AddonTemplateDirectiveRegistry::class);
+        $this->app->singleton(TemplateDirectiveArgumentParser::class);
+        $this->app->singleton(AddonTemplateRuntime::class);
         $this->app->singleton(AddonStateManager::class, static function ($app): AddonStateManager {
             return new AddonStateManager(
                 (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
@@ -235,8 +245,18 @@ final class PTAdminServiceProvider extends ServiceProvider
         });
         $this->app->singleton(AdminAuthenticator::class);
         $this->app->singleton(AuthorizationService::class);
+        $this->app->singleton(DataScopeRegistry::class);
+        $this->app->singleton(DashboardService::class);
         $this->app->singleton(AdminSchemaDefinitions::class);
         $this->app->singleton(AdminSchemaSynchronizer::class);
+        $this->app->singleton(MenuSynchronizer::class, static function ($app): MenuSynchronizer {
+            return new MenuSynchronizer(
+                $app['db'],
+                $app->make(AddonDiscovery::class),
+                __DIR__.'/../../../resources/menu.json',
+                (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
+            );
+        });
         $this->app->singleton(AdminRuntimeHook::class);
         $this->app->afterResolving(RuntimeResourceHookRegistry::class, static function (RuntimeResourceHookRegistry $registry, $app): void {
             $registry->register($app->make(AdminRuntimeHook::class));
@@ -249,10 +269,11 @@ final class PTAdminServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $installState = $this->app->make(InstallStateStore::class);
-        if ($installState->isInstalled()) {
-            $installed = $installState->readInstalled();
-            if (is_array($installed)) {
-                config(['ptadmin.web_prefix' => (string) $installed['web_prefix']]);
+        $isInstalled = $installState->isInstalled();
+        if ($isInstalled) {
+            $installedMarker = $installState->readInstalled();
+            if (is_array($installedMarker)) {
+                config(['ptadmin.web_prefix' => (string) $installedMarker['web_prefix']]);
             }
         }
 
@@ -267,11 +288,19 @@ final class PTAdminServiceProvider extends ServiceProvider
         ], 'ptadmin-config');
 
         $this->loadTranslationsFrom(__DIR__.'/../../../lang', 'ptadmin');
-        $this->loadViewsFrom(__DIR__.'/../../../resources/views/install', 'ptadmin-install');
-        $this->loadRoutesFrom(__DIR__.'/../../../routes/web.php');
+        if (!$isInstalled) {
+            $this->app->make(HttpKernel::class)->prependMiddlewareToGroup('web', InstallStateMiddleware::class);
+        }
         $this->loadRoutesFrom(__DIR__.'/../../../routes/public.php');
-        $this->loadRoutesFrom(__DIR__.'/../../../routes/install.php');
-        $this->loadRoutesFrom(__DIR__.'/../../../routes/admin.php');
+        // Installation is a bootstrap mode. Its routes and views are selected once
+        // when the application boots, rather than guarding every business request.
+        if (!$isInstalled) {
+            $this->loadViewsFrom(__DIR__.'/../../../resources/views/install', 'ptadmin-install');
+            $this->loadRoutesFrom(__DIR__.'/../../../routes/install.php');
+        } else {
+            $this->loadRoutesFrom(__DIR__.'/../../../routes/web.php');
+            $this->loadRoutesFrom(__DIR__.'/../../../routes/admin.php');
+        }
         $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
         if ((bool) $this->app['config']->get('ptadmin.addon.runtime.enabled', true)) {
             $this->app->make(AddonRuntimeRegistrar::class)->register();
@@ -282,6 +311,8 @@ final class PTAdminServiceProvider extends ServiceProvider
                 TaskRecoverCommand::class,
                 SchemaSyncCommand::class,
                 SchemaPublishCommand::class,
+                AdminSyncCommand::class,
+                MenuSyncCommand::class,
             ]);
         }
     }

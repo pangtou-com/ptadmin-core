@@ -79,8 +79,8 @@ final class TaskManagerTest extends TestCase
 
     public function testIdempotencyKeyReturnsTheOriginalTask(): void
     {
-        $first = $this->tasks->create(TaskManager::ADDON_INSTALL, ['code' => 'cms'], null, 1, 'install-cms-1');
-        $second = $this->tasks->create(TaskManager::ADDON_INSTALL, ['code' => 'cms'], null, 1, 'install-cms-1');
+        $first = $this->tasks->create(TaskManager::ADDON_INSTALL, ['code' => 'demo'], null, 1, 'install-demo-1');
+        $second = $this->tasks->create(TaskManager::ADDON_INSTALL, ['code' => 'demo'], null, 1, 'install-demo-1');
 
         self::assertSame($first['task_id'], $second['task_id']);
         self::assertCount(1, glob($this->directory.'/*/state.json') ?: []);

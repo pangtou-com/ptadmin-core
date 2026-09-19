@@ -22,11 +22,11 @@ final class RequirePermissionMiddleware
         $session = $request->attributes->get('ptadmin.session');
         $admin = is_array($session) ? Admin::query()->find($session['subject_id'] ?? null) : null;
         if (!$admin instanceof Admin || 'admin' !== ($session['guard_name'] ?? null)) {
-            return AdminResponse::error(40102, 'The administrator account is unavailable.', null, 401);
+            return AdminResponse::error(40102, '管理员账号不可用，请重新登录。', null, 401);
         }
 
         if (!$this->authorization->allows($admin, $ability, $resourceKey)) {
-            return AdminResponse::error(40300, 'You are not allowed to perform this action.', [
+            return AdminResponse::error(40300, '当前账号无权执行此操作。', [
                 'resource' => $resourceKey,
                 'ability' => $ability,
             ], 403);

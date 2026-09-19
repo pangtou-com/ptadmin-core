@@ -24,9 +24,14 @@ final class LoginController extends Controller
             $validated = $request->validate([
                 'username' => ['required', 'string'],
                 'password' => ['required', 'string'],
+            ], [
+                'username.required' => '请输入用户名。',
+                'username.string' => '用户名格式不正确。',
+                'password.required' => '请输入密码。',
+                'password.string' => '密码格式不正确。',
             ]);
         } catch (ValidationException $exception) {
-            return AdminResponse::error(42200, 'The login payload is invalid.', $exception->errors(), 422);
+            return AdminResponse::error(42200, '登录信息校验失败。', $exception->errors(), 422);
         }
 
         try {

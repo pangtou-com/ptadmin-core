@@ -1,0 +1,322 @@
+[
+    {
+        "resource_key": "dashboard",
+        "title": "仪表盘",
+        "type": "page",
+        "page_key": "dashboard",
+        "path": "/",
+        "is_menu": true,
+        "status": true,
+        "sort": 10,
+        "icon": "layout-dashboard"
+    },
+    {
+        "resource_key": "admin",
+        "title": "系统管理",
+        "type": "group",
+        "is_menu": true,
+        "status": true,
+        "sort": 20,
+        "icon": "settings"
+    },
+    {
+        "resource_key": "admin.users",
+        "title": "管理员",
+        "type": "schema",
+        "parent_key": "admin",
+        "target_resource_key": "admin.management_users",
+        "path": "/admin/users",
+        "is_menu": true,
+        "status": true,
+        "sort": 10,
+        "icon": "users"
+    },
+    {
+        "resource_key": "admin.roles",
+        "title": "角色权限",
+        "type": "schema",
+        "parent_key": "admin",
+        "target_resource_key": "admin.management_roles",
+        "path": "/admin/roles",
+        "is_menu": true,
+        "status": true,
+        "sort": 20,
+        "icon": "shield-check"
+    },
+    {
+        "resource_key": "admin.menus",
+        "title": "菜单管理",
+        "type": "schema",
+        "parent_key": "admin",
+        "target_resource_key": "admin.management_menus",
+        "path": "/admin/menus",
+        "is_menu": true,
+        "status": true,
+        "sort": 30,
+        "icon": "list-tree"
+    },
+    {
+        "resource_key": "admin.logs",
+        "title": "日志中心",
+        "type": "page",
+        "page_key": "logs.center",
+        "path": "/admin/logs",
+        "is_menu": true,
+        "status": true,
+        "sort": 40,
+        "icon": "scroll-text"
+    },
+    {
+        "resource_key": "admin.notifications",
+        "title": "通知场景",
+        "type": "schema",
+        "parent_key": "admin",
+        "target_resource_key": "admin.notification_scenes",
+        "path": "/admin/notifications",
+        "is_menu": true,
+        "status": true,
+        "sort": 80,
+        "icon": "bell"
+    },
+    {
+        "resource_key": "admin.notification_templates",
+        "title": "通知模板",
+        "type": "schema",
+        "parent_key": "admin.notifications",
+        "target_resource_key": "admin.notification_templates",
+        "path": "/admin/notifications/templates",
+        "is_menu": true,
+        "status": true,
+        "sort": 10,
+        "icon": "file-text"
+    },
+    {
+        "resource_key": "admin.management_users",
+        "title": "管理员数据管理",
+        "type": "schema",
+        "parent_key": "admin.users",
+        "target_resource_key": "admin.management_users",
+        "is_menu": false,
+        "status": true,
+        "sort": 10
+    },
+    {
+        "resource_key": "admin.management_roles",
+        "title": "角色数据管理",
+        "type": "schema",
+        "parent_key": "admin.roles",
+        "target_resource_key": "admin.management_roles",
+        "is_menu": false,
+        "status": true,
+        "sort": 10
+    },
+    {
+        "resource_key": "admin.management_menus",
+        "title": "权限资源数据管理",
+        "type": "schema",
+        "parent_key": "admin.menus",
+        "target_resource_key": "admin.management_menus",
+        "is_menu": false,
+        "status": true,
+        "sort": 10
+    },
+    {
+        "resource_key": "admin.login_logs",
+        "title": "登录日志查询",
+        "type": "schema",
+        "parent_key": "admin.logs",
+        "target_resource_key": "admin.login_logs",
+        "is_menu": false,
+        "status": true,
+        "sort": 10
+    },
+    {
+        "resource_key": "admin.operation_records",
+        "title": "操作记录查询",
+        "type": "schema",
+        "parent_key": "admin.logs",
+        "target_resource_key": "admin.operation_records",
+        "is_menu": false,
+        "status": true,
+        "sort": 20
+    },
+    {
+        "resource_key": "admin.notification_scenes",
+        "title": "通知场景数据管理",
+        "type": "schema",
+        "parent_key": "admin.notifications",
+        "target_resource_key": "admin.notification_scenes",
+        "is_menu": false,
+        "status": true,
+        "sort": 10
+    },
+    {
+        "resource_key": "admin.notification_messages",
+        "title": "通知消息查询",
+        "type": "schema",
+        "parent_key": "admin.notifications",
+        "target_resource_key": "admin.notification_messages",
+        "is_menu": false,
+        "status": true,
+        "sort": 30
+    },
+    {
+        "resource_key": "admin.notification_receipts",
+        "title": "通知回执查询",
+        "type": "schema",
+        "parent_key": "admin.notifications",
+        "target_resource_key": "admin.notification_receipts",
+        "is_menu": false,
+        "status": true,
+        "sort": 40
+    },
+    {
+        "resource_key": "admin.notification_deliveries",
+        "title": "通知投递记录查询",
+        "type": "schema",
+        "parent_key": "admin.notifications",
+        "target_resource_key": "admin.notification_deliveries",
+        "is_menu": false,
+        "status": true,
+        "sort": 50
+    },
+    {
+        "resource_key": "admin.dashboard_widgets",
+        "title": "仪表盘组件配置",
+        "type": "schema",
+        "parent_key": "dashboard",
+        "target_resource_key": "admin.dashboard_widgets",
+        "is_menu": false,
+        "status": true,
+        "sort": 10
+    },
+    {
+        "resource_key": "schema.resources",
+        "title": "Schema 资源",
+        "type": "page",
+        "page_key": "schema.design",
+        "path": "/schema/resources",
+        "is_menu": true,
+        "status": true,
+        "sort": 90,
+        "icon": "blocks"
+    },
+    {
+        "resource_key": "admin.config",
+        "title": "系统配置",
+        "type": "page",
+        "page_key": "settings.center",
+        "is_menu": false,
+        "status": true,
+        "sort": 10
+    },
+    {
+        "resource_key": "tasks",
+        "title": "任务中心",
+        "type": "page",
+        "page_key": "task.center",
+        "path": "/tasks",
+        "is_menu": true,
+        "status": true,
+        "sort": 100,
+        "icon": "list-checks"
+    },
+    {
+        "resource_key": "core.tasks",
+        "title": "后台任务",
+        "type": "group",
+        "is_menu": false,
+        "status": true,
+        "sort": 10
+    },
+    {
+        "resource_key": "core.update",
+        "title": "核心更新",
+        "type": "action",
+        "parent_key": "core.tasks",
+        "is_menu": false,
+        "status": true,
+        "sort": 10
+    },
+    {
+        "resource_key": "admin.frontend",
+        "title": "后台前端更新",
+        "type": "action",
+        "parent_key": "core.tasks",
+        "is_menu": false,
+        "status": true,
+        "sort": 20
+    },
+    {
+        "resource_key": "addon.manage",
+        "title": "插件管理",
+        "type": "action",
+        "parent_key": "core.tasks",
+        "is_menu": false,
+        "status": true,
+        "sort": 30
+    },
+    {
+        "resource_key": "addon.download",
+        "title": "插件下载",
+        "type": "action",
+        "parent_key": "core.tasks",
+        "is_menu": false,
+        "status": true,
+        "sort": 40
+    },
+    {
+        "resource_key": "addon.install",
+        "title": "插件安装",
+        "type": "action",
+        "parent_key": "core.tasks",
+        "is_menu": false,
+        "status": true,
+        "sort": 50
+    },
+    {
+        "resource_key": "addon.update",
+        "title": "插件更新",
+        "type": "action",
+        "parent_key": "core.tasks",
+        "is_menu": false,
+        "status": true,
+        "sort": 60
+    },
+    {
+        "resource_key": "addon.uninstall",
+        "title": "插件卸载",
+        "type": "action",
+        "parent_key": "core.tasks",
+        "is_menu": false,
+        "status": true,
+        "sort": 70
+    },
+    {
+        "resource_key": "addon.frontend",
+        "title": "插件前端同步",
+        "type": "action",
+        "parent_key": "core.tasks",
+        "is_menu": false,
+        "status": true,
+        "sort": 80
+    },
+    {
+        "resource_key": "addon.enable",
+        "title": "插件启用",
+        "type": "action",
+        "parent_key": "core.tasks",
+        "is_menu": false,
+        "status": true,
+        "sort": 90
+    },
+    {
+        "resource_key": "addon.disable",
+        "title": "插件停用",
+        "type": "action",
+        "parent_key": "core.tasks",
+        "is_menu": false,
+        "status": true,
+        "sort": 100
+    }
+]

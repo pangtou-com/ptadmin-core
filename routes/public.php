@@ -7,6 +7,7 @@ use PTAdmin\Admin\Http\Controllers\LoginController;
 use PTAdmin\Core\Http\Controllers\BootstrapController;
 use PTAdmin\Core\Http\Controllers\SessionController;
 use PTAdmin\Core\Http\Controllers\InstallStatusController;
+use PTAdmin\Core\Install\InstallStateStore;
 
 $apiPrefix = trim((string) config('ptadmin.api_prefix', 'ptadmin'), '/');
 
@@ -18,9 +19,11 @@ Route::middleware('ptadmin.request-id')
     ->post($apiPrefix.'/login', LoginController::class)
     ->name('ptadmin.login');
 
-Route::middleware('ptadmin.request-id')
-    ->get($apiPrefix.'/install/status', InstallStatusController::class)
-    ->name('ptadmin.install.status');
+if (!app(InstallStateStore::class)->isInstalled()) {
+    Route::middleware('ptadmin.request-id')
+        ->get($apiPrefix.'/install/status', InstallStatusController::class)
+        ->name('ptadmin.install.status');
+}
 
 Route::middleware(['ptadmin.request-id', 'ptadmin.session'])
     ->group(static function () use ($apiPrefix): void {

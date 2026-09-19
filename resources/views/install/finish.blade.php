@@ -7,7 +7,7 @@
     <div class="install-alert install-alert-warning">
         <strong>{{ __('ptadmin::install.application_identity.title') }}</strong>
         <p>{{ __('ptadmin::install.application_identity.description') }}</p>
-        <code>{{ config('ptadmin.application_identity_path') }}</code>
+        <code>{{ storage_path('ptadmin.json') }}</code>
     </div>
 @endsection
 

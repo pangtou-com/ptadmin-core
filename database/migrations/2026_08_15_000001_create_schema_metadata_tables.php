@@ -107,7 +107,7 @@ return new class() extends Migration {
 
         Schema::create('schema_audit_events', static function (Blueprint $table): void {
             $table->id();
-            foreach (['kind' => 64, 'category' => 64, 'action' => 128, 'status' => 32, 'resource_key' => 191, 'record_id' => 128, 'subject_type' => 64, 'subject_id' => 128, 'actor_type' => 64, 'actor_id' => 128, 'request_id' => 128, 'trace_id' => 128, 'tenant_id' => 128, 'remote_ip' => 64] as $name => $length) {
+            foreach (['kind' => 64, 'category' => 64, 'action' => 128, 'status' => 32, 'resource_key' => 191, 'record_id' => 128, 'subject_type' => 64, 'subject_id' => 128, 'actor_type' => 64, 'actor_id' => 128, 'request_id' => 128, 'trace_id' => 128, 'remote_ip' => 64] as $name => $length) {
                 $table->string($name, $length)->default('')->comment('审计字段 '.$name);
             }
             $table->text('user_agent')->default('')->comment('客户端 User-Agent');

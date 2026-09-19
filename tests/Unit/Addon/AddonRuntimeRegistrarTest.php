@@ -8,6 +8,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Events\Dispatcher;
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Addon\AddonBootstrapInterface;
+use PTAdmin\Addon\AddonTemplateDirectiveRegistry;
 use PTAdmin\Addon\AddonDiscovery;
 use PTAdmin\Addon\AddonLifecycleStore;
 use PTAdmin\Addon\AddonManifestVerifier;
@@ -136,6 +137,210 @@ PHP);
         $diagnostic = (new AddonDiscovery($this->root, new AddonManifestVerifier(), new AddonLifecycleStore($this->lifecycle), false))->scan();
         self::assertSame('inactive', $diagnostic['addons'][0]['state']);
         self::assertSame('bootstrap_class_unavailable', $diagnostic['addons'][0]['diagnostic_code']);
+    }
+
+    /** @runInSeparateProcess */
+    public function testDefaultEntrypointsAndProviderInterfaceAreLoaded(): void
+    {
+        $this->remove($this->root.'/runtime-addon');
+        $directory = $this->root.'/demo';
+        mkdir($directory.'/Routes', 0700, true);
+        mkdir($directory.'/Providers', 0700, true);
+        file_put_contents($directory.'/functions.php', "<?php require_once __DIR__.'/Functions.php'; \\DemoAddon\\Functions::load();");
+        file_put_contents($directory.'/Bootstrap.php', <<<'PHP'
+<?php
+namespace DemoAddon;
+use Illuminate\Contracts\Foundation\Application;
+use PTAdmin\Addon\AddonBootstrapInterface;
+final class Bootstrap implements AddonBootstrapInterface
+{
+    public function register(Application $app, string $code, array $manifest): void
+    {
+        $app->instance('demo.bootstrap', true);
+    }
+}
+PHP);
+        file_put_contents($directory.'/Functions.php', <<<'PHP'
+<?php
+namespace DemoAddon;
+final class Functions
+{
+    public static function load(): void
+    {
+        $GLOBALS['ptadmin_demo_functions_loaded'] = true;
+    }
+}
+PHP);
+        file_put_contents($directory.'/Routes/demo.php', <<<'PHP'
+<?php
+return static function ($app): void {
+    $app->instance('demo.route', true);
+};
+PHP);
+        file_put_contents($directory.'/Providers/ServiceProvider.php', <<<'PHP'
+<?php
+namespace DemoAddon\Providers;
+use Illuminate\Support\ServiceProvider as LaravelServiceProvider;
+use PTAdmin\Addon\AddonProviderInterface;
+final class ServiceProvider extends LaravelServiceProvider implements AddonProviderInterface
+{
+    public function register(): void
+    {
+        $this->app->instance('demo.provider', true);
+    }
+}
+PHP);
+        file_put_contents($directory.'/manifest.json', json_encode([
+            'code' => 'demo',
+            'version' => '1.0.0',
+            'namespace' => 'DemoAddon',
+        ], JSON_THROW_ON_ERROR));
+
+        $app = new Application($this->root);
+        $app->instance('events', new Dispatcher($app));
+        $registrar = new AddonRuntimeRegistrar(
+            $app,
+            new AddonDiscovery($this->root, new AddonManifestVerifier(), new AddonLifecycleStore($this->lifecycle), false),
+            new AddonLifecycleStore($this->lifecycle),
+            $this->root,
+            new AddonTemplateDirectiveRegistry(),
+        );
+
+        $result = $registrar->register();
+        self::assertSame(['demo'], $result['loaded']);
+        self::assertTrue(class_exists('DemoAddon\\Functions'));
+        self::assertTrue($app->make('demo.bootstrap'));
+        self::assertTrue($app->make('demo.route'));
+        self::assertTrue($app->make('demo.provider'));
+    }
+
+    /** @runInSeparateProcess */
+    public function testProviderWithoutAddonProviderInterfaceIsRejected(): void
+    {
+        $this->remove($this->root.'/runtime-addon');
+        $directory = $this->root.'/demo';
+        mkdir($directory.'/Providers', 0700, true);
+        file_put_contents($directory.'/Providers/ServiceProvider.php', <<<'PHP'
+<?php
+namespace InvalidDemo\Providers;
+use Illuminate\Support\ServiceProvider as LaravelServiceProvider;
+final class ServiceProvider extends LaravelServiceProvider {}
+PHP);
+        file_put_contents($directory.'/manifest.json', json_encode([
+            'code' => 'demo',
+            'version' => '1.0.0',
+            'namespace' => 'InvalidDemo',
+        ], JSON_THROW_ON_ERROR));
+        $app = new Application($this->root);
+        $registrar = new AddonRuntimeRegistrar(
+            $app,
+            new AddonDiscovery($this->root, new AddonManifestVerifier(), new AddonLifecycleStore($this->lifecycle), false),
+            new AddonLifecycleStore($this->lifecycle),
+            $this->root,
+        );
+
+        $result = $registrar->register();
+        self::assertSame([], $result['loaded']);
+        self::assertSame('invalid_provider', $result['errors'][0]['error_code']);
+    }
+
+    /** @runInSeparateProcess */
+    public function testTemplateDirectiveWithoutAddonTemplateDirectiveInterfaceIsRejected(): void
+    {
+        $this->remove($this->root.'/runtime-addon');
+        $directory = $this->root.'/demo';
+        mkdir($directory.'/Directives', 0700, true);
+        file_put_contents($directory.'/Directives/DemoDirective.php', <<<'PHP'
+<?php
+namespace InvalidDemo;
+final class DemoDirective {}
+PHP);
+        file_put_contents($directory.'/manifest.json', json_encode([
+            'code' => 'demo',
+            'version' => '1.0.0',
+        ], JSON_THROW_ON_ERROR));
+        $app = new Application($this->root);
+        $registrar = new AddonRuntimeRegistrar(
+            $app,
+            new AddonDiscovery($this->root, new AddonManifestVerifier(), new AddonLifecycleStore($this->lifecycle), false),
+            new AddonLifecycleStore($this->lifecycle),
+            $this->root,
+        );
+
+        $result = $registrar->register();
+        self::assertSame([], $result['loaded']);
+        self::assertSame('invalid_directives', $result['errors'][0]['error_code']);
+    }
+
+    /** @runInSeparateProcess */
+    public function testTemplateDirectiveRegistersAndDuplicateAliasesAreRejectedAcrossAddons(): void
+    {
+        $this->remove($this->root.'/runtime-addon');
+        foreach (['first', 'second'] as $code) {
+            $directory = $this->root.'/'.$code.'/Directives';
+            mkdir($directory, 0700, true);
+            file_put_contents($directory.'/DemoDirective.php', <<<PHP
+<?php
+namespace {$code}Addon;
+use PTAdmin\Addon\AddonTemplateDirectiveInterface;
+use PTAdmin\Addon\AddonTemplateDirectiveRegistry;
+final class DemoDirective implements AddonTemplateDirectiveInterface
+{
+    public function register(AddonTemplateDirectiveRegistry \$registry, string \$code, array \$manifest): void
+    {
+        \$registry->define('demo')->output([\$this, 'render'])->alias('shared')->commit(\$code);
+    }
+
+    public function render(array \$arguments = [], array \$context = []): string { return 'ok'; }
+}
+PHP);
+            file_put_contents($this->root.'/'.$code.'/manifest.json', json_encode([
+                'code' => $code,
+                'version' => '1.0.0',
+            ], JSON_THROW_ON_ERROR));
+        }
+
+        $app = new Application($this->root);
+        $registry = new AddonTemplateDirectiveRegistry();
+        $registrar = new AddonRuntimeRegistrar(
+            $app,
+            new AddonDiscovery($this->root, new AddonManifestVerifier(), new AddonLifecycleStore($this->lifecycle), false),
+            new AddonLifecycleStore($this->lifecycle),
+            $this->root,
+            $registry,
+        );
+
+        $result = $registrar->register();
+        self::assertSame(['first'], $result['loaded']);
+        self::assertSame('first', $registry->all()['first_demo']->addonCode());
+        self::assertSame('addon_runtime_registration_failed', $result['errors'][0]['error_code']);
+        self::assertSame('inactive', (new AddonLifecycleStore($this->lifecycle))->read('second')['state']);
+    }
+
+    /** @runInSeparateProcess */
+    public function testLowercaseResourcesDirectoryIsRejected(): void
+    {
+        $this->remove($this->root.'/runtime-addon');
+        $directory = $this->root.'/demo';
+        mkdir($directory.'/resources', 0700, true);
+        file_put_contents($directory.'/manifest.json', json_encode([
+            'code' => 'demo',
+            'version' => '1.0.0',
+        ], JSON_THROW_ON_ERROR));
+
+        $app = new Application($this->root);
+        $registrar = new AddonRuntimeRegistrar(
+            $app,
+            new AddonDiscovery($this->root, new AddonManifestVerifier(), new AddonLifecycleStore($this->lifecycle), false),
+            new AddonLifecycleStore($this->lifecycle),
+            $this->root,
+        );
+
+        $result = $registrar->register();
+
+        self::assertSame([], $result['loaded']);
+        self::assertSame('noncanonical_resource_path', $result['errors'][0]['error_code']);
+        self::assertSame('inactive', (new AddonLifecycleStore($this->lifecycle))->read('demo')['state']);
     }
 
     private function remove(string $path): void
