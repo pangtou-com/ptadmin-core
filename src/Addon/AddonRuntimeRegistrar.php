@@ -150,7 +150,20 @@ final class AddonRuntimeRegistrar
             $path = $directory.'/'.$relative;
             if (!is_file($path)) throw new AddonManifestException('Addon route file is unavailable.', 'routes_unavailable');
             $registered = require $path;
-            if ($registered instanceof Closure) $registered($this->app);
+            if (!$registered instanceof Closure) {
+                continue;
+            }
+
+            // 插件 Routes 目录约定为后台 API。Core 统一提供会话认证，权限中间件仍由插件按接口声明。
+            if ($this->app->bound('router')) {
+                $this->app->make('router')->middleware('ptadmin.session')->group(
+                    fn (): mixed => $registered($this->app)
+                );
+                continue;
+            }
+
+            // 纯单元测试或非 HTTP 启动场景没有 Router 时，仍允许验证插件其它运行时入口。
+            $registered($this->app);
         }
     }
 

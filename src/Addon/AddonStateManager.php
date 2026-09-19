@@ -14,6 +14,7 @@ final class AddonStateManager
         private AddonLifecycleStore $lifecycle,
         private AddonLock $locks,
         private bool $requireSignature = true,
+        private ?AddonResourceSynchronizerInterface $resourceSynchronizer = null,
     ) {
         $this->addonsPath = rtrim($addonsPath, '/');
     }
@@ -45,6 +46,7 @@ final class AddonStateManager
             $manifest = $this->verifier->verify($directory, $this->requireSignature);
             $current = $this->lifecycle->read($code);
             if (!$enabled) {
+                $this->resourceSynchronizer?->deactivate($code);
                 $state = (string) ($current['state'] ?? 'discovered');
                 if ($current === null) {
                     $this->lifecycle->transition($code, 'discovered');
@@ -68,6 +70,7 @@ final class AddonStateManager
                     'manifest' => $manifest,
                 ]);
             } else {
+                $this->resourceSynchronizer?->sync($directory, $code);
                 $state = (string) ($current['state'] ?? 'discovered');
                 if ($current === null || $state === 'disposed') {
                     if ($state === 'disposed') $this->lifecycle->transition($code, 'discovered');

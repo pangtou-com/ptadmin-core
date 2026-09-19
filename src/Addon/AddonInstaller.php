@@ -157,9 +157,56 @@ final class AddonInstaller
         try {
             $source = $this->addonsPath.'/'.$code.'/Frontend/dist';
             if (!is_dir($source)) throw new AddonManifestException('The addon frontend source is unavailable.', 'source_unavailable');
+            $this->validateFrontendSource($this->addonsPath.'/'.$code, $source);
             return $this->frontend->publish($webPrefix, $code, $source);
         } finally {
             if (isset($lockHandle) && is_resource($lockHandle)) $this->locks?->release($lockHandle);
+        }
+    }
+
+    private function validateFrontendSource(string $addonDirectory, string $source): void
+    {
+        $sourceRoot = realpath($source);
+        if (!is_string($sourceRoot) || !is_dir($sourceRoot)) {
+            throw new AddonManifestException('The addon frontend source is unavailable.', 'source_unavailable');
+        }
+
+        $descriptorPath = $addonDirectory.'/Frontend/frontend.json';
+        if (!is_file($descriptorPath)) {
+            return;
+        }
+        try {
+            $descriptor = json_decode((string) file_get_contents($descriptorPath), true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            throw new AddonManifestException('The addon frontend descriptor is invalid JSON.', 'frontend_descriptor_invalid');
+        }
+        $entries = is_array($descriptor) ? ($descriptor['entries'] ?? null) : null;
+        if (!is_array($descriptor) || array_is_list($descriptor) || !is_array($entries) || !array_is_list($entries)) {
+            throw new AddonManifestException('The addon frontend descriptor entries are invalid.', 'frontend_entries_invalid');
+        }
+        foreach ($entries as $entry) {
+            if (!is_array($entry)) {
+                throw new AddonManifestException('The addon frontend entry is invalid.', 'frontend_entry_invalid');
+            }
+            $entryPath = (string) ($entry['entry'] ?? '');
+            $sandbox = (string) ($entry['sandbox'] ?? '');
+            $segments = explode('/', $entryPath);
+            if ($entryPath === '' || str_starts_with($entryPath, '/') || str_contains($entryPath, '\\')
+                || in_array('', $segments, true) || in_array('.', $segments, true) || in_array('..', $segments, true)
+                || preg_match('/^[A-Za-z0-9][A-Za-z0-9._\/-]*$/', $entryPath) !== 1
+                || !in_array($sandbox, ['trusted', 'iframe'], true)) {
+                throw new AddonManifestException('The addon frontend entry path is invalid.', 'frontend_entry_path_invalid');
+            }
+            $extension = strtolower((string) pathinfo($entryPath, PATHINFO_EXTENSION));
+            if (($sandbox === 'trusted' && !in_array($extension, ['js', 'mjs'], true))
+                || ($sandbox === 'iframe' && $extension !== 'html')
+            ) {
+                throw new AddonManifestException('The addon frontend entry type is invalid.', 'frontend_entry_type_invalid');
+            }
+            $publishedEntry = realpath($sourceRoot.'/'.$entryPath);
+            if (!is_string($publishedEntry) || !str_starts_with($publishedEntry, $sourceRoot.DIRECTORY_SEPARATOR) || !is_file($publishedEntry) || !is_readable($publishedEntry)) {
+                throw new AddonManifestException('The addon frontend entry is unavailable.', 'frontend_entry_unavailable', ['entry' => $entryPath]);
+            }
         }
     }
 

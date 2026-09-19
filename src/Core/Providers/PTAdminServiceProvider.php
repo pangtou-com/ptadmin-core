@@ -186,7 +186,8 @@ final class PTAdminServiceProvider extends ServiceProvider
                 $app->make(AddonManifestVerifier::class),
                 $app->make(AddonLifecycleStore::class),
                 $app->make(AddonLock::class),
-                (bool) $app['config']->get('ptadmin.addon.require_signature', true)
+                (bool) $app['config']->get('ptadmin.addon.require_signature', true),
+                $app->make(AddonResourceSynchronizerInterface::class),
             );
         });
         $this->app->singleton(SchemaFileLoader::class);

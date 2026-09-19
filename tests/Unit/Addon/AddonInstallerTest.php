@@ -157,6 +157,104 @@ final class AddonInstallerTest extends TestCase
         $installer->install($source, 'admintest', false, null, str_repeat('0', 64));
     }
 
+    public function testSyncFrontendValidatesDescriptorAndPublishesWithoutTrustVerification(): void
+    {
+        $addon = $this->root.'/addons/demo-addon';
+        mkdir($addon.'/Frontend/dist', 0700, true);
+        file_put_contents($addon.'/Frontend/dist/entry.js', 'export default {}');
+        file_put_contents($addon.'/Frontend/frontend.json', json_encode([
+            'host_api' => 'admin-v1',
+            'entries' => [[
+                'entry' => 'entry.js',
+                'sandbox' => 'trusted',
+            ]],
+        ], JSON_THROW_ON_ERROR));
+
+        $installer = new AddonInstaller(
+            new AddonManifestVerifier(),
+            new AddonPackageExtractor(),
+            new AddonLifecycleStore($this->root.'/state'),
+            new AddonFrontendPublisher($this->root.'/public'),
+            $this->root.'/addons',
+            $this->root.'/staging',
+            true,
+        );
+
+        $result = $installer->syncFrontend('demo-addon', 'admintest');
+
+        self::assertTrue($result['published']);
+        self::assertFileExists($this->root.'/public/admintest/modules/demo-addon/entry.js');
+    }
+
+    public function testSyncFrontendRejectsInvalidDescriptorJson(): void
+    {
+        $addon = $this->root.'/addons/demo-addon';
+        mkdir($addon.'/Frontend/dist', 0700, true);
+        file_put_contents($addon.'/Frontend/dist/entry.js', 'export default {}');
+        file_put_contents($addon.'/Frontend/frontend.json', '{invalid');
+        $installer = $this->frontendSyncInstaller();
+
+        try {
+            $installer->syncFrontend('demo-addon', 'admintest');
+            self::fail('Invalid frontend descriptor JSON must be rejected.');
+        } catch (AddonManifestException $exception) {
+            self::assertSame('frontend_descriptor_invalid', $exception->errorCode);
+        }
+    }
+
+    public function testSyncFrontendRejectsUnavailableEntry(): void
+    {
+        $this->writeFrontendDescriptor('missing.js', 'trusted');
+        $installer = $this->frontendSyncInstaller();
+
+        try {
+            $installer->syncFrontend('demo-addon', 'admintest');
+            self::fail('An unavailable frontend entry must be rejected.');
+        } catch (AddonManifestException $exception) {
+            self::assertSame('frontend_entry_unavailable', $exception->errorCode);
+        }
+    }
+
+    public function testSyncFrontendRejectsEntryTypeThatDoesNotMatchSandbox(): void
+    {
+        $this->writeFrontendDescriptor('entry.html', 'trusted');
+        file_put_contents($this->root.'/addons/demo-addon/Frontend/dist/entry.html', '<!doctype html>');
+        $installer = $this->frontendSyncInstaller();
+
+        try {
+            $installer->syncFrontend('demo-addon', 'admintest');
+            self::fail('A frontend entry with an invalid sandbox type must be rejected.');
+        } catch (AddonManifestException $exception) {
+            self::assertSame('frontend_entry_type_invalid', $exception->errorCode);
+        }
+    }
+
+    private function frontendSyncInstaller(): AddonInstaller
+    {
+        return new AddonInstaller(
+            new AddonManifestVerifier(),
+            new AddonPackageExtractor(),
+            new AddonLifecycleStore($this->root.'/state'),
+            new AddonFrontendPublisher($this->root.'/public'),
+            $this->root.'/addons',
+            $this->root.'/staging',
+            true,
+        );
+    }
+
+    private function writeFrontendDescriptor(string $entry, string $sandbox): void
+    {
+        $addon = $this->root.'/addons/demo-addon';
+        mkdir($addon.'/Frontend/dist', 0700, true);
+        file_put_contents($addon.'/Frontend/frontend.json', json_encode([
+            'host_api' => 'admin-v1',
+            'entries' => [[
+                'entry' => $entry,
+                'sandbox' => $sandbox,
+            ]],
+        ], JSON_THROW_ON_ERROR));
+    }
+
     private function package(string $name, string $version, string $backend, string $frontend): string
     {
         $source = $this->root.'/'.$name;

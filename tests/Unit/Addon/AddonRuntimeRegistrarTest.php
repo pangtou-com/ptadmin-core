@@ -6,6 +6,7 @@ namespace PTAdmin\Core\Tests\Unit\Addon;
 
 use Illuminate\Foundation\Application;
 use Illuminate\Events\Dispatcher;
+use Illuminate\Routing\Router;
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Addon\AddonBootstrapInterface;
 use PTAdmin\Addon\AddonTemplateDirectiveRegistry;
@@ -44,6 +45,7 @@ PHP);
 <?php
 return static function ($app): void {
     $app->instance('runtime-addon.routes', true);
+    $app->make('router')->middleware('ptadmin.permission:runtime')->get('/runtime-addon', static fn (): string => 'ok');
 };
 PHP);
         file_put_contents($this->root.'/runtime-addon/Hooks/RuntimeHook.php', <<<'PHP'
@@ -94,6 +96,7 @@ PHP);
         $app = new Application($this->root);
         $events = new Dispatcher($app);
         $app->instance('events', $events);
+        $app->instance('router', new Router($events, $app));
         $migrator = new class {
             /** @var list<string> */
             public array $paths = [];
@@ -114,6 +117,16 @@ PHP);
         self::assertSame(['runtime-addon'], $registrar->register()['loaded']);
         self::assertSame('runtime-addon', $app->make('runtime-addon.loaded'));
         self::assertTrue($app->make('runtime-addon.routes'));
+        $route = null;
+        foreach ($app->make('router')->getRoutes() as $candidate) {
+            if ($candidate->uri() === 'runtime-addon') {
+                $route = $candidate;
+                break;
+            }
+        }
+        self::assertNotNull($route);
+        self::assertContains('ptadmin.session', $route->gatherMiddleware());
+        self::assertContains('ptadmin.permission:runtime', $route->gatherMiddleware());
         self::assertSame([$this->root.'/runtime-addon/database/migrations'], $migrator->paths);
         $events->dispatch('runtime-addon.test');
         self::assertTrue(\RuntimeAddon\RuntimeHook::$called);

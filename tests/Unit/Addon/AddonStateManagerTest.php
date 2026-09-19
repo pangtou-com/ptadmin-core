@@ -12,6 +12,7 @@ use PTAdmin\Addon\AddonLifecycleStore;
 use PTAdmin\Addon\AddonLock;
 use PTAdmin\Addon\AddonManifestVerifier;
 use PTAdmin\Addon\AddonPackageExtractor;
+use PTAdmin\Addon\AddonResourceSynchronizerInterface;
 use PTAdmin\Addon\AddonStateManager;
 
 final class AddonStateManagerTest extends TestCase
@@ -36,13 +37,31 @@ final class AddonStateManagerTest extends TestCase
         $lifecycle = new AddonLifecycleStore($this->root.'/lifecycle');
         $installer = new AddonInstaller(new AddonManifestVerifier(), new AddonPackageExtractor(), $lifecycle, new AddonFrontendPublisher($this->root.'/public'), $this->root.'/addons', $this->root.'/staging', false);
         $installer->install($this->root.'/source', 'admintest');
-        $states = new AddonStateManager($this->root.'/addons', new AddonManifestVerifier(), $lifecycle, new AddonLock($this->root.'/locks'), false);
+        $synchronizer = new class implements AddonResourceSynchronizerInterface {
+            /** @var list<array<int, string>> */
+            public array $calls = [];
+
+            public function sync(string $directory, string $code): array
+            {
+                $this->calls[] = ['sync', $directory, $code];
+
+                return ['schemas' => 0, 'configs' => 0, 'admin_resources' => 0];
+            }
+
+            public function deactivate(string $code): void
+            {
+                $this->calls[] = ['deactivate', $code];
+            }
+        };
+        $states = new AddonStateManager($this->root.'/addons', new AddonManifestVerifier(), $lifecycle, new AddonLock($this->root.'/locks'), false, $synchronizer);
 
         self::assertFalse($states->disable('state-addon')['enabled']);
         self::assertTrue($lifecycle->read('state-addon')['disabled_by_user']);
         self::assertTrue($states->enable('state-addon')['enabled']);
         self::assertFalse($lifecycle->read('state-addon')['disabled_by_user']);
         self::assertSame('active', $lifecycle->read('state-addon')['state']);
+        self::assertSame('deactivate', $synchronizer->calls[0][0]);
+        self::assertSame('sync', $synchronizer->calls[1][0]);
     }
 
     public function testDiscoveryLeavesExplicitlyDisabledAddonInactive(): void
