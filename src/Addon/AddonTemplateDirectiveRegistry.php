@@ -13,15 +13,11 @@ final class AddonTemplateDirectiveRegistry
     /** @var array<string,string> */
     private array $aliases = [];
 
-    public function define(string $name): TemplateDirectiveBuilder { return new TemplateDirectiveBuilder($this, $name); }
+    /** Begin a plugin-scoped registration transaction. */
+    public function begin(string $addonCode): AddonTemplateDirectiveRegistration { return new AddonTemplateDirectiveRegistration($this, $addonCode); }
 
-    /** Legacy low-level API retained for callers migrating to define(). */
-    public function register(string $name, object $handler, string $code): void { $this->define($name)->output($handler)->commit($code); }
-
-    public function commit(TemplateDirectiveDefinition $definition): void
-    {
-        $this->commitBatch([$definition]);
-    }
+    /** Alias emphasizing that the addon identity is bound before definitions are created. */
+    public function forAddon(string $addonCode): AddonTemplateDirectiveRegistration { return $this->begin($addonCode); }
 
     /** @param list<TemplateDirectiveDefinition> $definitions */
     public function commitBatch(array $definitions): void
@@ -53,21 +49,6 @@ final class AddonTemplateDirectiveRegistry
     public function metadata(): array { $result = []; foreach ($this->definitions as $name => $definition) $result[$name] = $definition->toArray(); return $result; }
     /** @return array<string,string> */
     public function aliases(): array { return $this->aliases; }
-    public function begin(string $addonCode): AddonTemplateDirectiveRegistration { return new AddonTemplateDirectiveRegistration($this, $addonCode); }
     /** @return array<string,bool> */
     public static function builtinAliases(): array { return array_fill_keys(['seo', 'img', 'images', 'file', 'files', 'dump'], true); }
-}
-
-final class AddonTemplateDirectiveRegistration
-{
-    /** @var list<TemplateDirectiveDefinition> */
-    private array $definitions = [];
-    public function __construct(private AddonTemplateDirectiveRegistry $registry, private string $addonCode) {}
-    public function add(TemplateDirectiveDefinition $definition): void { if ($definition->addonCode() !== $this->addonCode) throw new RuntimeException('Template directive registration addon mismatch.'); $this->definitions[] = $definition; }
-    public function commit(): void
-    {
-        $names = []; $aliases = [];
-        foreach ($this->definitions as $definition) { if (isset($names[$definition->fullName()])) throw new RuntimeException('Duplicate template directive in addon: '.$definition->fullName()); $names[$definition->fullName()] = true; if (($alias = $definition->alias()) !== null) { if (isset($aliases[$alias])) throw new RuntimeException('Duplicate template directive alias in addon: '.$alias); $aliases[$alias] = true; } }
-        foreach ($this->definitions as $definition) $this->registry->commit($definition);
-    }
 }

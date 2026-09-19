@@ -21,9 +21,11 @@ final class AddonTemplateRuntimeTest extends TestCase
     public function testLoopAndFieldOutputRestoreContextAndEscape(): void
     {
         $registry = new AddonTemplateDirectiveRegistry();
-        $registry->define('articles')->loop(static function (array $arguments, array $invokeContext): array {
+        $registration = $registry->forAddon('demo');
+        $registration->define('articles')->loop(static function (array $arguments, array $invokeContext): array {
             return $invokeContext['context']['items'] ?? [['title' => '<A>'], ['title' => 'B']];
-        })->commit('demo');
+        })->commit();
+        $registration->commit();
         $runtime = new AddonTemplateRuntime($registry);
         self::assertSame('&lt;A&gt;B', $runtime->render('@pt:demo_articles(as=item){$item.title}@pt:end'));
         self::assertSame(' empty', $runtime->render('@pt:demo_articles(as=item)X@pt:empty empty@pt:end', ['items' => []]));
@@ -32,8 +34,10 @@ final class AddonTemplateRuntimeTest extends TestCase
     public function testNestedLoopsRestoreOuterVariableContext(): void
     {
         $registry = new AddonTemplateDirectiveRegistry();
-        $registry->define('outer')->loop(static fn (): array => [['title' => 'A']])->commit('demo');
-        $registry->define('inner')->loop(static fn (): array => [['name' => 'I']])->commit('demo');
+        $registration = $registry->forAddon('demo');
+        $registration->define('outer')->loop(static fn (): array => [['title' => 'A']])->commit();
+        $registration->define('inner')->loop(static fn (): array => [['name' => 'I']])->commit();
+        $registration->commit();
         $runtime = new AddonTemplateRuntime($registry);
 
         self::assertSame('A:I:A', $runtime->render('@pt:demo_outer(as=outer){$outer.title}:@pt:demo_inner(as=inner){$inner.name}:{$outer.title}@pt:end@pt:end'));
@@ -42,7 +46,9 @@ final class AddonTemplateRuntimeTest extends TestCase
     public function testBuiltinMediaDirectivesShareParametersAndEscapeAttributes(): void
     {
         $registry = new AddonTemplateDirectiveRegistry();
-        (new AddonBuiltinTemplateDirectives())->register($registry);
+        $registration = $registry->forAddon('core');
+        (new AddonBuiltinTemplateDirectives())->register($registration);
+        $registration->commit();
         $runtime = new AddonTemplateRuntime($registry);
         $context = [
             'media' => ['key' => '/uploads/cover.jpg', 'label' => 'Cover & title'],
@@ -62,7 +68,9 @@ final class AddonTemplateRuntimeTest extends TestCase
     public function testMediaUsesOnlyMarkedSchemaContextAndReportsAmbiguity(): void
     {
         $registry = new AddonTemplateDirectiveRegistry();
-        (new AddonBuiltinTemplateDirectives())->register($registry);
+        $registration = $registry->forAddon('core');
+        (new AddonBuiltinTemplateDirectives())->register($registration);
+        $registration->commit();
         $runtime = new AddonTemplateRuntime($registry);
         $diagnostics = [];
         $context = [
@@ -86,7 +94,9 @@ final class AddonTemplateRuntimeTest extends TestCase
     public function testBuiltinSeoDumpAndMetadataContracts(): void
     {
         $registry = new AddonTemplateDirectiveRegistry();
-        (new AddonBuiltinTemplateDirectives())->register($registry);
+        $registration = $registry->forAddon('core');
+        (new AddonBuiltinTemplateDirectives())->register($registration);
+        $registration->commit();
         $runtime = new AddonTemplateRuntime($registry);
 
         self::assertSame('<title>Demo &amp; title</title><meta name="description" content="Description">', $runtime->render('@pt:seo(only=["title","description"])', ['seo' => ['title' => 'Demo & title', 'description' => 'Description']]));
@@ -94,8 +104,10 @@ final class AddonTemplateRuntimeTest extends TestCase
         self::assertStringContainsString('value', $runtime->render('@pt:dump(context=["secret"="value"])', ['environment' => 'local']));
         self::assertSame("<pre><strong>Context</strong>\nArray\n(\n    [secret] =&gt; value\n)\n</pre>", $runtime->render('@pt:dump(context=["secret"="value"],label="Context",once=true)@pt:dump(context=["secret"="value"],label="Context",once=true)', ['environment' => 'local']));
 
-        $registry->define('unsafe')->output(static fn (): string => '<b>unsafe</b>')->commit('demo');
-        $registry->define('safe')->output(static fn (): string => '<b>safe</b>')->safeHtml()->commit('demo');
+        $demo = $registry->forAddon('demo');
+        $demo->define('unsafe')->output(static fn (): string => '<b>unsafe</b>')->commit();
+        $demo->define('safe')->output(static fn (): string => '<b>safe</b>')->safeHtml()->commit();
+        $demo->commit();
         self::assertSame('&lt;b&gt;unsafe&lt;/b&gt;', $runtime->render('@pt:demo_unsafe()'));
         self::assertSame('<b>safe</b>', $runtime->render('@pt:demo_safe()'));
 

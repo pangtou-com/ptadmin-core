@@ -9,6 +9,7 @@ use Illuminate\Events\Dispatcher;
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Addon\AddonBootstrapInterface;
 use PTAdmin\Addon\AddonTemplateDirectiveRegistry;
+use PTAdmin\Addon\AddonTemplateDirectiveRegistration;
 use PTAdmin\Addon\AddonDiscovery;
 use PTAdmin\Addon\AddonLifecycleStore;
 use PTAdmin\Addon\AddonManifestVerifier;
@@ -283,12 +284,12 @@ PHP);
 <?php
 namespace {$code}Addon;
 use PTAdmin\Addon\AddonTemplateDirectiveInterface;
-use PTAdmin\Addon\AddonTemplateDirectiveRegistry;
+use PTAdmin\Addon\AddonTemplateDirectiveRegistration;
 final class DemoDirective implements AddonTemplateDirectiveInterface
 {
-    public function register(AddonTemplateDirectiveRegistry \$registry, string \$code, array \$manifest): void
+    public function register(AddonTemplateDirectiveRegistration \$registry, array \$manifest): void
     {
-        \$registry->define('demo')->output([\$this, 'render'])->alias('shared')->commit(\$code);
+        \$registry->define('demo')->output([\$this, 'render'])->alias('shared')->commit();
     }
 
     public function render(array \$arguments = [], array \$context = []): string { return 'ok'; }

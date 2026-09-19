@@ -249,7 +249,9 @@ final class AddonRuntimeRegistrar
             }
             foreach ($declared as $class) if (is_a($class, AddonTemplateDirectiveInterface::class, true)) $directiveClasses[] = $class;
             if ($directiveClasses === []) throw new AddonManifestException('Addon directive file must declare AddonTemplateDirectiveInterface.', 'invalid_directives');
-            foreach ($directiveClasses as $class) $this->app->make($class)->register($staging, $code, $manifest);
+            $registration = $staging->forAddon($code);
+            foreach ($directiveClasses as $class) $this->app->make($class)->register($registration, $manifest);
+            $registration->commit();
         }
         $registry->commitBatch(array_values($staging->all()));
     }
@@ -259,7 +261,9 @@ final class AddonRuntimeRegistrar
         $registry = $this->templateDirectives ??= new AddonTemplateDirectiveRegistry();
         if ($registry->get('seo') !== null) return;
         $core = new AddonBuiltinTemplateDirectives();
-        $core->register($registry);
+        $registration = $registry->forAddon('core');
+        $core->register($registration);
+        $registration->commit();
     }
 
     /** @param array<string,mixed> $manifest */

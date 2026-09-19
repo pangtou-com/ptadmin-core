@@ -6,13 +6,13 @@ namespace PTAdmin\Addon;
 
 final class AddonBuiltinTemplateDirectives
 {
-    public function register(AddonTemplateDirectiveRegistry $registry): void
+    public function register(AddonTemplateDirectiveRegistration $registry): void
     {
         $registry->define('seo')->output([$this, 'seo'])->alias('seo')->safeHtml()
             ->description('输出当前页面 SEO 头部。')
             ->parameter('only', type: 'array', description: '要输出的 SEO 字段。')
             ->parameter('data', type: 'object', description: '显式 SEO 数据。')
-            ->commit('core');
+            ->commit();
         foreach (['img', 'images', 'file', 'files'] as $name) {
             $builder = $registry->define($name)->output([$this, $name])->alias($name)->safeHtml()
                 ->description('输出媒体资源。')
@@ -23,14 +23,14 @@ final class AddonBuiltinTemplateDirectives
                 ->parameter('limit', type: 'integer', description: '最多输出的媒体数量。', min: 1)
                 ->parameter('empty', type: 'string', description: '没有可输出媒体时的文本。')
                 ->parameter('separator', type: 'string', description: '批量媒体之间的分隔文本。', default: '');
-            $builder->commit('core');
+            $builder->commit();
         }
         $registry->define('dump')->output([$this, 'dump'])->alias('dump')->safeHtml()
             ->description('开发环境输出调试信息。')
             ->parameter('context', type: 'object', description: '显式调试上下文。')
             ->parameter('label', type: 'string', description: '调试标签。')
             ->parameter('once', type: 'boolean', description: '是否只输出一次。')
-            ->commit('core');
+            ->commit();
     }
 
     public function seo(array $arguments, array $context = []): string

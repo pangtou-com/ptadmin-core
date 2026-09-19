@@ -242,23 +242,24 @@ files   -> 多个 <a>
 final class CmsTemplateDirectives implements AddonTemplateDirectiveInterface
 {
     public function register(
-        AddonTemplateDirectiveRegistry $registry,
-        string $code,
+        AddonTemplateDirectiveRegistration $registration,
         array $manifest,
     ): void {
-        $registry
+        $registration
             ->define('articles')
             ->loop([$this, 'articles'])
             ->alias('articles')
             ->description('读取 CMS 文章列表。')
-            ->parameter('limit', type: 'integer', description: '最多返回的文章数量。', default: 10, min: 1, max: 100);
+            ->parameter('limit', type: 'integer', description: '最多返回的文章数量。', default: 10, min: 1, max: 100)
+            ->commit();
 
-        $registry
+        $registration
             ->define('banner')
             ->output([$this, 'banner'])
             ->alias('banner')
             ->description('输出指定位置的广告内容。')
-            ->parameter('position', type: 'string', description: '广告位编码。', required: true, example: 'home');
+            ->parameter('position', type: 'string', description: '广告位编码。', required: true, example: 'home')
+            ->commit();
     }
 }
 ```
