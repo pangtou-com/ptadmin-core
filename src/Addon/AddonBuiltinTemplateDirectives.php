@@ -62,6 +62,9 @@ final class AddonBuiltinTemplateDirectives
             $state[$key] = true;
         }
         $value = $arguments['context'] ?? $context;
+        if (is_array($value)) {
+            unset($value['__ptadmin_render_state'], $value['diagnostic']);
+        }
         $prefix = $label === '' ? '' : "<strong>".htmlspecialchars($label, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')."</strong>\n";
 
         return '<pre>'.$prefix.htmlspecialchars(print_r($value, true), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</pre>';

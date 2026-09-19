@@ -1,0 +1,967 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Offset ''state'' on non\-empty\-array\<string, mixed\> on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 2
+			path: src/Addon/AddonDiscovery.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type PTAdmin\\Addon\\AddonLock\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Addon/AddonInstaller.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Model\:\:\$resource_key\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Addon/AddonResourceSynchronizer.php
+
+		-
+			message: '#^Dead catch \- ReflectionException is never thrown in the try block\.$#'
+			identifier: catch.neverThrown
+			count: 1
+			path: src/Addon/AddonRuntimeRegistrar.php
+
+		-
+			message: '#^Offset 0 on array\{string, int\<\-1, max\>\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: src/Addon/AddonTemplateRuntime.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$avatar\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Admin/Auth/AdminAuthenticator.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Admin/Auth/AdminAuthenticator.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$is_founder\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Admin/Auth/AdminAuthenticator.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$mobile\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Admin/Auth/AdminAuthenticator.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$nickname\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Admin/Auth/AdminAuthenticator.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$password\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Admin/Auth/AdminAuthenticator.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Admin/Auth/AdminAuthenticator.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$username\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Admin/Auth/AdminAuthenticator.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$is_founder\.$#'
+			identifier: property.notFound
+			count: 3
+			path: src/Admin/Auth/AuthorizationService.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>attributes" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Admin/Auth/AuthorizationService.php
+
+		-
+			message: '#^Call to function array_is_list\(\) with array\<string, mixed\> will always evaluate to false\.$#'
+			identifier: function.impossibleType
+			count: 1
+			path: src/Admin/Dashboard/DashboardService.php
+
+		-
+			message: '#^Call to function is_array\(\) with array\<string, mixed\> will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 2
+			path: src/Admin/Dashboard/DashboardService.php
+
+		-
+			message: '#^Method PTAdmin\\Admin\\Http\\Controllers\\DashboardController\:\:admin\(\) should return PTAdmin\\Admin\\Models\\Admin but returns array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Admin/Http/Controllers/DashboardController.php
+
+		-
+			message: '#^Dead catch \- Illuminate\\Validation\\ValidationException is never thrown in the try block\.$#'
+			identifier: catch.neverThrown
+			count: 1
+			path: src/Admin/Http/Controllers/LoginController.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$password\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Admin/Http/Controllers/ProfileController.php
+
+		-
+			message: '#^Dead catch \- Illuminate\\Validation\\ValidationException is never thrown in the try block\.$#'
+			identifier: catch.neverThrown
+			count: 2
+			path: src/Admin/Http/Controllers/ProfileController.php
+
+		-
+			message: '#^Method PTAdmin\\Admin\\Http\\Controllers\\ProfileController\:\:admin\(\) should return PTAdmin\\Admin\\Models\\Admin but returns array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Admin/Http/Controllers/ProfileController.php
+
+		-
+			message: '#^Cannot call method getName\(\) on object\|string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: src/Admin/Http/Middleware/RecordAdminOperationMiddleware.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\AdminResource\:\:\$is_menu\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Admin/Schema/AdminRuntimeHook.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\AdminResource\:\:\$page_key\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Admin/Schema/AdminRuntimeHook.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\AdminResource\:\:\$resource_key\.$#'
+			identifier: property.notFound
+			count: 4
+			path: src/Admin/Schema/AdminRuntimeHook.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\AdminResource\:\:\$type\.$#'
+			identifier: property.notFound
+			count: 5
+			path: src/Admin/Schema/AdminRuntimeHook.php
+
+		-
+			message: '#^Cannot access property \$code on array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/Admin/Schema/AdminRuntimeHook.php
+
+		-
+			message: '#^Cannot access property \$is_founder on array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model\.$#'
+			identifier: property.nonObject
+			count: 3
+			path: src/Admin/Schema/AdminRuntimeHook.php
+
+		-
+			message: '#^Cannot access property \$is_system on array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model\.$#'
+			identifier: property.nonObject
+			count: 3
+			path: src/Admin/Schema/AdminRuntimeHook.php
+
+		-
+			message: '#^Cannot access property \$resource_key on array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model\.$#'
+			identifier: property.nonObject
+			count: 2
+			path: src/Admin/Schema/AdminRuntimeHook.php
+
+		-
+			message: '#^Cannot access property \$username on array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/Admin/Schema/AdminRuntimeHook.php
+
+		-
+			message: '#^Method PTAdmin\\Admin\\Schema\\AdminRuntimeHook\:\:admin\(\) should return PTAdmin\\Admin\\Models\\Admin but returns array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Admin/Schema/AdminRuntimeHook.php
+
+		-
+			message: '#^Method PTAdmin\\Admin\\Schema\\AdminRuntimeHook\:\:menuPageTypes\(\) is unused\.$#'
+			identifier: method.unused
+			count: 1
+			path: src/Admin/Schema/AdminRuntimeHook.php
+
+		-
+			message: '#^Method PTAdmin\\Admin\\Schema\\AdminRuntimeHook\:\:role\(\) should return PTAdmin\\Admin\\Models\\AdminRole but returns array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Admin/Schema/AdminRuntimeHook.php
+
+		-
+			message: '#^Parameter \#1 \$resource of method PTAdmin\\Admin\\Schema\\AdminRuntimeHook\:\:assertResourceCanBeRemoved\(\) expects PTAdmin\\Admin\\Models\\AdminResource, array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Admin/Schema/AdminRuntimeHook.php
+
+		-
+			message: '#^Parameter \#3 \$current of method PTAdmin\\Admin\\Schema\\AdminRuntimeHook\:\:prepareAdminResource\(\) expects PTAdmin\\Admin\\Models\\AdminResource\|null, array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Admin/Schema/AdminRuntimeHook.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Model\:\:versions\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: src/Admin/Schema/AdminSchemaSynchronizer.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$is_founder\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Core/Auth/SchemaScopeResolver.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between non\-empty\-list\<PTAdmin\\Schema\\Contract\\ServerConstraint\> and array\{\} will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: src/Core/Auth/SchemaScopeResolver.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Model\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Core/Config/ConfigService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Core\\Config\\Models\\ConfigDefinition\:\:\$description\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Core/Config/ConfigService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Core\\Config\\Models\\ConfigDefinition\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Core/Config/ConfigService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Core\\Config\\Models\\ConfigDefinition\:\:\$title\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Core/Config/ConfigService.php
+
+		-
+			message: '#^Parameter \#1 \$definition of method PTAdmin\\Core\\Config\\ConfigService\:\:definitionPayload\(\) expects PTAdmin\\Core\\Config\\Models\\ConfigDefinition, Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Core/Config/ConfigService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Definition\\Schema\:\:\$fields\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Core/Config/ConfigValueCodec.php
+
+		-
+			message: '#^Method PTAdmin\\Core\\Http\\Controllers\\InstallWizardController\:\:account\(\) should return Illuminate\\Http\\RedirectResponse\|Illuminate\\View\\View but returns Illuminate\\Contracts\\View\\Factory\|Illuminate\\Contracts\\View\\View\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Core/Http/Controllers/InstallWizardController.php
+
+		-
+			message: '#^Method PTAdmin\\Core\\Http\\Controllers\\InstallWizardController\:\:requirements\(\) should return Illuminate\\Http\\RedirectResponse\|Illuminate\\View\\View but returns Illuminate\\Contracts\\View\\Factory\|Illuminate\\Contracts\\View\\View\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Core/Http/Controllers/InstallWizardController.php
+
+		-
+			message: '#^Method PTAdmin\\Core\\Http\\Controllers\\InstallWizardController\:\:welcome\(\) should return Illuminate\\View\\View but returns Illuminate\\Contracts\\View\\Factory\|Illuminate\\Contracts\\View\\View\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Core/Http/Controllers/InstallWizardController.php
+
+		-
+			message: '#^Parameter \#1 \$admin of method PTAdmin\\Admin\\Auth\\AdminAuthenticator\:\:userPayload\(\) expects PTAdmin\\Admin\\Models\\Admin, array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Core/Http/Controllers/SessionController.php
+
+		-
+			message: '#^Parameter \#1 \$admin of method PTAdmin\\Admin\\Auth\\AuthorizationService\:\:menus\(\) expects PTAdmin\\Admin\\Models\\Admin, array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Core/Http/Controllers/SessionController.php
+
+		-
+			message: '#^Parameter \#1 \$admin of method PTAdmin\\Admin\\Auth\\AuthorizationService\:\:permissions\(\) expects PTAdmin\\Admin\\Models\\Admin, array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Core/Http/Controllers/SessionController.php
+
+		-
+			message: '#^Parameter \#1 \$admin of method PTAdmin\\Admin\\Auth\\AuthorizationService\:\:roles\(\) expects PTAdmin\\Admin\\Models\\Admin, array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Core/Http/Controllers/SessionController.php
+
+		-
+			message: '#^Parameter \#2 \$default of method Illuminate\\Http\\Request\:\:query\(\) expects array\|string\|null, int given\.$#'
+			identifier: argument.type
+			count: 3
+			path: src/Core/Http/Controllers/TaskController.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Core/Http/Middleware/AuthenticateSessionMiddleware.php
+
+		-
+			message: '#^Offset ''guard_name'' on array\{id\: string, subject_type\: string, subject_id\: string, guard_name\: string, metadata\: array\<string, mixed\>, expires_at\: string, absolute_expires_at\: string\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: src/Core/Http/Middleware/AuthenticateSessionMiddleware.php
+
+		-
+			message: '#^Offset ''subject_id'' on array\{id\: string, subject_type\: string, subject_id\: string, guard_name\: string, metadata\: array\<string, mixed\>, expires_at\: string, absolute_expires_at\: string\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: src/Core/Http/Middleware/AuthenticateSessionMiddleware.php
+
+		-
+			message: '#^Negated boolean expression is always false\.$#'
+			identifier: booleanNot.alwaysFalse
+			count: 1
+			path: src/Core/Install/AdminFrontendPublisher.php
+
+		-
+			message: '#^Result of && is always false\.$#'
+			identifier: booleanAnd.alwaysFalse
+			count: 1
+			path: src/Core/Install/AdminFrontendPublisher.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$is_founder\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Core/Install/InstallService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$nickname\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Core/Install/InstallService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$password\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Core/Install/InstallService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Core/Install/InstallService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$username\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Core/Install/InstallService.php
+
+		-
+			message: '#^Negated boolean expression is always true\.$#'
+			identifier: booleanNot.alwaysTrue
+			count: 1
+			path: src/Core/Install/InstallService.php
+
+		-
+			message: '#^Result of \|\| is always true\.$#'
+			identifier: booleanOr.alwaysTrue
+			count: 1
+			path: src/Core/Install/InstallService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Definition\\Schema\:\:\$fields\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Audit/Redactor.php
+
+		-
+			message: '#^Call to function is_string\(\) with string will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 2
+			path: src/Schema/Contract/ContractObject.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Http/RuntimeOperationDispatcher.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Model\:\:versions\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Schema/Http/RuntimeOperationDispatcher.php
+
+		-
+			message: '#^Parameter \#1 \$resource of static method PTAdmin\\Schema\\Render\\Projector\:\:project\(\) expects PTAdmin\\Schema\\Meta\\Models\\Resource\|null, Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Schema/Http/RuntimeOperationDispatcher.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between mixed and array\{\} will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: src/Schema/Http/RuntimeOperationDispatcher.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$activated_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceLocator.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$check_status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceLocator.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$checked_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceLocator.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$checksum\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceLocator.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceLocator.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceLocator.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$updated_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceLocator.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Relations\\HasMany\:\:where\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: src/Schema/Meta/Service/ResourceLocator.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Definition\\Schema\:\:\$title\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$description\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$migration_owner\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$namespace\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$owner_code\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$owner_type\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$source_type\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$title\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$updated_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$check_checksum\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$check_status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$checksum\.$#'
+			identifier: property.notFound
+			count: 4
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$migration_plan_json\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$validation_result_json\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Relations\\HasMany\:\:find\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Relations\\HasMany\:\:orderByDesc\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Relations\\HasMany\:\:where\(\)\.$#'
+			identifier: method.notFound
+			count: 5
+			path: src/Schema/Meta/Service/ResourceService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\PublishTask\:\:\$finished_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\PublishTask\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\PublishTask\:\:\$last_error_code\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\PublishTask\:\:\$last_error_message\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\PublishTask\:\:\$started_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$migration_owner\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$change_summary_json\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$check_checksum\.$#'
+			identifier: property.notFound
+			count: 4
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$check_status\.$#'
+			identifier: property.notFound
+			count: 3
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$checked_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$checksum\.$#'
+			identifier: property.notFound
+			count: 6
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 9
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$migration_plan_json\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$validation_result_json\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Relations\\BelongsTo\:\:value\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Relations\\HasMany\:\:where\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:firstOrFail\(\)\.$#'
+			identifier: method.notFound
+			count: 3
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Parameter \#1 \$task of method PTAdmin\\Schema\\Publish\\Service\\PublishService\:\:taskInfo\(\) expects PTAdmin\\Schema\\Meta\\Models\\PublishTask, Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Parameter \#1 \$task of method PTAdmin\\Schema\\Publish\\Service\\PublishService\:\:taskInfo\(\) expects PTAdmin\\Schema\\Meta\\Models\\PublishTask, array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Schema/Publish/Service/PublishService.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Definition\\Schema\:\:\$actions\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Definition\\Schema\:\:\$fields\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Definition\\Schema\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Definition\\Schema\:\:\$title\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$description\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$owner_code\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$owner_type\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$source_type\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$title\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>column_name" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>description" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>disabled" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>extensions" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>formable" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>listable" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>multiple" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>owner_code" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>owner_type" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>persisted" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>readonly" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>required" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>resource_key" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>schema_json" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>searchable" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>sort" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>sortable" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>source_type" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>title" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/Render/Projector.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Definition\\Schema\:\:\$actions\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Schema/Runtime/RuntimeEngine.php
+
+		-
+			message: '#^Access to an undefined property PTAdmin\\Schema\\Definition\\Schema\:\:\$fields\.$#'
+			identifier: property.notFound
+			count: 5
+			path: src/Schema/Runtime/RuntimeEngine.php
+
+		-
+			message: '#^Offset ''version'' does not exist on array\{resource\: PTAdmin\\Schema\\Meta\\Models\\Resource, schema\: PTAdmin\\Schema\\Definition\\Schema\}\.$#'
+			identifier: offsetAccess.notFound
+			count: 4
+			path: src/Schema/Runtime/RuntimeEngine.php
+
+		-
+			message: '#^Parameter \#1 \$column of method Illuminate\\Database\\Query\\Builder\:\:where\(\) expects array\|Closure\|Illuminate\\Contracts\\Database\\Query\\Expression\|string, int\<0, max\> given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Schema/Runtime/RuntimeEngine.php
+
+		-
+			message: '#^Parameter &\$data by\-ref type of method PTAdmin\\Schema\\Runtime\\RuntimeEngine\:\:applyGenerators\(\) expects array\<string, mixed\>, array\<int\|string, mixed\> given\.$#'
+			identifier: parameterByRef.type
+			count: 2
+			path: src/Schema/Runtime/RuntimeEngine.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between mixed and null will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: src/Schema/Runtime/RuntimeEngine.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Model\:\:versions\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Schema/SchemaFile/SchemaFileSynchronizer.php
+
+		-
+			message: '#^Offset ''message'' on array\{code\: string, path\: string, message\: string\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: src/Schema/SchemaFile/SchemaFileSynchronizer.php
+
+		-
+			message: '#^Offset ''path'' on array\{code\: string, path\: string, message\: string\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: src/Schema/SchemaFile/SchemaFileSynchronizer.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>checksum" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Schema/SchemaFile/SchemaFileSynchronizer.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>risk" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: src/Schema/SchemaFile/SchemaFileSynchronizer.php
+
+		-
+			message: '#^Parameter &\$sources by\-ref type of method PTAdmin\\Schema\\SchemaFile\\SchemaSourceDiscovery\:\:appendDirectory\(\) expects list\<array\{path\: string, relative_path\: string, owner_type\: string, owner_code\: string, source\: string\}\>, non\-empty\-list\<array\{path\: \(array\<string\>\|string\), relative_path\: string, owner_type\: string, owner_code\: string, source\: string\}\> given\.$#'
+			identifier: parameterByRef.type
+			count: 1
+			path: src/Schema/SchemaFile/SchemaSourceDiscovery.php
+
+		-
+			message: '#^Unsafe usage of new static\(\)\.$#'
+			identifier: new.static
+			count: 1
+			path: src/Schema/Support/DataObject.php
