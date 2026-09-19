@@ -92,7 +92,7 @@ final class AddonTemplateRuntimeTest extends TestCase
         self::assertSame('<title>Demo &amp; title</title><meta name="description" content="Description">', $runtime->render('@pt:seo(only=["title","description"])', ['seo' => ['title' => 'Demo & title', 'description' => 'Description']]));
         self::assertSame('', $runtime->render('@pt:dump(context=["secret"="value"])', ['environment' => 'production']));
         self::assertStringContainsString('value', $runtime->render('@pt:dump(context=["secret"="value"])', ['environment' => 'local']));
-        self::assertSame('<pre><strong>Context</strong>\nArray\n(\n    [secret] =&gt; value\n)\n</pre>', $runtime->render('@pt:dump(context=["secret"="value"],label="Context",once=true)@pt:dump(context=["secret"="value"],label="Context",once=true)', ['environment' => 'local']));
+        self::assertSame("<pre><strong>Context</strong>\nArray\n(\n    [secret] =&gt; value\n)\n</pre>", $runtime->render('@pt:dump(context=["secret"="value"],label="Context",once=true)@pt:dump(context=["secret"="value"],label="Context",once=true)', ['environment' => 'local']));
 
         $registry->define('unsafe')->output(static fn (): string => '<b>unsafe</b>')->commit('demo');
         $registry->define('safe')->output(static fn (): string => '<b>safe</b>')->safeHtml()->commit('demo');
