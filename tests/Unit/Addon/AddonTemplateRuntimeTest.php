@@ -16,6 +16,10 @@ final class AddonTemplateRuntimeTest extends TestCase
     {
         $parser = new TemplateDirectiveArgumentParser();
         self::assertSame(['limit' => 2, 'filters' => ['a', ['b' => true]], 'value' => 'Title'], $parser->evaluate('limit=2,filters=["a",["b"=true]],value=$item.title', ['item' => ['title' => 'Title']]));
+        self::assertSame(['items' => []], $parser->evaluate('items=[]'));
+        self::assertSame(['items' => ['a' => 'b']], $parser->evaluate('items=[a=>"b"]'));
+        $this->expectException(\InvalidArgumentException::class);
+        $parser->parse('value="closed"tail');
     }
 
     public function testLoopAndFieldOutputRestoreContextAndEscape(): void
@@ -63,6 +67,8 @@ final class AddonTemplateRuntimeTest extends TestCase
         self::assertSame('<a href="/uploads/cover.jpg">Cover &amp; title</a>', $runtime->render('@pt:file()', $context));
         self::assertSame('<a href="/uploads/a.jpg">A</a>|<a href="/uploads/b.jpg">B</a>', $runtime->render('@pt:files(value=$gallery,separator="|")', $context));
         self::assertSame('none', $runtime->render('@pt:img(value=null,empty="none")', $context));
+        self::assertSame('&lt;none&gt;', $runtime->render('@pt:img(value=null,empty="<none>")', $context));
+        self::assertSame('<a href="/uploads/a.jpg">A</a>&lt;|&gt;<a href="/uploads/b.jpg">B</a>', $runtime->render('@pt:files(value=$gallery,separator="<|>")', $context));
     }
 
     public function testMediaUsesOnlyMarkedSchemaContextAndReportsAmbiguity(): void
@@ -101,8 +107,9 @@ final class AddonTemplateRuntimeTest extends TestCase
 
         self::assertSame('<title>Demo &amp; title</title><meta name="description" content="Description">', $runtime->render('@pt:seo(only=["title","description"])', ['seo' => ['title' => 'Demo & title', 'description' => 'Description']]));
         self::assertSame('', $runtime->render('@pt:dump(context=["secret"="value"])', ['environment' => 'production']));
-        self::assertStringContainsString('value', $runtime->render('@pt:dump(context=["secret"="value"])', ['environment' => 'local']));
-        self::assertSame("<pre><strong>Context</strong>\nArray\n(\n    [secret] =&gt; value\n)\n</pre>", $runtime->render('@pt:dump(context=["secret"="value"],label="Context",once=true)@pt:dump(context=["secret"="value"],label="Context",once=true)', ['environment' => 'local']));
+        self::assertStringContainsString('[secret] =&gt; [REDACTED]', $runtime->render('@pt:dump(context=["secret"="value","access_token"="another-value"])', ['environment' => 'local']));
+        self::assertStringNotContainsString('value', $runtime->render('@pt:dump(context=["secret"="value"])', ['environment' => 'local']));
+        self::assertSame("<pre><strong>Context</strong>\nArray\n(\n    [secret] =&gt; [REDACTED]\n)\n</pre>", $runtime->render('@pt:dump(context=["secret"="value"],label="Context",once=true)@pt:dump(context=["secret"="value"],label="Context",once=true)', ['environment' => 'local']));
 
         $demo = $registry->forAddon('demo');
         $demo->define('unsafe')->output(static fn (): string => '<b>unsafe</b>')->commit();
@@ -115,5 +122,62 @@ final class AddonTemplateRuntimeTest extends TestCase
         self::assertSame('output', $metadata['core_img']['type']);
         self::assertSame('img', $metadata['core_img']['alias']);
         self::assertSame('integer', $metadata['core_images']['parameters']['limit']['type']);
+    }
+
+    public function testScannerSupportsParenthesesAndHyphenatedAddonNames(): void
+    {
+        $registry = new AddonTemplateDirectiveRegistry();
+        $registration = $registry->forAddon('foo-bar');
+        $registration->define('banner')->output(static fn (array $arguments): string => $arguments['text'])->parameter('text', type: 'string')->commit();
+        $registration->commit();
+        $other = $registry->forAddon('foo_bar');
+        $other->define('banner')->output(static fn (): string => 'underscore')->commit();
+        $other->commit();
+        $runtime = new AddonTemplateRuntime($registry);
+
+        self::assertSame('a)b', $runtime->render('@pt:foo-bar_banner(text="a)b")'));
+        self::assertSame('underscore', $runtime->render('@pt:foo_bar_banner()'));
+        self::assertSame('fallback', $runtime->render('{$item.title|default=$page.title}', ['item' => ['title' => ''], 'page' => ['title' => 'fallback']]));
+    }
+
+    public function testDirectiveParameterAndStructuralAliasValidation(): void
+    {
+        $registry = new AddonTemplateDirectiveRegistry();
+        $registration = $registry->forAddon('demo');
+        $this->expectException(\InvalidArgumentException::class);
+        $registration->define('bad')->output(static fn (): string => '')->parameter('value', type: 'invalid');
+    }
+
+    public function testDirectiveParameterItemTypeAndErrorNamesAreValidated(): void
+    {
+        $registry = new AddonTemplateDirectiveRegistry();
+        $registration = $registry->forAddon('demo');
+        $registration->define('tags')
+            ->output(static fn (): string => 'ok')
+            ->parameter('values', type: 'array', itemType: 'string')
+            ->commit();
+        $registration->commit();
+        $runtime = new AddonTemplateRuntime($registry);
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('demo_tags');
+        $runtime->render('@pt:demo_tags(values=[1])');
+    }
+
+    public function testStructuralAliasesAreRejected(): void
+    {
+        $registry = new AddonTemplateDirectiveRegistry();
+        $registration = $registry->forAddon('demo');
+        $registration->define('loop')->loop(static fn (): array => [])->alias('end')->commit();
+        $this->expectException(\RuntimeException::class);
+        $registration->commit();
+    }
+
+    public function testStandaloneStructureKeywordsAreRejected(): void
+    {
+        $registry = new AddonTemplateDirectiveRegistry();
+        $runtime = new AddonTemplateRuntime($registry);
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Unexpected template structure directive: end');
+        $runtime->render('@pt:end');
     }
 }

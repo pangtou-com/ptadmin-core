@@ -8,6 +8,7 @@ use Closure;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\ServiceProvider;
+use PTAdmin\Schema\Runtime\RuntimeRegistry;
 
 final class AddonRuntimeRegistrar
 {
@@ -17,6 +18,7 @@ final class AddonRuntimeRegistrar
         private AddonLifecycleStore $lifecycle,
         private string $addonsPath,
         private ?AddonTemplateDirectiveRegistry $templateDirectives = null,
+        private ?RuntimeRegistry $runtimeRegistry = null,
     ) {
         $this->addonsPath = rtrim($addonsPath, '/');
     }
@@ -46,6 +48,7 @@ final class AddonRuntimeRegistrar
                 $this->registerViewsAndTranslations($directory, $code);
                 $this->registerTemplateDirectives($directory, $code, $manifest);
                 $this->registerHooks($directory, $code, $manifest);
+                $this->registerRuntime($directory, $code, $manifest);
                 $loaded[] = $code;
             } catch (\Throwable $exception) {
                 $errorCode = $exception instanceof AddonManifestException
@@ -67,6 +70,32 @@ final class AddonRuntimeRegistrar
             }
         }
         return ['loaded' => $loaded, 'errors' => $errors];
+    }
+
+    /** @param array<string,mixed> $manifest */
+    private function registerRuntime(string $directory, string $code, array $manifest): void
+    {
+        $declaration = $manifest['runtime'] ?? null;
+        if ($declaration === null) {
+            return;
+        }
+        $runtime = is_string($declaration) ? ['file' => $declaration] : (is_array($declaration) ? $declaration : []);
+        $file = $this->safeRelative((string) ($runtime['file'] ?? ''));
+        $class = trim((string) ($runtime['class'] ?? ''));
+        if ($file === '' || $class === '') {
+            throw new AddonManifestException('Addon runtime declaration is invalid.', 'invalid_runtime');
+        }
+        $path = $directory.'/'.$file;
+        if (!is_file($path)) {
+            throw new AddonManifestException('Addon runtime file is unavailable.', 'runtime_unavailable');
+        }
+        require_once $path;
+        if (!class_exists($class) || !is_a($class, AddonRuntimeRegistrarInterface::class, true)) {
+            throw new AddonManifestException('Addon runtime class is invalid.', 'runtime_class_invalid');
+        }
+        $registry = $this->runtimeRegistry
+            ?? ($this->app->bound(RuntimeRegistry::class) ? $this->app->make(RuntimeRegistry::class) : new RuntimeRegistry());
+        $this->app->make($class)->registerRuntime($registry->forOwner('addon', $code), $manifest);
     }
 
     private function assertCanonicalDirectories(string $directory): void

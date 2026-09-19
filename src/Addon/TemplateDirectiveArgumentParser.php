@@ -36,7 +36,9 @@ final class TemplateDirectiveArgumentParser
     {
         if ($value === '') throw new InvalidArgumentException('Template directive argument value is empty.');
         if (($value[0] ?? '') === '"' || ($value[0] ?? '') === "'") {
-            if (strlen($value) < 2 || $value[-1] !== $value[0]) throw new InvalidArgumentException('Template directive string is unterminated.');
+            $quote = $value[0];
+            $closing = $this->findClosingQuote($value, $quote, 1);
+            if ($closing === null || $closing !== strlen($value) - 1) throw new InvalidArgumentException('Template directive string is unterminated.');
             return ['type' => 'string', 'value' => stripcslashes(substr($value, 1, -1))];
         }
         if (preg_match('/^-?(?:0|[1-9][0-9]*)$/', $value)) return ['type' => 'integer', 'value' => (int) $value];
@@ -52,8 +54,19 @@ final class TemplateDirectiveArgumentParser
         if ($value[0] === '[' && $value[-1] === ']') {
             $items = [];
             foreach ($this->split(substr($value, 1, -1)) as $item) {
-                $item = trim($item); $equals = $this->findTopLevel($item, '=');
-                if ($equals !== null) { $key = trim(substr($item, 0, $equals)); if (($key[0] ?? '') === '"' || ($key[0] ?? '') === "'") $key = stripcslashes(substr($key, 1, -1)); elseif (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $key)) throw new InvalidArgumentException('Template array key is invalid.'); $items[$key] = $this->parseValue(trim(substr($item, $equals + 1))); }
+                $item = trim($item);
+                if ($item === '') continue;
+                [$equals, $operatorLength] = $this->findAssignment($item);
+                if ($equals !== null) {
+                    $key = trim(substr($item, 0, $equals));
+                    if (($key[0] ?? '') === '"' || ($key[0] ?? '') === "'") {
+                        $quote = $key[0];
+                        $closing = $this->findClosingQuote($key, $quote, 1);
+                        if ($closing === null || $closing !== strlen($key) - 1) throw new InvalidArgumentException('Template array key is invalid.');
+                        $key = stripcslashes(substr($key, 1, -1));
+                    } elseif (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $key)) throw new InvalidArgumentException('Template array key is invalid.');
+                    $items[$key] = $this->parseValue(trim(substr($item, $equals + $operatorLength)));
+                }
                 else $items[] = $this->parseValue($item);
             }
             return ['type' => 'array', 'items' => $items];
@@ -91,5 +104,31 @@ final class TemplateDirectiveArgumentParser
         $depth = 0; $quote = null;
         for ($i = 0, $length = strlen($source); $i < $length; $i++) { $char = $source[$i]; if ($quote !== null) { if ($char === $quote && $source[$i - 1] !== '\\') $quote = null; continue; } if ($char === "'" || $char === '"') { $quote = $char; continue; } if ($char === '[') $depth++; elseif ($char === ']') $depth--; elseif ($char === $needle && $depth === 0) return $i; }
         return null;
+    }
+
+    /** @return array{0:int|null,1:int} */
+    private function findAssignment(string $source): array
+    {
+        $equals = $this->findTopLevel($source, '=');
+        if ($equals === null) return [null, 0];
+
+        return [$equals, ($source[$equals + 1] ?? '') === '>' ? 2 : 1];
+    }
+
+    private function findClosingQuote(string $value, string $quote, int $offset): ?int
+    {
+        for ($index = $offset, $length = strlen($value); $index < $length; $index++) {
+            if ($value[$index] === $quote && !$this->isEscaped($value, $index)) return $index;
+        }
+
+        return null;
+    }
+
+    private function isEscaped(string $value, int $index): bool
+    {
+        $slashes = 0;
+        for ($index--; $index >= 0 && $value[$index] === '\\'; $index--) $slashes++;
+
+        return $slashes % 2 === 1;
     }
 }

@@ -10,7 +10,7 @@ final class AddonTemplateDirectiveRegistry
 {
     /** @var array<string,TemplateDirectiveDefinition> */
     private array $definitions = [];
-    /** @var array<string,string> */
+    /** @var array<string,list<string>> */
     private array $aliases = [];
 
     /** Begin a plugin-scoped registration transaction. */
@@ -30,25 +30,34 @@ final class AddonTemplateDirectiveRegistry
             $names[$name] = true;
             $alias = $definition->alias();
             if ($alias !== null) {
-                if (isset($aliases[$alias]) || isset($this->aliases[$alias]) || isset($this->definitions[$alias]) || isset($names[$alias])) throw new RuntimeException(sprintf('Template directive alias "%s" is already registered.', $alias));
-                $aliases[$alias] = true;
+                if (isset($aliases[$alias])) $aliases[$alias][] = $name;
+                else $aliases[$alias] = [$name];
             }
-            if ($definition->addonCode() !== 'core' && (isset(self::builtinAliases()[$name]) || ($alias !== null && isset(self::builtinAliases()[$alias])))) throw new RuntimeException('Template directive name or alias is reserved: '.($alias ?? $name));
+            if ($definition->addonCode() !== 'core' && (($alias !== null && isset(self::builtinAliases()[$alias])) || ($alias !== null && isset(self::structuralAliases()[$alias])))) throw new RuntimeException('Template directive alias is reserved: '.$alias);
         }
         foreach ($definitions as $definition) {
             $name = $definition->fullName();
             $this->definitions[$name] = $definition;
-            if (($alias = $definition->alias()) !== null) $this->aliases[$alias] = $name;
+            if (($alias = $definition->alias()) !== null) $this->aliases[$alias] = array_values(array_unique(array_merge($this->aliases[$alias] ?? [], [$name])));
         }
     }
 
     /** @return array<string,TemplateDirectiveDefinition> */
     public function all(): array { return $this->definitions; }
-    public function get(string $name): ?TemplateDirectiveDefinition { return $this->definitions[$name] ?? (isset($this->aliases[$name]) ? $this->definitions[$this->aliases[$name]] : null); }
+    public function get(string $name): ?TemplateDirectiveDefinition
+    {
+        if (isset($this->definitions[$name])) return $this->definitions[$name];
+        $targets = $this->aliases[$name] ?? [];
+        if (count($targets) > 1) throw new RuntimeException(sprintf('Template directive alias "%s" is ambiguous; use one of: %s.', $name, implode(', ', $targets)));
+
+        return isset($targets[0]) ? $this->definitions[$targets[0]] : null;
+    }
     /** @return array<string,array<string,mixed>> */
     public function metadata(): array { $result = []; foreach ($this->definitions as $name => $definition) $result[$name] = $definition->toArray(); return $result; }
-    /** @return array<string,string> */
+    /** @return array<string,list<string>> */
     public function aliases(): array { return $this->aliases; }
     /** @return array<string,bool> */
     public static function builtinAliases(): array { return array_fill_keys(['seo', 'img', 'images', 'file', 'files', 'dump'], true); }
+    /** @return array<string,bool> */
+    public static function structuralAliases(): array { return ['empty' => true, 'end' => true]; }
 }

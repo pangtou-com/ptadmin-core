@@ -18,7 +18,7 @@ final class TemplateDirectiveDefinition
     }
     public function name(): string { return $this->name; }
     public function addonCode(): string { return $this->addonCode; }
-    public function fullName(): string { return strtolower(str_replace('-', '_', $this->addonCode)).'_'.$this->name; }
+    public function fullName(): string { return $this->addonCode.'_'.$this->name; }
     public function type(): string { return $this->type; }
     public function handler(): mixed { return $this->handler; }
     public function alias(): ?string { return $this->alias; }

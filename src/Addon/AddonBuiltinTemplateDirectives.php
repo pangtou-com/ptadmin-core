@@ -65,6 +65,7 @@ final class AddonBuiltinTemplateDirectives
         if (is_array($value)) {
             unset($value['__ptadmin_render_state'], $value['diagnostic']);
         }
+        $value = $this->sanitizeDumpValue($value);
         $prefix = $label === '' ? '' : "<strong>".htmlspecialchars($label, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')."</strong>\n";
 
         return '<pre>'.$prefix.htmlspecialchars(print_r($value, true), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</pre>';
@@ -80,7 +81,7 @@ final class AddonBuiltinTemplateDirectives
         $value = array_key_exists('value', $arguments)
             ? $arguments['value']
             : $this->resolveMediaContext($context);
-        if ($value === null) return (string) ($arguments['empty'] ?? '');
+        if ($value === null) return $this->escapeHtml((string) ($arguments['empty'] ?? ''));
         $items = $many ? (is_array($value) ? $value : [$value]) : [$value];
         if (isset($arguments['limit']) && is_int($arguments['limit'])) $items = array_slice($items, 0, $arguments['limit']);
         $key = (string) ($arguments['key'] ?? 'key'); $label = (string) ($arguments['label'] ?? 'label'); $attrs = is_array($arguments['attrs'] ?? null) ? $arguments['attrs'] : [];
@@ -91,7 +92,39 @@ final class AddonBuiltinTemplateDirectives
             $text = htmlspecialchars((string) ($item[$label] ?? $url), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); $escapedUrl = htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             $output[] = $image ? '<img src="'.$escapedUrl.'" alt="'.$text.'"'.$safeAttrs.'>' : '<a href="'.$escapedUrl.'"'.$safeAttrs.'>'.$text.'</a>';
         }
-        return implode((string) ($arguments['separator'] ?? ''), $output) ?: (string) ($arguments['empty'] ?? '');
+        if ($output === []) return $this->escapeHtml((string) ($arguments['empty'] ?? ''));
+
+        return implode($this->escapeHtml((string) ($arguments['separator'] ?? '')), $output);
+    }
+
+    private function sanitizeDumpValue(mixed $value, ?string $key = null): mixed
+    {
+        if ($key !== null && preg_match('/(?:token|password|secret|cookie)/i', $key)) {
+            return '[REDACTED]';
+        }
+        if (is_array($value)) {
+            $sanitized = [];
+            foreach ($value as $entryKey => $entryValue) {
+                $sanitized[$entryKey] = $this->sanitizeDumpValue($entryValue, is_string($entryKey) ? $entryKey : null);
+            }
+
+            return $sanitized;
+        }
+        if (is_object($value)) {
+            $sanitized = [];
+            foreach (get_object_vars($value) as $entryKey => $entryValue) {
+                $sanitized[$entryKey] = $this->sanitizeDumpValue($entryValue, $entryKey);
+            }
+
+            return $sanitized;
+        }
+
+        return $value;
+    }
+
+    private function escapeHtml(string $value): string
+    {
+        return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     }
 
     private function resolveMediaContext(array $context): mixed
