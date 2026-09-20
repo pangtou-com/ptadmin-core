@@ -22,11 +22,14 @@ final class TemplateDirectiveLoader
         private DirectiveRegistry $registry,
     ) {
     }
-
+    
     /**
      * 注册一个插件的全部模板指令；同一插件已存在定义时跳过重复加载。
      *
+     * @param string $directory
+     * @param string $code
      * @param array<string,mixed> $manifest 已完成验证的插件 manifest
+     * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
     public function register(string $directory, string $code, array $manifest): void
     {
