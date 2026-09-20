@@ -48,6 +48,8 @@ use PTAdmin\Addon\Manifest\ManifestVerifier;
 use PTAdmin\Addon\Lifecycle\LifecycleStore;
 use PTAdmin\Addon\Frontend\FrontendPublisher;
 use PTAdmin\Addon\Frontend\FrontendRegistry;
+use PTAdmin\Addon\Frontend\FrontendDevelopmentStore;
+use PTAdmin\Addon\Console\Commands\FrontendDevCommand;
 use PTAdmin\Addon\Manifest\TrustPolicy;
 use PTAdmin\Addon\Package\PackageExtractor;
 use PTAdmin\Addon\Package\PackageDownloader;
@@ -222,6 +224,14 @@ final class PTAdminServiceProvider extends ServiceProvider
 
     private function registerAddonFrontendServices(): void
     {
+        $this->app->singleton(FrontendDevelopmentStore::class, static function ($app): FrontendDevelopmentStore {
+            return new FrontendDevelopmentStore(
+                (string) $app['config']->get('ptadmin.frontend.development.path', storage_path('app/ptadmin/dev/frontend')),
+                (string) $app->environment(),
+                (array) $app['config']->get('ptadmin.frontend.development.allowed_origins', []),
+                (int) $app['config']->get('ptadmin.frontend.development.lease_seconds', 120),
+            );
+        });
         $this->app->singleton(FrontendPublisher::class, static function (): FrontendPublisher {
             return new FrontendPublisher(public_path());
         });
@@ -231,10 +241,12 @@ final class PTAdminServiceProvider extends ServiceProvider
                 $app->make(ManifestVerifier::class),
                 $app->make(TrustPolicy::class),
                 $app->make(LifecycleStore::class),
+                $app->make(FrontendDevelopmentStore::class),
                 (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
                 public_path(),
                 (string) $app['config']->get('ptadmin.web_prefix', 'admin'),
-                (array) $app['config']->get('ptadmin.frontend.host_apis', ['admin-v1']),
+                (string) $app['config']->get('ptadmin.api_prefix', 'ptadmin'),
+                (array) $app['config']->get('ptadmin.frontend.host_apis', ['v1']),
                 (array) $app['config']->get('ptadmin.frontend.runtime_profiles', ['admin-v1']),
                 (array) $app['config']->get('ptadmin.frontend.capabilities', []),
             );
@@ -356,6 +368,7 @@ final class PTAdminServiceProvider extends ServiceProvider
             RuntimeValidateCommand::class,
             AdminSyncCommand::class,
             MenuSyncCommand::class,
+            FrontendDevCommand::class,
         ]);
     }
 

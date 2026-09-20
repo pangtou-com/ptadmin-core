@@ -37,7 +37,7 @@ final class SessionController extends Controller
 
         $permissions = $this->authorization->permissions($admin);
         $menus = $this->authorization->menus($admin);
-        $plugins = $this->addonFrontends->resolve($permissions, $menus);
+        $plugins = $this->addonFrontends->resolve($menus);
 
         return AdminResponse::success('', [
             'user' => $this->authenticator->userPayload($admin),
@@ -47,6 +47,7 @@ final class SessionController extends Controller
             'theme' => (array) config('ptadmin.theme', []),
             'layout' => (array) config('ptadmin.layout', []),
             'plugins' => $plugins['plugins'],
+            'generation' => hash('sha256', (string) $session['id']),
             'features' => [
                 'task_center' => true,
                 'plugin_runtime' => true,

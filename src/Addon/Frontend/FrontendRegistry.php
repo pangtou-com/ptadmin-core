@@ -10,11 +10,12 @@ use PTAdmin\Addon\Exception\AddonException;
 use PTAdmin\Addon\Lifecycle\LifecycleStore;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
 use PTAdmin\Addon\Manifest\TrustPolicy;
+use RuntimeException;
 
 /**
  * 为当前管理员解析可加载的插件前端入口。
  *
- * Registry 同时校验插件 active 状态、菜单可见性、权限、Host API、sandbox、发布文件摘要和 trusted 策略，
+ * Registry 同时校验插件 active 状态、菜单可见性、Host API、sandbox、发布文件摘要和 trusted 策略，
  * 最终只向 Session 暴露满足全部条件的最小前端描述，不返回磁盘路径或原始 manifest。
  */
 final class FrontendRegistry
@@ -29,25 +30,27 @@ final class FrontendRegistry
         private ManifestVerifier $verifier,
         private TrustPolicy $trustPolicy,
         private LifecycleStore $lifecycle,
+        private FrontendDevelopmentStore $development,
         private string $addonsPath,
         private string $publicRoot,
         private string $webPrefix,
+        private string $apiPrefix,
         private array $supportedHostApis,
         private array $supportedRuntimeProfiles,
         private array $supportedCapabilities,
     ) {
         $this->addonsPath = rtrim($addonsPath, '/');
         $this->publicRoot = rtrim($publicRoot, '/');
+        $this->apiPrefix = trim($apiPrefix, '/');
     }
 
     /**
      * 根据当前管理员权限和可见菜单生成插件模块列表；单个插件声明无效时只记录该插件错误。
      *
-     * @param array<int, string> $permissions
      * @param array<int, array<string, mixed>> $menus
      * @return array{plugins:array<int,array<string,mixed>>,errors:array<int,array<string,string>>}
      */
-    public function resolve(array $permissions, array $menus): array
+    public function resolve(array $menus): array
     {
         $result = $this->discovery->scan();
         $plugins = [];
@@ -62,25 +65,30 @@ final class FrontendRegistry
             $code = (string) ($addon['code'] ?? '');
             $manifest = is_array($addon['manifest'] ?? null) ? $addon['manifest'] : [];
             try {
-                $entries = $this->resolveAddonEntries(
+                $frontend = $this->resolveAddonFrontend(
                     $code,
                     $manifest,
-                    $permissions,
                     $visibleMenuKeys,
                     $registeredKeys,
                 );
+                $entries = $frontend['entries'];
                 if ($entries === []) {
                     continue;
                 }
                 foreach ($entries as $entry) {
                     $registeredKeys[] = $entry['key'];
                 }
-                $plugins[] = [
+                $plugin = [
                     'code' => $code,
                     'version' => (string) ($addon['version'] ?? ''),
                     'enabled' => true,
+                    'api_base' => '/'.$this->apiPrefix.'/'.rawurlencode($code),
                     'entries' => $entries,
                 ];
+                if ($frontend['design_flows'] !== []) {
+                    $plugin['design_flows'] = $frontend['design_flows'];
+                }
+                $plugins[] = $plugin;
             } catch (AddonException $exception) {
                 $errors[] = [
                     'code' => $code,
@@ -97,21 +105,19 @@ final class FrontendRegistry
      * 解析一个插件的 frontend.json，并确保入口身份、权限和发布产物均属于该插件。
      *
      * @param array<string, mixed> $manifest
-     * @param array<int, string> $permissions
      * @param array<int, string> $visibleMenuKeys
      * @param array<int, string> $registeredKeys
-     * @return array<int, array<string, mixed>>
+     * @return array{entries:array<int,array<string,mixed>>,design_flows:array<int,array<string,mixed>>}
      */
-    private function resolveAddonEntries(
+    private function resolveAddonFrontend(
         string $code,
         array $manifest,
-        array $permissions,
         array $visibleMenuKeys,
         array $registeredKeys,
     ): array {
         $descriptor = $this->descriptor($code);
         if (null === $descriptor) {
-            return [];
+            return ['entries' => [], 'design_flows' => []];
         }
         $hostApi = (string) ($descriptor['host_api'] ?? '');
         if (!in_array($hostApi, $this->supportedHostApis, true)) {
@@ -127,6 +133,15 @@ final class FrontendRegistry
         }
 
         $resolved = [];
+        try {
+            $development = $this->development->resolve($code);
+        } catch (RuntimeException $exception) {
+            throw new AddonException(
+                $exception->getMessage(),
+                'frontend_development_registration_invalid',
+                ['code' => $code]
+            );
+        }
         $localKeys = [];
         foreach ($declaredEntries as $declaredEntry) {
             if (!is_array($declaredEntry) || array_is_list($declaredEntry)) {
@@ -149,11 +164,7 @@ final class FrontendRegistry
             }
             $localKeys[] = $key;
 
-            $requiredPermissions = $this->stringList($declaredEntry['permissions'] ?? null, 'frontend_permissions_invalid');
-            if ($requiredPermissions === []) {
-                throw new AddonException('The addon frontend entry must declare permissions.', 'frontend_permissions_required');
-            }
-            if (!in_array($key, $visibleMenuKeys, true) || !$this->allows($permissions, $requiredPermissions)) {
+            if (!in_array($key, $visibleMenuKeys, true)) {
                 continue;
             }
 
@@ -201,6 +212,20 @@ final class FrontendRegistry
             if ($capabilities !== []) {
                 $entry['capabilities'] = $capabilities;
             }
+            if (is_array($development)) {
+                if (($development['sandbox'] ?? null) !== $sandbox) {
+                    throw new AddonException('The addon frontend development sandbox does not match production.', 'frontend_development_sandbox_mismatch');
+                }
+                $entry['development'] = [
+                    'load_mode' => 'development',
+                    'entry_url' => $development['entry_url'],
+                    'allowed_origin' => $development['allowed_origin'],
+                    'dev_revision' => $development['dev_revision'],
+                    'hmr' => (bool) ($development['hmr'] ?? false),
+                    'source_maps' => (bool) ($development['source_maps'] ?? false),
+                    'status' => $development['status'] ?? 'expired',
+                ];
+            }
             if ($sandbox === 'trusted') {
                 // trusted 模块与宿主同一执行上下文，必须同时满足包声明、Runtime Profile 和部署信任策略。
                 if (($manifest['sandbox'] ?? null) !== 'trusted') {
@@ -216,7 +241,129 @@ final class FrontendRegistry
             $resolved[] = $entry;
         }
 
+        return [
+            'entries' => $resolved,
+            'design_flows' => $resolved === []
+                ? []
+                : $this->designFlows($code, $descriptor['design_flows'] ?? [], $resolved),
+        ];
+    }
+
+    /**
+     * @param mixed $declared
+     * @param array<int, array<string, mixed>> $entries
+     * @return array<int, array<string, mixed>>
+     */
+    private function designFlows(string $code, mixed $declared, array $entries): array
+    {
+        if (!is_array($declared) || !array_is_list($declared)) {
+            throw new AddonException('The addon frontend design flows must be a list.', 'frontend_design_flows_invalid');
+        }
+        $entryKeys = [];
+        $hasTrustedEntry = false;
+        foreach ($entries as $entry) {
+            if (is_string($entry['key'] ?? null)) {
+                $entryKeys[] = $entry['key'];
+            }
+            $hasTrustedEntry = $hasTrustedEntry || ($entry['sandbox'] ?? null) === 'trusted';
+        }
+        $flowIds = [];
+        $resolved = [];
+        foreach ($declared as $flow) {
+            if (!is_array($flow) || array_is_list($flow)) {
+                throw new AddonException('The addon frontend design flow must be an object.', 'frontend_design_flows_invalid');
+            }
+            $id = (string) ($flow['id'] ?? '');
+            $target = (string) ($flow['target'] ?? '');
+            $permission = (string) ($flow['permission'] ?? '');
+            if (!$this->validIdentifier($id) || in_array($id, $flowIds, true)
+                || $target !== 'schema.designer' || !$this->validIdentifier($permission)) {
+                throw new AddonException('The addon frontend design flow identity is invalid.', 'frontend_design_flows_invalid');
+            }
+            $namespace = $flow['namespace'] ?? null;
+            if (null !== $namespace && (!is_string($namespace) || !$this->validIdentifier($namespace))) {
+                throw new AddonException('The addon frontend design flow namespace is invalid.', 'frontend_design_flows_invalid');
+            }
+            $steps = $flow['steps'] ?? null;
+            if (!is_array($steps) || !array_is_list($steps) || $steps === []) {
+                throw new AddonException('The addon frontend design flow steps must be a non-empty list.', 'frontend_design_flows_invalid');
+            }
+            $stepIds = [];
+            $resolvedSteps = [];
+            foreach ($steps as $step) {
+                if (!is_array($step) || array_is_list($step)) {
+                    throw new AddonException('The addon frontend design flow step must be an object.', 'frontend_design_flows_invalid');
+                }
+                $stepId = (string) ($step['id'] ?? '');
+                $title = (string) ($step['title'] ?? '');
+                if (!$this->validIdentifier($stepId) || $title === '' || in_array($stepId, $stepIds, true)) {
+                    throw new AddonException('The addon frontend design flow step identity is invalid.', 'frontend_design_flows_invalid');
+                }
+                $mount = $this->designFlowMount($code, $step['mount'] ?? null, $entryKeys, $hasTrustedEntry);
+                $stepIds[] = $stepId;
+                $resolvedSteps[] = ['id' => $stepId, 'title' => $title, 'mount' => $mount];
+            }
+            $flowIds[] = $id;
+            $resolvedFlow = [
+                'id' => $id,
+                'target' => $target,
+                'permission' => $permission,
+                'steps' => $resolvedSteps,
+            ];
+            if (is_string($namespace)) {
+                $resolvedFlow['namespace'] = $namespace;
+            }
+            $resolved[] = $resolvedFlow;
+        }
+
         return $resolved;
+    }
+
+    /**
+     * @param mixed $mount
+     * @param array<int, string> $entryKeys
+     * @return array<string, array<string, string>>
+     */
+    private function designFlowMount(string $code, mixed $mount, array $entryKeys, bool $hasTrustedEntry): array
+    {
+        if (!is_array($mount) || array_is_list($mount) || count($mount) !== 1) {
+            throw new AddonException('The addon frontend design flow mount is invalid.', 'frontend_design_flows_invalid');
+        }
+        if (isset($mount['host_module']) && is_array($mount['host_module'])) {
+            $reference = $mount['host_module']['ref'] ?? null;
+            if (!is_string($reference) || !in_array($reference, ['schema.basic', 'schema.designer'], true)) {
+                throw new AddonException('The addon frontend host module is unsupported.', 'frontend_design_flows_invalid');
+            }
+            return ['host_module' => ['ref' => $reference]];
+        }
+        if (isset($mount['frontend_contribution']) && is_array($mount['frontend_contribution'])) {
+            $contribution = $mount['frontend_contribution']['contribution'] ?? null;
+            if (!$hasTrustedEntry || !is_string($contribution) || !$this->validIdentifier($contribution)
+                || !str_starts_with(strtolower($contribution), strtolower($code).'.')) {
+                throw new AddonException('The addon frontend contribution is invalid.', 'frontend_design_flows_invalid');
+            }
+            return ['frontend_contribution' => ['contribution' => $contribution]];
+        }
+        if (isset($mount['surface']) && is_array($mount['surface'])) {
+            $entry = $mount['surface']['entry'] ?? null;
+            $target = $mount['surface']['target'] ?? null;
+            if (!is_string($entry) || !in_array($entry, $entryKeys, true)
+                || (null !== $target && (!is_string($target) || !$this->validIdentifier($target)))) {
+                throw new AddonException('The addon frontend design flow surface is invalid.', 'frontend_design_flows_invalid');
+            }
+            $surface = ['entry' => $entry];
+            if (is_string($target)) {
+                $surface['target'] = $target;
+            }
+            return ['surface' => $surface];
+        }
+
+        throw new AddonException('The addon frontend design flow mount kind is unsupported.', 'frontend_design_flows_invalid');
+    }
+
+    private function validIdentifier(string $value): bool
+    {
+        return preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,190}$/', $value) === 1;
     }
 
     /** @return array<string, mixed>|null */
@@ -284,31 +431,6 @@ final class FrontendRegistry
         }
 
         return array_values(array_unique($strings));
-    }
-
-    /** @param array<int, string> $permissions @param array<int, string> $required */
-    private function allows(array $permissions, array $required): bool
-    {
-        if (in_array('*', $permissions, true)) {
-            return true;
-        }
-        foreach ($required as $permission) {
-            if (in_array($permission, $permissions, true)) {
-                continue;
-            }
-            $allowedByResourceWildcard = false;
-            foreach ($permissions as $granted) {
-                if (str_ends_with($granted, '.*') && str_starts_with($permission, substr($granted, 0, -1))) {
-                    $allowedByResourceWildcard = true;
-                    break;
-                }
-            }
-            if (!$allowedByResourceWildcard) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     /** @param array<int, array<string, mixed>> $menus @return array<int, string> */

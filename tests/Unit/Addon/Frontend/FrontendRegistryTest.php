@@ -8,6 +8,7 @@ use PHPUnit\Framework\TestCase;
 use PTAdmin\Addon\Catalog\AddonCatalog;
 use PTAdmin\Addon\Frontend\FrontendPublisher;
 use PTAdmin\Addon\Frontend\FrontendRegistry;
+use PTAdmin\Addon\Frontend\FrontendDevelopmentStore;
 use PTAdmin\Addon\Lifecycle\LifecycleStore;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
 use PTAdmin\Addon\Manifest\TrustPolicy;
@@ -38,7 +39,6 @@ final class FrontendRegistryTest extends TestCase
         $this->writeAddon('iframe', 'index.html');
         $registry = $this->registry(new TrustPolicy());
         $resolved = $registry->resolve(
-            ['demo-addon.page.view'],
             [['key' => 'demo-addon.page', 'children' => []]],
         );
 
@@ -47,16 +47,16 @@ final class FrontendRegistryTest extends TestCase
         $plugin = $resolved['plugins'][0];
         self::assertSame('demo-addon', $plugin['code']);
         self::assertTrue($plugin['enabled']);
-        self::assertSame('admin-v1', $plugin['entries'][0]['host_api']);
+        self::assertSame('v1', $plugin['entries'][0]['host_api']);
+        self::assertSame('/ptadmin/demo-addon', $plugin['api_base']);
         self::assertSame(['schema.runtime'], $plugin['entries'][0]['capabilities']);
         self::assertSame(
             './modules/demo-addon/index.html?v=sha256:'.hash_file('sha256', $this->publicPath.'/admintest/modules/demo-addon/index.html'),
             $plugin['entries'][0]['entry'],
         );
 
-        self::assertSame([], $registry->resolve([], [['key' => 'demo-addon.page']])['plugins']);
-        self::assertSame([], $registry->resolve(['demo-addon.page.view'], [['key' => 'another.page']])['plugins']);
-        self::assertCount(1, $registry->resolve(['demo-addon.page.*'], [['key' => 'demo-addon.page']])['plugins']);
+        self::assertSame([], $registry->resolve([['key' => 'another.page']])['plugins']);
+        self::assertCount(1, $registry->resolve([['key' => 'demo-addon.page']])['plugins']);
     }
 
     public function testTrustedLocalEntryNeedsExplicitPolicyAndIsNeverDowngraded(): void
@@ -64,14 +64,12 @@ final class FrontendRegistryTest extends TestCase
         $this->writeAddon('trusted', 'frontend.mjs', true);
 
         $denied = $this->registry(new TrustPolicy([], [], false, 'testing'))->resolve(
-            ['demo-addon.page.view'],
             [['key' => 'demo-addon.page']],
         );
         self::assertSame([], $denied['plugins']);
         self::assertSame('trusted_publisher_denied', $denied['errors'][0]['error_code']);
 
         $allowed = $this->registry(new TrustPolicy([], [], true, 'testing'))->resolve(
-            ['demo-addon.page.view'],
             [['key' => 'demo-addon.page']],
         );
         self::assertCount(1, $allowed['plugins']);
@@ -88,7 +86,6 @@ final class FrontendRegistryTest extends TestCase
         file_put_contents($this->publicPath.'/admintest/modules/demo-addon/index.html', 'tampered');
 
         $resolved = $this->registry(new TrustPolicy())->resolve(
-            ['demo-addon.page.view'],
             [['key' => 'demo-addon.page']],
         );
 
@@ -96,7 +93,54 @@ final class FrontendRegistryTest extends TestCase
         self::assertSame('frontend_entry_digest_mismatch', $resolved['errors'][0]['error_code']);
     }
 
-    private function registry(TrustPolicy $trustPolicy): FrontendRegistry
+    public function testDevelopmentDescriptorOverridesOnlyTheCodeSource(): void
+    {
+        $this->writeAddon('iframe', 'index.html');
+        $development = new FrontendDevelopmentStore($this->root.'/dev', 'testing');
+        $development->register('demo-addon', 'http://127.0.0.1:5174/index.html', 'iframe', 'dev-4');
+
+        $plugin = $this->registry(new TrustPolicy(), $development)
+            ->resolve([['key' => 'demo-addon.page']])['plugins'][0];
+
+        self::assertSame('/ptadmin/demo-addon', $plugin['api_base']);
+        self::assertSame(['schema.runtime'], $plugin['entries'][0]['capabilities']);
+        self::assertSame('development', $plugin['entries'][0]['development']['load_mode']);
+        self::assertSame('http://127.0.0.1:5174', $plugin['entries'][0]['development']['allowed_origin']);
+        self::assertSame('dev-4', $plugin['entries'][0]['development']['dev_revision']);
+        self::assertSame('available', $plugin['entries'][0]['development']['status']);
+    }
+
+    public function testRegistryExposesValidatedTrustedDesignFlows(): void
+    {
+        $this->writeAddon('trusted', 'frontend.mjs', true, true);
+
+        $plugin = $this->registry(new TrustPolicy([], [], true, 'testing'))
+            ->resolve([['key' => 'demo-addon.page']])['plugins'][0];
+
+        self::assertSame('demo-addon.schema', $plugin['design_flows'][0]['id']);
+        self::assertSame('schema.resources.update', $plugin['design_flows'][0]['permission']);
+        self::assertSame(
+            ['frontend_contribution' => ['contribution' => 'demo-addon.review']],
+            $plugin['design_flows'][0]['steps'][0]['mount'],
+        );
+    }
+
+    public function testInvalidDevelopmentRegistrationIsReportedPerPlugin(): void
+    {
+        $this->writeAddon('iframe', 'index.html');
+        mkdir($this->root.'/dev', 0700, true);
+        file_put_contents($this->root.'/dev/demo-addon.json', '{invalid');
+
+        $resolved = $this->registry(
+            new TrustPolicy(),
+            new FrontendDevelopmentStore($this->root.'/dev', 'testing'),
+        )->resolve([['key' => 'demo-addon.page']]);
+
+        self::assertSame([], $resolved['plugins']);
+        self::assertSame('frontend_development_registration_invalid', $resolved['errors'][0]['error_code']);
+    }
+
+    private function registry(TrustPolicy $trustPolicy, ?FrontendDevelopmentStore $development = null): FrontendRegistry
     {
         $lifecycle = new LifecycleStore($this->lifecyclePath);
         $verifier = new ManifestVerifier('0.1.0', 1, $trustPolicy);
@@ -106,31 +150,51 @@ final class FrontendRegistryTest extends TestCase
             $verifier,
             $trustPolicy,
             $lifecycle,
+            $development ?? new FrontendDevelopmentStore($this->root.'/dev', 'production'),
             $this->addonsPath,
             $this->publicPath,
             'admintest',
-            ['admin-v1'],
+            'ptadmin',
+            ['v1'],
             ['admin-v1'],
             ['schema.runtime'],
         );
     }
 
-    private function writeAddon(string $sandbox, string $entry, bool $localTrusted = false): void
+    private function writeAddon(
+        string $sandbox,
+        string $entry,
+        bool $localTrusted = false,
+        bool $withDesignFlow = false,
+    ): void
     {
         $directory = $this->addonsPath.'/demo-addon';
         mkdir($directory.'/Frontend/dist', 0700, true);
         $descriptor = [
-            'host_api' => 'admin-v1',
+            'host_api' => 'v1',
             'runtime_profile' => 'admin-v1',
             'entries' => [[
                 'key' => 'demo-addon.page',
                 'title' => 'Demo Page',
                 'entry' => $entry,
                 'sandbox' => $sandbox,
-                'permissions' => ['demo-addon.page.view'],
                 'capabilities' => ['schema.runtime'],
             ]],
         ];
+        if ($withDesignFlow) {
+            $descriptor['design_flows'] = [[
+                'id' => 'demo-addon.schema',
+                'target' => 'schema.designer',
+                'permission' => 'schema.resources.update',
+                'steps' => [[
+                    'id' => 'review',
+                    'title' => '发布检查',
+                    'mount' => [
+                        'frontend_contribution' => ['contribution' => 'demo-addon.review'],
+                    ],
+                ]],
+            ]];
+        }
         file_put_contents(
             $directory.'/Frontend/frontend.json',
             json_encode($descriptor, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)
