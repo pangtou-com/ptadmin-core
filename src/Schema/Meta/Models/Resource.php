@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $id
  * @property string $resource_key
  * @property string $table_name
+ * @property string $design_flow_id
  * @property string $status
  * @property int|null $active_version_id
  */

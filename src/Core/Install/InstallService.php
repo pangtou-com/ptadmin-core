@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Hash;
 use PTAdmin\Admin\Models\Admin;
 use PTAdmin\Admin\Navigation\MenuSynchronizer;
 use PTAdmin\Core\Config\ConfigService;
+use PTAdmin\Core\Dictionary\DictionarySynchronizer;
 use PTAdmin\Core\Http\AdminFrontendRouteRegistrar;
 use PTAdmin\Core\Install\Exceptions\InvalidInstallStateException;
 use PTAdmin\Schema\SchemaFile\SchemaFileSynchronizer;
@@ -31,6 +32,7 @@ final class InstallService
         private AdminFrontendRouteRegistrar $frontendRoutes,
         private AdminFrontendPublisher $frontend,
         private ConfigService $configs,
+        private DictionarySynchronizer $dictionaries,
         private SchemaSourceDiscovery $schemaSources,
         private SchemaFileSynchronizer $schemaSynchronizer,
         private MenuSynchronizer $menus,
@@ -104,6 +106,8 @@ final class InstallService
             ]));
             $this->progress($progress, 'config_ready');
 
+            $dictionaryDefinitions = $this->syncDictionaryDefinitions();
+
             $this->progress($progress, 'admin_creating');
             $result = DB::transaction(function () use ($username, $password, $nickname, $email, $mobile): array {
                 $admin = $this->resolveFounder($username, $password, $nickname, $email, $mobile);
@@ -151,6 +155,7 @@ final class InstallService
 
             return $result + [
                 'config_definitions' => $configDefinitions,
+                'dictionary_definitions' => $dictionaryDefinitions,
                 'frontend' => $frontend,
                 'web_prefix' => $webPrefix,
                 'database' => [
@@ -198,6 +203,12 @@ final class InstallService
         }
 
         return count($definitions);
+    }
+
+    /** 在数据库迁移后幂等同步 Core 内置字典声明。 */
+    public function syncDictionaryDefinitions(): int
+    {
+        return $this->dictionaries->syncCore();
     }
 
     /** @param array<string, mixed> $input */

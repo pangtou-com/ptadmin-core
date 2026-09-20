@@ -24,7 +24,7 @@
         "title": "管理员",
         "type": "schema",
         "parent_key": "admin",
-        "target_resource_key": "admin.management_users",
+        "target_resource_key": "admin.admin_users",
         "path": "/admin/users",
         "is_menu": true,
         "status": true,
@@ -33,10 +33,10 @@
     },
     {
         "resource_key": "admin.roles",
-        "title": "角色权限",
+        "title": "角色管理",
         "type": "schema",
         "parent_key": "admin",
-        "target_resource_key": "admin.management_roles",
+        "target_resource_key": "admin.admin_roles",
         "path": "/admin/roles",
         "is_menu": true,
         "status": true,
@@ -45,10 +45,10 @@
     },
     {
         "resource_key": "admin.menus",
-        "title": "菜单管理",
+        "title": "后台导航",
         "type": "schema",
         "parent_key": "admin",
-        "target_resource_key": "admin.management_menus",
+        "target_resource_key": "admin.admin_resources",
         "path": "/admin/menus",
         "is_menu": true,
         "status": true,
@@ -59,12 +59,37 @@
         "resource_key": "admin.logs",
         "title": "日志中心",
         "type": "page",
+        "parent_key": "admin",
         "page_key": "logs.center",
         "path": "/admin/logs",
         "is_menu": true,
         "status": true,
         "sort": 40,
         "icon": "scroll-text"
+    },
+    {
+        "resource_key": "admin.dictionaries",
+        "title": "数据字典",
+        "type": "page",
+        "parent_key": "admin",
+        "page_key": "dictionary.center",
+        "path": "/admin/dictionaries",
+        "is_menu": true,
+        "status": true,
+        "sort": 50,
+        "icon": "book-open-text"
+    },
+    {
+        "resource_key": "admin.config",
+        "title": "系统配置",
+        "type": "page",
+        "parent_key": "admin",
+        "page_key": "settings.center",
+        "path": "/settings",
+        "is_menu": true,
+        "status": true,
+        "sort": 60,
+        "icon": "settings"
     },
     {
         "resource_key": "admin.notifications",
@@ -91,109 +116,10 @@
         "icon": "file-text"
     },
     {
-        "resource_key": "admin.management_users",
-        "title": "管理员数据管理",
-        "type": "schema",
-        "parent_key": "admin.users",
-        "target_resource_key": "admin.management_users",
-        "is_menu": false,
-        "status": true,
-        "sort": 10
-    },
-    {
-        "resource_key": "admin.management_roles",
-        "title": "角色数据管理",
-        "type": "schema",
-        "parent_key": "admin.roles",
-        "target_resource_key": "admin.management_roles",
-        "is_menu": false,
-        "status": true,
-        "sort": 10
-    },
-    {
-        "resource_key": "admin.management_menus",
-        "title": "权限资源数据管理",
-        "type": "schema",
-        "parent_key": "admin.menus",
-        "target_resource_key": "admin.management_menus",
-        "is_menu": false,
-        "status": true,
-        "sort": 10
-    },
-    {
-        "resource_key": "admin.login_logs",
-        "title": "登录日志查询",
-        "type": "schema",
-        "parent_key": "admin.logs",
-        "target_resource_key": "admin.login_logs",
-        "is_menu": false,
-        "status": true,
-        "sort": 10
-    },
-    {
-        "resource_key": "admin.operation_records",
-        "title": "操作记录查询",
-        "type": "schema",
-        "parent_key": "admin.logs",
-        "target_resource_key": "admin.operation_records",
-        "is_menu": false,
-        "status": true,
-        "sort": 20
-    },
-    {
-        "resource_key": "admin.notification_scenes",
-        "title": "通知场景数据管理",
-        "type": "schema",
-        "parent_key": "admin.notifications",
-        "target_resource_key": "admin.notification_scenes",
-        "is_menu": false,
-        "status": true,
-        "sort": 10
-    },
-    {
-        "resource_key": "admin.notification_messages",
-        "title": "通知消息查询",
-        "type": "schema",
-        "parent_key": "admin.notifications",
-        "target_resource_key": "admin.notification_messages",
-        "is_menu": false,
-        "status": true,
-        "sort": 30
-    },
-    {
-        "resource_key": "admin.notification_receipts",
-        "title": "通知回执查询",
-        "type": "schema",
-        "parent_key": "admin.notifications",
-        "target_resource_key": "admin.notification_receipts",
-        "is_menu": false,
-        "status": true,
-        "sort": 40
-    },
-    {
-        "resource_key": "admin.notification_deliveries",
-        "title": "通知投递记录查询",
-        "type": "schema",
-        "parent_key": "admin.notifications",
-        "target_resource_key": "admin.notification_deliveries",
-        "is_menu": false,
-        "status": true,
-        "sort": 50
-    },
-    {
-        "resource_key": "admin.dashboard_widgets",
-        "title": "仪表盘组件配置",
-        "type": "schema",
-        "parent_key": "dashboard",
-        "target_resource_key": "admin.dashboard_widgets",
-        "is_menu": false,
-        "status": true,
-        "sort": 10
-    },
-    {
         "resource_key": "schema.resources",
         "title": "Schema 资源",
         "type": "page",
+        "parent_key": "admin",
         "page_key": "schema.design",
         "path": "/schema/resources",
         "is_menu": true,
@@ -202,13 +128,28 @@
         "icon": "blocks"
     },
     {
-        "resource_key": "admin.config",
-        "title": "系统配置",
+        "resource_key": "assets",
+        "title": "资源中心",
         "type": "page",
-        "page_key": "settings.center",
-        "is_menu": false,
+        "parent_key": "admin",
+        "page_key": "asset.center",
+        "path": "/assets",
+        "is_menu": true,
         "status": true,
-        "sort": 10
+        "sort": 30,
+        "icon": "images"
+    },
+    {
+        "resource_key": "themes",
+        "title": "主题管理",
+        "type": "page",
+        "parent_key": "admin",
+        "page_key": "theme.center",
+        "path": "/themes",
+        "is_menu": true,
+        "status": true,
+        "sort": 40,
+        "icon": "palette"
     },
     {
         "resource_key": "tasks",
@@ -220,31 +161,5 @@
         "status": true,
         "sort": 100,
         "icon": "list-checks"
-    },
-    {
-        "resource_key": "core.tasks",
-        "title": "后台任务",
-        "type": "group",
-        "is_menu": false,
-        "status": true,
-        "sort": 10
-    },
-    {
-        "resource_key": "core.update",
-        "title": "核心更新",
-        "type": "action",
-        "parent_key": "core.tasks",
-        "is_menu": false,
-        "status": true,
-        "sort": 10
-    },
-    {
-        "resource_key": "admin.frontend",
-        "title": "后台前端更新",
-        "type": "action",
-        "parent_key": "core.tasks",
-        "is_menu": false,
-        "status": true,
-        "sort": 20
     }
 ]

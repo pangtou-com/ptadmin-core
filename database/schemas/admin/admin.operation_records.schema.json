@@ -29,8 +29,8 @@
                 "persisted": true,
                 "readonly": true,
                 "listable": true,
-                "searchable": true,
-                "sortable": true
+                "searchable": false,
+                "sortable": false
             },
             {
                 "name": "request_id",

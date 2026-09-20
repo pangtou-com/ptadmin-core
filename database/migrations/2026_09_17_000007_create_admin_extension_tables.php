@@ -31,20 +31,23 @@ return new class() extends Migration {
         Schema::create('assets', static function (Blueprint $table): void {
             $table->id();
             $table->string('title', 255)->default('')->comment('资源展示名称');
-            $table->string('md5', 32)->default('')->comment('资源内容 MD5 摘要');
+            $table->string('original_title', 255)->default('')->comment('上传时的原始文件名称');
             $table->string('mime', 100)->default('')->comment('资源 MIME 类型');
             $table->string('suffix', 20)->default('')->comment('资源文件扩展名');
-            $table->string('driver', 50)->default('local')->comment('资源存储驱动');
             $table->unsignedBigInteger('size')->default(0)->comment('资源字节大小');
-            $table->string('path', 500)->default('')->comment('资源在存储驱动中的路径');
-            $table->string('groups', 50)->default('default')->comment('资源业务分组');
-            $table->unsignedInteger('quote')->default(0)->comment('资源引用计数');
+            $table->string('disk_code', 50)->comment('公开资源所在的文件系统磁盘编码');
+            $table->string('bucket', 100)->default('')->comment('对象存储 Bucket，本地磁盘保持为空');
+            $table->string('path', 500)->default('')->comment('资源在存储磁盘中的对象路径');
+            $table->string('group_code', 50)->default('default')->comment('资源中心业务分组编码');
+            $table->unsignedInteger('ref_count')->default(0)->comment('业务记录对该资源的引用次数');
+            $table->string('sha256', 64)->comment('资源内容 SHA-256 摘要');
+            $table->text('metadata_json')->nullable()->comment('存储服务返回的扩展元数据');
             $table->unsignedInteger('created_at')->default(0);
             $table->unsignedInteger('updated_at')->default(0);
             $table->unsignedInteger('deleted_at')->nullable();
-            $table->index(['driver', 'path']);
-            $table->index(['groups', 'created_at']);
-            $table->index('md5');
+            $table->index(['disk_code', 'path']);
+            $table->index(['group_code', 'created_at']);
+            $table->index('sha256');
         });
     }
 

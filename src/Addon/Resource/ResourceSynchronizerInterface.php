@@ -14,10 +14,10 @@ interface ResourceSynchronizerInterface
     /**
      * 同步插件当前声明，并停用同一插件先前存在但本次已移除的定义。
      *
-     * @return array{schemas:int,configs:int,admin_resources:int}
+     * @return array{schemas:int,configs:int,dicts:int,admin_resources:int}
      */
     public function sync(string $directory, string $code): array;
 
-    /** 停用插件拥有的 Schema、配置定义和菜单资源，不删除配置值或资源数据。 */
+    /** 停用插件拥有的 Schema、配置定义、字典和菜单资源，不删除配置值或资源数据。 */
     public function deactivate(string $code): void;
 }

@@ -62,6 +62,13 @@ return [
         'idle_minutes' => (int) env('PTADMIN_SESSION_IDLE_MINUTES', 30),
         'absolute_hours' => (int) env('PTADMIN_SESSION_ABSOLUTE_HOURS', 8),
     ],
+    'storage' => [
+        'public_disk' => env('PTADMIN_PUBLIC_UPLOAD_DISK', 'public'),
+        'private_disk' => env('PTADMIN_PRIVATE_UPLOAD_DISK', 'local'),
+        'public_directory' => env('PTADMIN_PUBLIC_UPLOAD_DIRECTORY', 'assets'),
+        'private_directory' => env('PTADMIN_PRIVATE_UPLOAD_DIRECTORY', 'private'),
+        'max_upload_kilobytes' => (int) env('PTADMIN_MAX_UPLOAD_KILOBYTES', 10240),
+    ],
     'install' => [
         'database_default' => 'mysql',
         'database_drivers' => ['sqlite', 'mysql'],

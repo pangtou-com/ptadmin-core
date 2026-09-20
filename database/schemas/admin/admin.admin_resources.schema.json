@@ -1,9 +1,9 @@
 {
-    "resource": "admin.management_menus",
+    "resource": "admin.admin_resources",
     "table_name": "admin_resources",
     "migration_owner": "domain",
     "schema": {
-        "name": "management_menus",
+        "name": "admin_resources",
         "title": "菜单与权限资源",
         "description": "以同一棵稳定资源树管理后台导航和服务端权限资源。",
         "features": {
@@ -305,7 +305,7 @@
                     }
                 ],
                 "reference": {
-                    "resource": "admin.management_menus",
+                    "resource": "admin.admin_resources",
                     "value_field": "resource_key",
                     "label_field": "title"
                 }

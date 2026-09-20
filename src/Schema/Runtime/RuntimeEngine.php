@@ -19,6 +19,7 @@ use PTAdmin\Schema\Contract\SchemaSnapshotQuery;
 use PTAdmin\Schema\Contract\UpdateInput;
 use PTAdmin\Schema\Definition\Schema;
 use PTAdmin\Schema\Contracts\SchemaAuthorizationInterface;
+use PTAdmin\Schema\Contracts\DictionaryResolverInterface;
 use PTAdmin\Schema\Contracts\SchemaScopeResolverInterface;
 use PTAdmin\Schema\Contracts\SchemaSubjectContextInterface;
 use PTAdmin\Schema\Meta\Models\Resource;
@@ -41,6 +42,7 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         ?RuntimeCacheStore $runtimeCache = null,
         ?RuntimeBindingExecutor $runtimeExecutor = null,
         ?RuntimeEventDispatcher $runtimeEvents = null,
+        ?DictionaryResolverInterface $dictionaryResolver = null,
     )
     {
         $this->authorization = $authorization;
@@ -51,6 +53,7 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         $this->runtimeCache = $runtimeCache;
         $this->runtimeExecutor = $runtimeExecutor;
         $this->runtimeEvents = $runtimeEvents;
+        $this->dictionaryResolver = $dictionaryResolver;
     }
 
     private ?SchemaAuthorizationInterface $authorization = null;
@@ -61,6 +64,7 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
     private ?RuntimeCacheStore $runtimeCache = null;
     private ?RuntimeBindingExecutor $runtimeExecutor = null;
     private ?RuntimeEventDispatcher $runtimeEvents = null;
+    private ?DictionaryResolverInterface $dictionaryResolver = null;
 
     /** @param array<string, mixed>|object $query */
     public function list(array|object $query): array
@@ -365,6 +369,17 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
             throw $this->error('invalid_input', 'relation field not found', ['field' => $query['field'] ?? '']);
         }
         $options = (array) ($field['options'] ?? []);
+        if (strtolower((string) ($options['mode'] ?? '')) === 'dictionary') {
+            $code = trim((string) (($options['dictionary'] ?? [])['code'] ?? ''));
+            if ($code === '' || $this->dictionaryResolver === null) {
+                throw $this->error('invalid_input', 'dictionary resolver is not available', ['field' => $query['field'] ?? '']);
+            }
+            try {
+                return $this->dictionaryResolver->candidates($code, $query, (string) ($field['type'] ?? 'string'));
+            } catch (\InvalidArgumentException $exception) {
+                throw $this->error('invalid_input', $exception->getMessage(), ['field' => $query['field'] ?? '', 'dictionary' => $code]);
+            }
+        }
         $reference = (array) ($field['reference'] ?? ($options['reference'] ?? []));
         if ($reference === [] && strtolower((string) ($options['mode'] ?? '')) === 'static') {
             $items = array_map(static fn (array $item): array => ['value' => $item['value'] ?? null, 'label' => (string) ($item['label'] ?? ''), 'disabled' => (bool) ($item['disabled'] ?? false)], (array) ($options['items'] ?? []));
@@ -830,7 +845,29 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
     private function validateOptions(mixed $value, array $field): void
     {
         $options = (array) ($field['options'] ?? []);
-        if (strtolower((string) ($options['mode'] ?? '')) !== 'static' || strtolower((string) ($options['value_policy'] ?? 'open')) !== 'closed') {
+        $mode = strtolower((string) ($options['mode'] ?? ''));
+        if ($mode === 'dictionary' && strtolower((string) ($options['value_policy'] ?? 'open')) === 'closed') {
+            $code = trim((string) (($options['dictionary'] ?? [])['code'] ?? ''));
+            if ($code === '' || $this->dictionaryResolver === null) {
+                throw $this->error('invalid_input', 'dictionary resolver is not available', ['field' => $field['name'] ?? '']);
+            }
+            try {
+                $this->dictionaryResolver->assertAllowed(
+                    $code,
+                    $value,
+                    !empty($field['multiple']),
+                    (string) ($field['type'] ?? 'string'),
+                );
+            } catch (\InvalidArgumentException $exception) {
+                throw $this->error('invalid_input', $exception->getMessage(), [
+                    'field' => $field['name'] ?? '',
+                    'dictionary' => $code,
+                ]);
+            }
+
+            return;
+        }
+        if ($mode !== 'static' || strtolower((string) ($options['value_policy'] ?? 'open')) !== 'closed') {
             return;
         }
         $allowed = [];

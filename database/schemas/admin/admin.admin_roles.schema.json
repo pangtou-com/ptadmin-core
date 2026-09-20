@@ -1,9 +1,9 @@
 {
-    "resource": "admin.management_roles",
+    "resource": "admin.admin_roles",
     "table_name": "admin_roles",
     "migration_owner": "domain",
     "schema": {
-        "name": "management_roles",
+        "name": "admin_roles",
         "title": "角色权限",
         "description": "管理角色及其资源动作授权。",
         "features": {

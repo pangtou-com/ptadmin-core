@@ -7,6 +7,7 @@ namespace PTAdmin\Admin\Http\Middleware;
 use Closure;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -31,14 +32,22 @@ final class RecordAdminOperationMiddleware
         }
         $route = $request->route();
         $resourceKey = (string) ($request->route('resource') ?? '');
+        if ($resourceKey === '' && $route instanceof Route) {
+            foreach ($route->gatherMiddleware() as $middleware) {
+                if (is_string($middleware) && str_starts_with($middleware, 'ptadmin.permission:')) {
+                    $resourceKey = explode(',', substr($middleware, strlen('ptadmin.permission:')), 2)[0];
+                    break;
+                }
+            }
+        }
         if ($resourceKey === '') {
-            $resourceKey = $route ? (string) $route->getName() : '';
+            $resourceKey = $route instanceof Route ? (string) $route->getName() : '';
         }
         $this->database->table('admin_operation_records')->insert([
             'admin_id' => (int) ($session['subject_id'] ?? 0),
             'request_id' => (string) $request->attributes->get('ptadmin.request_id', ''),
             'resource_key' => $resourceKey,
-            'action' => $route ? (string) $route->getName() : '',
+            'action' => $route instanceof Route ? (string) $route->getName() : '',
             'method' => $request->method(),
             'path' => $request->path(),
             'status_code' => $response->getStatusCode(),

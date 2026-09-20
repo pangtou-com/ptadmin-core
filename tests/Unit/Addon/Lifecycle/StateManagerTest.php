@@ -47,7 +47,7 @@ final class StateManagerTest extends TestCase
             {
                 $this->calls[] = ['sync', $directory, $code];
 
-                return ['schemas' => 0, 'configs' => 0, 'admin_resources' => 0];
+                return ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'admin_resources' => 0];
             }
 
             public function deactivate(string $code): void

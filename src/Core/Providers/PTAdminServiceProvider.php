@@ -36,6 +36,9 @@ use PTAdmin\Core\Install\AdminFrontendManifest;
 use PTAdmin\Core\Install\AdminFrontendPublisher;
 use PTAdmin\Core\Config\ConfigService;
 use PTAdmin\Core\Config\ConfigValueCodec;
+use PTAdmin\Core\Dictionary\DictionaryResolver;
+use PTAdmin\Core\Dictionary\DictionaryService;
+use PTAdmin\Core\Dictionary\DictionarySynchronizer;
 use PTAdmin\Core\Tasks\TaskEventLog;
 use PTAdmin\Core\Tasks\TaskManager;
 use PTAdmin\Core\Tasks\TaskStore;
@@ -70,6 +73,7 @@ use PTAdmin\Schema\Providers\SchemaServiceProvider;
 use PTAdmin\Schema\Contracts\SchemaAuthorizationInterface;
 use PTAdmin\Schema\Contracts\SchemaScopeResolverInterface;
 use PTAdmin\Schema\Contracts\SchemaSubjectContextInterface;
+use PTAdmin\Schema\Contracts\DictionaryResolverInterface;
 use PTAdmin\Schema\Runtime\RuntimeRegistry;
 use PTAdmin\Schema\Runtime\RuntimeCacheStore;
 use PTAdmin\Schema\Console\Commands\RuntimeCacheCommand;
@@ -106,6 +110,10 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app->singleton(InstallRequirementService::class);
         $this->app->singleton(ConfigValueCodec::class);
         $this->app->singleton(ConfigService::class);
+        $this->app->singleton(DictionaryService::class);
+        $this->app->singleton(DictionarySynchronizer::class);
+        $this->app->singleton(DictionaryResolver::class);
+        $this->app->alias(DictionaryResolver::class, DictionaryResolverInterface::class);
         $this->app->singleton(TaskStore::class, static function (): TaskStore {
             return new TaskStore((string) config('ptadmin.tasks.path', storage_path('app/ptadmin/tasks')));
         });

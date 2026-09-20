@@ -106,7 +106,7 @@ final class Installer
             $frontendSource = $target.'/Frontend/dist';
             // 数据库资源在事务内同步；文件与前端产物由外层 catch 使用目录备份执行补偿回滚。
             $activate = function () use ($target, $code, $manifest, $frontendSource, $webPrefix, $update): array {
-                $synced = $this->resourceSynchronizer?->sync($target, $code) ?? ['schemas' => 0, 'configs' => 0, 'admin_resources' => 0];
+                $synced = $this->resourceSynchronizer?->sync($target, $code) ?? ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'admin_resources' => 0];
                 $this->lifecycle->transition($code, 'ready', ['version' => $manifest['version'], 'manifest' => $manifest]);
                 $this->lifecycle->transition($code, 'active');
                 if (is_dir($frontendSource)) {

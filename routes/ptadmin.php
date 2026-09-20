@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use PTAdmin\Admin\Http\Controllers\AdminSessionController;
+use PTAdmin\Admin\Http\Controllers\AssetController;
 use PTAdmin\Admin\Http\Controllers\DashboardController;
+use PTAdmin\Admin\Http\Controllers\DictionaryController;
 use PTAdmin\Admin\Http\Controllers\LoginController;
 use PTAdmin\Admin\Http\Controllers\ProfileController;
+use PTAdmin\Admin\Http\Controllers\PublicDictionaryController;
 use PTAdmin\Core\Http\Controllers\AddonController;
 use PTAdmin\Core\Http\Controllers\AddonTaskController;
 use PTAdmin\Core\Http\Controllers\AdminFrontendController;
@@ -24,6 +27,11 @@ $authenticatedMiddleware = ['ptadmin.request-id', 'ptadmin.session', 'ptadmin.au
 Route::middleware('ptadmin.request-id')
     ->get($apiPrefix.'/bootstrap', BootstrapController::class)
     ->name('ptadmin.bootstrap');
+
+Route::middleware('ptadmin.request-id')
+    ->get($apiPrefix.'/public/dictionaries/{code}', [PublicDictionaryController::class, 'show'])
+    ->where('code', '[a-z][a-z0-9._-]{0,189}')
+    ->name('ptadmin.public.dictionaries.show');
 
 Route::middleware('ptadmin.request-id')
     ->post($apiPrefix.'/login', LoginController::class)
@@ -78,6 +86,60 @@ Route::middleware($authenticatedMiddleware)
             ->where('sessionId', '[A-Za-z0-9]{32}')
             ->name('revoke');
     });
+
+Route::middleware($authenticatedMiddleware)
+    ->prefix($apiPrefix.'/assets')
+    ->as('ptadmin.assets.')
+    ->group(static function (): void {
+        Route::get('/', [AssetController::class, 'index'])
+            ->middleware('ptadmin.permission:assets,view')
+            ->name('index');
+        Route::get('{id}', [AssetController::class, 'show'])
+            ->whereNumber('id')
+            ->middleware('ptadmin.permission:assets,view')
+            ->name('show');
+        Route::patch('{id}', [AssetController::class, 'update'])
+            ->whereNumber('id')
+            ->middleware('ptadmin.permission:assets,update')
+            ->name('update');
+        Route::delete('{id}', [AssetController::class, 'archive'])
+            ->whereNumber('id')
+            ->middleware('ptadmin.permission:assets,delete')
+            ->name('archive');
+        Route::post('{id}/restore', [AssetController::class, 'restore'])
+            ->whereNumber('id')
+            ->middleware('ptadmin.permission:assets,restore')
+            ->name('restore');
+    });
+
+Route::middleware($authenticatedMiddleware)
+    ->prefix($apiPrefix.'/dictionaries')
+    ->as('ptadmin.dictionaries.')
+    ->group(static function (): void {
+        Route::get('/', [DictionaryController::class, 'index'])
+            ->middleware('ptadmin.permission:admin.dictionaries,view')->name('index');
+        Route::post('/', [DictionaryController::class, 'store'])
+            ->middleware('ptadmin.permission:admin.dictionaries,create')->name('store');
+        Route::get('{code}', [DictionaryController::class, 'show'])
+            ->middleware('ptadmin.permission:admin.dictionaries,view')->name('show');
+        Route::put('{code}', [DictionaryController::class, 'update'])
+            ->middleware('ptadmin.permission:admin.dictionaries,update')->name('update');
+        Route::delete('{code}', [DictionaryController::class, 'destroy'])
+            ->middleware('ptadmin.permission:admin.dictionaries,delete')->name('destroy');
+        Route::get('{code}/entries', [DictionaryController::class, 'entries'])
+            ->middleware('ptadmin.permission:admin.dictionaries,view')->name('entries.index');
+        Route::post('{code}/entries', [DictionaryController::class, 'storeEntry'])
+            ->middleware('ptadmin.permission:admin.dictionaries,create')->name('entries.store');
+        Route::put('{code}/entries/{id}', [DictionaryController::class, 'updateEntry'])
+            ->middleware('ptadmin.permission:admin.dictionaries,update')->whereNumber('id')->name('entries.update');
+        Route::delete('{code}/entries/{id}', [DictionaryController::class, 'destroyEntry'])
+            ->middleware('ptadmin.permission:admin.dictionaries,delete')->whereNumber('id')->name('entries.destroy');
+    });
+
+Route::middleware($authenticatedMiddleware)
+    ->post($apiPrefix.'/storage/upload', [AssetController::class, 'upload'])
+    ->middleware('ptadmin.permission:assets,upload')
+    ->name('ptadmin.storage.upload');
 
 Route::middleware($authenticatedMiddleware)
     ->prefix($apiPrefix.'/config')

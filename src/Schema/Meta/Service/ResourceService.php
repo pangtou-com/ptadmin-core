@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use PTAdmin\Schema\Contract\BeginDraftEditResult;
 use PTAdmin\Schema\Contract\CreateResourceInput;
 use PTAdmin\Schema\Contract\CreateResourceResult;
+use PTAdmin\Schema\Contract\DesignFlowRef;
 use PTAdmin\Schema\Contract\GetActiveVersionResult;
 use PTAdmin\Schema\Contract\GetDraftSchemaResult;
 use PTAdmin\Schema\Contract\GetResourceResult;
@@ -393,6 +394,14 @@ final class ResourceService implements \PTAdmin\Schema\Contracts\ResourceService
     {
         $active = $resource->versions()->where('status', 'active')->first();
         $draft = $resource->versions()->where('status', 'draft')->first();
-        return new ResourceInfo(['id' => (int) $resource->id, 'resource_key' => $resource->resource_key, 'namespace' => $resource->namespace, 'name' => $resource->name, 'table_name' => $resource->table_name, 'migration_owner' => $resource->migration_owner, 'title' => $resource->title, 'description' => $resource->description, 'source_type' => $resource->source_type, 'owner_type' => $resource->owner_type, 'owner_code' => $resource->owner_code, 'status' => $resource->status, 'active_version_id' => (int) $resource->active_version_id, 'active_version' => $active ? ['version_id' => (int) $active->id] : null, 'has_unpublished_changes' => $active && $draft ? $active->checksum !== $draft->checksum : false, 'created_at' => $resource->created_at, 'updated_at' => $resource->updated_at]);
+        $designFlow = null;
+        $designFlowId = trim((string) $resource->design_flow_id);
+        if ($designFlowId !== '' && str_contains($designFlowId, ':')) {
+            [$plugin, $id] = explode(':', $designFlowId, 2);
+            if ($plugin !== '' && $id !== '') {
+                $designFlow = new DesignFlowRef(['plugin' => $plugin, 'id' => $id]);
+            }
+        }
+        return new ResourceInfo(['id' => (int) $resource->id, 'resource_key' => $resource->resource_key, 'namespace' => $resource->namespace, 'name' => $resource->name, 'table_name' => $resource->table_name, 'migration_owner' => $resource->migration_owner, 'title' => $resource->title, 'description' => $resource->description, 'source_type' => $resource->source_type, 'owner_type' => $resource->owner_type, 'owner_code' => $resource->owner_code, 'design_flow' => $designFlow, 'status' => $resource->status, 'active_version_id' => (int) $resource->active_version_id, 'active_version' => $active ? ['version_id' => (int) $active->id] : null, 'has_unpublished_changes' => $active && $draft ? $active->checksum !== $draft->checksum : false, 'created_at' => $resource->created_at, 'updated_at' => $resource->updated_at]);
     }
 }

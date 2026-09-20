@@ -1,9 +1,9 @@
 {
-    "resource": "admin.management_users",
+    "resource": "admin.admin_users",
     "table_name": "admins",
     "migration_owner": "domain",
     "schema": {
-        "name": "management_users",
+        "name": "admin_users",
         "title": "管理员",
         "description": "管理后台登录账号、角色和直接授权。",
         "features": {
@@ -268,7 +268,7 @@
                 "formable": true,
                 "listable": false,
                 "reference": {
-                    "resource": "admin.management_roles",
+                    "resource": "admin.admin_roles",
                     "value_field": "id",
                     "label_field": "name"
                 }

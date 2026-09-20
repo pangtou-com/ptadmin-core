@@ -16,16 +16,16 @@ final class RuntimeRegistryTest extends TestCase
     {
         $registry = new RuntimeRegistry();
         $registry->forOwner('core', 'ptadmin')
-            ->resource('admin.management_users')
+            ->resource('admin.admin_users')
             ->hook('create.prepare', RuntimeHandler::class, 'prepare', 100)
             ->action('sync_roles', RuntimeHandler::class, 'action')
             ->event('created', RuntimeHandler::class, 'event', EventMode::Queued);
         $registry->forOwner('app', 'host')
-            ->resource('admin.management_users')
+            ->resource('admin.admin_users')
             ->hook('output.transform', RuntimeHandler::class, 'output');
 
         $snapshot = $registry->build();
-        $resource = $snapshot->toArray()['resources']['admin.management_users'];
+        $resource = $snapshot->toArray()['resources']['admin.admin_users'];
 
         self::assertSame('ptadmin', $resource['hooks']['create.prepare'][0]['owner']['code']);
         self::assertSame('host', $resource['hooks']['output.transform'][0]['owner']['code']);

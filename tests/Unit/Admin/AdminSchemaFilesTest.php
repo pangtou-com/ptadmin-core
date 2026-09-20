@@ -9,19 +9,19 @@ use PTAdmin\Schema\SchemaFile\Loader;
 
 final class AdminSchemaFilesTest extends TestCase
 {
-    /** @var array<string, string> */
+    /** @var array<string, array{table:string,name:string}> */
     private const RESOURCES = [
-        'admin.dashboard_widgets' => 'admin_dashboard_widgets',
-        'admin.login_logs' => 'admin_login_logs',
-        'admin.management_menus' => 'admin_resources',
-        'admin.management_roles' => 'admin_roles',
-        'admin.management_users' => 'admins',
-        'admin.notification_deliveries' => 'notification_deliveries',
-        'admin.notification_messages' => 'notification_messages',
-        'admin.notification_receipts' => 'notification_receipts',
-        'admin.notification_scenes' => 'notification_scenes',
-        'admin.notification_templates' => 'notification_templates',
-        'admin.operation_records' => 'admin_operation_records',
+        'admin.dashboard_widgets' => ['table' => 'admin_dashboard_widgets', 'name' => 'dashboard_widgets'],
+        'admin.login_logs' => ['table' => 'admin_login_logs', 'name' => 'login_logs'],
+        'admin.admin_resources' => ['table' => 'admin_resources', 'name' => 'admin_resources'],
+        'admin.admin_roles' => ['table' => 'admin_roles', 'name' => 'admin_roles'],
+        'admin.admin_users' => ['table' => 'admins', 'name' => 'admin_users'],
+        'admin.notification_deliveries' => ['table' => 'notification_deliveries', 'name' => 'notification_deliveries'],
+        'admin.notification_messages' => ['table' => 'notification_messages', 'name' => 'notification_messages'],
+        'admin.notification_receipts' => ['table' => 'notification_receipts', 'name' => 'notification_receipts'],
+        'admin.notification_scenes' => ['table' => 'notification_scenes', 'name' => 'notification_scenes'],
+        'admin.notification_templates' => ['table' => 'notification_templates', 'name' => 'notification_templates'],
+        'admin.operation_records' => ['table' => 'admin_operation_records', 'name' => 'operation_records'],
     ];
 
     public function testAdminResourcesAreValidBuiltinSchemaFiles(): void
@@ -39,7 +39,8 @@ final class AdminSchemaFilesTest extends TestCase
 
             self::assertArrayHasKey($resourceKey, self::RESOURCES);
             self::assertSame($resourceKey.'.schema.json', basename($path));
-            self::assertSame(self::RESOURCES[$resourceKey], $definition['table_name']);
+            self::assertSame(self::RESOURCES[$resourceKey]['table'], $definition['table_name']);
+            self::assertSame(self::RESOURCES[$resourceKey]['name'], $definition['schema']->name);
             self::assertSame('domain', $definition['migration_owner']);
             self::assertSame(['resource', 'table_name', 'migration_owner', 'schema'], array_keys($definition['metadata']));
             self::assertSame([], $definition['schema']->validate());
@@ -48,7 +49,7 @@ final class AdminSchemaFilesTest extends TestCase
 
     public function testMenuManagementUsesTheGenericTreeResourcePage(): void
     {
-        $path = dirname(__DIR__, 3).'/database/schemas/admin/admin.management_menus.schema.json';
+        $path = dirname(__DIR__, 3).'/database/schemas/admin/admin.admin_resources.schema.json';
         $definition = (new Loader())->resourceFromFile($path)['schema']->toArray();
         $page = $definition['views']['page'];
         $table = $definition['views']['tables']['default'];

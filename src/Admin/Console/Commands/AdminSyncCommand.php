@@ -16,7 +16,7 @@ final class AdminSyncCommand extends Command
 {
     protected $signature = 'ptadmin:admin:sync';
 
-    protected $description = '在数据库迁移后同步 PTAdmin 内置 Schema、配置和权限资源';
+    protected $description = '在数据库迁移后同步 PTAdmin 内置 Schema、配置、字典和权限资源';
 
     public function __construct(
         private SchemaSourceDiscovery $schemaSources,
@@ -28,7 +28,7 @@ final class AdminSyncCommand extends Command
 
     public function handle(): int
     {
-        foreach (['admins', 'admin_resources', 'admin_roles', 'schema_resources', 'ptadmin_config_definitions'] as $table) {
+        foreach (['admins', 'admin_resources', 'admin_roles', 'schema_resources', 'ptadmin_config_definitions', 'admin_dicts', 'admin_dict_items'] as $table) {
             if (!Schema::hasTable($table)) {
                 $this->error(sprintf('缺少数据表 %s，请先执行 php artisan migrate。', $table));
 
@@ -52,6 +52,7 @@ final class AdminSyncCommand extends Command
             }
             $authorization = $this->install->syncAuthorizationResources();
             $configDefinitions = $this->install->syncConfigDefinitions();
+            $dictionaryDefinitions = $this->install->syncDictionaryDefinitions();
         } catch (Throwable $exception) {
             $this->error('后台内置资源同步失败：'.$exception->getMessage());
 
@@ -59,10 +60,11 @@ final class AdminSyncCommand extends Command
         }
 
         $this->info(sprintf(
-            '后台内置资源同步完成：Schema %d 个，权限资源 %d 个，配置定义 %d 个。',
+            '后台内置资源同步完成：Schema %d 个，权限资源 %d 个，配置定义 %d 个，字典定义 %d 个。',
             count($schemaResources),
             $authorization['resource_count'],
             $configDefinitions,
+            $dictionaryDefinitions,
         ));
 
         return self::SUCCESS;

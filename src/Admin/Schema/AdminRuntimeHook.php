@@ -38,7 +38,7 @@ final class AdminRuntimeHook
         ], true) ? time() : now();
         $prepared['created_at'] = $timestamp;
         $prepared['updated_at'] = $timestamp;
-        if ($resourceKey === 'admin.management_users') {
+        if ($resourceKey === 'admin.admin_users') {
             if (Admin::query()->where('username', (string) ($prepared['username'] ?? ''))->exists()) {
                 throw $this->error('username_conflict', '管理员用户名已经存在。', ['field' => 'username']);
             }
@@ -49,13 +49,13 @@ final class AdminRuntimeHook
             $prepared['password'] = Hash::make($password);
             $prepared['is_founder'] = false;
         }
-        if ($resourceKey === 'admin.management_roles') {
+        if ($resourceKey === 'admin.admin_roles') {
             if (AdminRole::query()->where('code', (string) ($prepared['code'] ?? ''))->exists()) {
                 throw $this->error('role_code_conflict', '角色编码已经存在。', ['field' => 'code']);
             }
             $prepared['is_system'] = false;
         }
-        if ($resourceKey === 'admin.management_menus') {
+        if ($resourceKey === 'admin.admin_resources') {
             if (AdminResource::query()->where('resource_key', (string) ($prepared['resource_key'] ?? ''))->exists()) {
                 throw $this->error('resource_key_conflict', '权限资源编码已经存在。', ['field' => 'resource_key']);
             }
@@ -73,9 +73,9 @@ final class AdminRuntimeHook
     public function created(RuntimeHookContext $context): void
     {
         [$resourceKey, $input, $schema, $id] = $this->contextValues($context, true);
-        if ($resourceKey === 'admin.management_users') {
+        if ($resourceKey === 'admin.admin_users') {
             $this->syncUserRelations($id, $input);
-        } elseif ($resourceKey === 'admin.management_roles') {
+        } elseif ($resourceKey === 'admin.admin_roles') {
             $this->syncRolePermissions($id, $input['permissions'] ?? []);
         }
     }
@@ -89,7 +89,7 @@ final class AdminRuntimeHook
             'admin.notification_scenes',
             'admin.notification_templates',
         ], true) ? time() : now();
-        if ($resourceKey === 'admin.management_users') {
+        if ($resourceKey === 'admin.admin_users') {
             $admin = Admin::query()->findOrFail($id);
             if ($admin->is_founder && array_key_exists('status', $input) && !(bool) $input['status']) {
                 throw $this->error('founder_protected', '创始人账号不能被禁用。', ['id' => $id]);
@@ -105,7 +105,7 @@ final class AdminRuntimeHook
                 }
                 $prepared['password'] = Hash::make($password);
             }
-        } elseif ($resourceKey === 'admin.management_roles') {
+        } elseif ($resourceKey === 'admin.admin_roles') {
             $role = AdminRole::query()->findOrFail($id);
             if (array_key_exists('code', $input) && (string) $input['code'] !== (string) $role->code) {
                 throw $this->error('role_code_immutable', '角色编码创建后不能修改。', ['id' => $id]);
@@ -116,7 +116,7 @@ final class AdminRuntimeHook
             )) {
                 throw $this->error('system_role_protected', '系统角色标记和状态不能修改。', ['id' => $id]);
             }
-        } elseif ($resourceKey === 'admin.management_menus') {
+        } elseif ($resourceKey === 'admin.admin_resources') {
             $resource = AdminResource::query()->findOrFail($id);
             if (array_key_exists('resource_key', $input) && (string) $input['resource_key'] !== (string) $resource->resource_key) {
                 throw $this->error('resource_key_immutable', '权限资源编码创建后不能修改。', ['id' => $id]);
@@ -135,12 +135,12 @@ final class AdminRuntimeHook
     public function updated(RuntimeHookContext $context): void
     {
         [$resourceKey, $input, $schema, $id] = $this->contextValues($context, true);
-        if ($resourceKey === 'admin.management_users') {
+        if ($resourceKey === 'admin.admin_users') {
             $this->syncUserRelations($id, $input);
             if (array_key_exists('status', $input) && !(bool) $input['status']) {
                 $this->sessions->revokeSubject(Admin::class, $id, 'admin');
             }
-        } elseif ($resourceKey === 'admin.management_roles' && array_key_exists('permissions', $input)) {
+        } elseif ($resourceKey === 'admin.admin_roles' && array_key_exists('permissions', $input)) {
             $this->syncRolePermissions($id, $input['permissions']);
         }
     }
@@ -149,18 +149,18 @@ final class AdminRuntimeHook
     {
         [$resourceKey, , $schema, $id] = $this->contextValues($context, true);
         $this->assertWritable($resourceKey);
-        if ($resourceKey === 'admin.management_users') {
+        if ($resourceKey === 'admin.admin_users') {
             $admin = Admin::query()->findOrFail($id);
             if ($admin->is_founder) {
                 throw $this->error('founder_protected', '创始人账号不能删除。', ['id' => $id]);
             }
             $this->sessions->revokeSubject(Admin::class, $id, 'admin');
-        } elseif ($resourceKey === 'admin.management_roles') {
+        } elseif ($resourceKey === 'admin.admin_roles') {
             $role = AdminRole::query()->findOrFail($id);
             if ($role->is_system) {
                 throw $this->error('system_role_protected', '系统角色不能删除。', ['id' => $id]);
             }
-        } elseif ($resourceKey === 'admin.management_menus') {
+        } elseif ($resourceKey === 'admin.admin_resources') {
             $resource = AdminResource::query()->findOrFail($id);
             $this->assertResourceCanBeRemoved($resource);
         }
@@ -169,10 +169,10 @@ final class AdminRuntimeHook
     public function deleted(RuntimeHookContext $context): void
     {
         [$resourceKey, , $schema, $id] = $this->contextValues($context, true);
-        if ($resourceKey === 'admin.management_users') {
+        if ($resourceKey === 'admin.admin_users') {
             $this->database->table('admin_user_roles')->where('admin_id', $id)->delete();
             $this->database->table('admin_grants')->where('subject_type', 'admin')->where('subject_id', (string) $id)->delete();
-        } elseif ($resourceKey === 'admin.management_roles') {
+        } elseif ($resourceKey === 'admin.admin_roles') {
             $this->database->table('admin_user_roles')->where('role_id', $id)->delete();
             $this->database->table('admin_grants')->where('subject_type', 'role')->where('subject_id', (string) $id)->delete();
         }
@@ -181,13 +181,13 @@ final class AdminRuntimeHook
     public function output(RuntimeHookContext $context, array $row): array
     {
         [$resourceKey, , $schema] = $this->contextValues($context);
-        if ($resourceKey === 'admin.management_users') {
+        if ($resourceKey === 'admin.admin_users') {
             unset($row['password']);
             $row['role_ids'] = $this->database->table('admin_user_roles')->where('admin_id', (int) ($row['id'] ?? 0))->pluck('role_id')->map(static fn ($id): int => (int) $id)->values()->all();
             $row['permissions'] = $this->permissionPayload('admin', (string) ($row['id'] ?? 0));
-        } elseif ($resourceKey === 'admin.management_roles') {
+        } elseif ($resourceKey === 'admin.admin_roles') {
             $row['permissions'] = $this->permissionPayload('role', (string) ($row['id'] ?? 0));
-        } elseif ($resourceKey === 'admin.management_menus') {
+        } elseif ($resourceKey === 'admin.admin_resources') {
             $meta = $this->decodeMeta($row['meta_json'] ?? null);
             unset($row['meta_json']);
             $row['target_resource_key'] = (string) ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '');
@@ -217,17 +217,17 @@ final class AdminRuntimeHook
         [$resourceKey, , $schema] = $this->contextValues($context);
         $action = (string) $context->actionKey;
         $id = (int) ($input['id'] ?? 0);
-        if ($resourceKey === 'admin.management_users' && $action === 'sync_roles') {
+        if ($resourceKey === 'admin.admin_users' && $action === 'sync_roles') {
             $this->admin($id);
             $this->syncUserRelations($id, (array) ($input['data'] ?? []));
             return ['id' => $id, 'role_ids' => $this->database->table('admin_user_roles')->where('admin_id', $id)->pluck('role_id')->map(static fn ($value): int => (int) $value)->values()->all()];
         }
-        if ($resourceKey === 'admin.management_users' && $action === 'sync_permissions') {
+        if ($resourceKey === 'admin.admin_users' && $action === 'sync_permissions') {
             $this->admin($id);
             $this->syncAdminPermissions($id, (array) (($input['data'] ?? [])['permissions'] ?? []));
             return ['id' => $id, 'permissions' => $this->permissionPayload('admin', (string) $id)];
         }
-        if ($resourceKey === 'admin.management_users' && $action === 'reset_password') {
+        if ($resourceKey === 'admin.admin_users' && $action === 'reset_password') {
             $this->admin($id);
             $password = (string) (($input['data'] ?? [])['password'] ?? '');
             if (strlen($password) < 6 || strlen($password) > 4096) {
@@ -237,16 +237,16 @@ final class AdminRuntimeHook
             $this->sessions->revokeSubject(Admin::class, $id, 'admin');
             return ['id' => $id, 'success' => true];
         }
-        if ($resourceKey === 'admin.management_users' && $action === 'revoke_sessions') {
+        if ($resourceKey === 'admin.admin_users' && $action === 'revoke_sessions') {
             $this->admin($id);
             return ['id' => $id, 'revoked' => $this->sessions->revokeSubject(Admin::class, $id, 'admin')];
         }
-        if ($resourceKey === 'admin.management_roles' && $action === 'sync_permissions') {
+        if ($resourceKey === 'admin.admin_roles' && $action === 'sync_permissions') {
             $this->role($id);
             $this->syncRolePermissions($id, (array) (($input['data'] ?? [])['permissions'] ?? []));
             return ['id' => $id, 'permissions' => $this->permissionPayload('role', (string) $id)];
         }
-        if ($resourceKey === 'admin.management_menus' && in_array($action, ['move_resource', 'move_menu'], true)) {
+        if ($resourceKey === 'admin.admin_resources' && in_array($action, ['move_resource', 'move_menu'], true)) {
             return $this->moveResource($id, (array) ($input['data'] ?? []), $schema);
         }
 
@@ -582,8 +582,11 @@ final class AdminRuntimeHook
 
         $builtinKeys = [
             'dashboard' => 'dashboard',
+            'asset.center' => 'assets',
             'settings.center' => 'admin.config',
+            'dictionary.center' => 'admin.dictionaries',
             'logs.center' => 'admin.logs',
+            'theme.center' => 'themes',
             'schema.design' => 'schema.resources',
             'task.center' => 'tasks',
         ];
@@ -686,7 +689,7 @@ final class AdminRuntimeHook
 
         $moved = AdminResource::query()->findOrFail($id)->getAttributes();
 
-        return ['id' => $id, 'item' => $this->output(new RuntimeHookContext('admin.management_menus', 'output.transform', $schema), $moved)];
+        return ['id' => $id, 'item' => $this->output(new RuntimeHookContext('admin.admin_resources', 'output.transform', $schema), $moved)];
     }
 
     private function assertResourceCanBeRemoved(AdminResource $resource): void
@@ -739,9 +742,10 @@ final class AdminRuntimeHook
     private function isCoreResource(string $resourceKey): bool
     {
         return in_array($resourceKey, [
-            'dashboard', 'admin.users', 'admin.roles', 'admin.menus', 'admin.logs',
+            'dashboard', 'assets', 'themes', 'admin.users', 'admin.roles', 'admin.menus', 'admin.logs',
+            'admin.dictionaries',
             'admin.notifications', 'admin.notification_templates',
-            'admin.management_users', 'admin.management_roles', 'admin.management_menus',
+            'admin.admin_users', 'admin.admin_roles', 'admin.admin_resources',
             'admin.dashboard_widgets', 'admin.notification_scenes', 'admin.notification_messages',
             'admin.notification_receipts', 'admin.notification_deliveries',
             'schema.resources', 'admin.config', 'tasks', 'core.tasks', 'core.update',
