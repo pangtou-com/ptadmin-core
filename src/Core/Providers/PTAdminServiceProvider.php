@@ -46,24 +46,26 @@ use PTAdmin\Core\Tasks\Executors\AdminFrontendUpdateExecutor;
 use PTAdmin\Core\Tasks\Executors\AddonTaskExecutor;
 use PTAdmin\Core\Console\Commands\TaskRunCommand;
 use PTAdmin\Core\Console\Commands\TaskRecoverCommand;
-use PTAdmin\Addon\AddonManifestVerifier;
-use PTAdmin\Addon\AddonLifecycleStore;
-use PTAdmin\Addon\AddonFrontendPublisher;
-use PTAdmin\Addon\AddonFrontendRegistry;
-use PTAdmin\Addon\AddonTrustPolicy;
-use PTAdmin\Addon\AddonPackageExtractor;
-use PTAdmin\Addon\AddonPackageDownloader;
-use PTAdmin\Addon\AddonInstaller;
-use PTAdmin\Addon\AddonResourceSynchronizer;
-use PTAdmin\Addon\AddonResourceSynchronizerInterface;
-use PTAdmin\Addon\AddonLock;
-use PTAdmin\Addon\AddonDiscovery;
-use PTAdmin\Addon\AddonRuntimeRegistrar;
-use PTAdmin\Addon\AddonRuntimeLifecycleValidator;
-use PTAdmin\Addon\AddonTemplateDirectiveRegistry;
-use PTAdmin\Addon\AddonTemplateRuntime;
-use PTAdmin\Addon\TemplateDirectiveArgumentParser;
-use PTAdmin\Addon\AddonStateManager;
+use PTAdmin\Addon\Manifest\ManifestVerifier;
+use PTAdmin\Addon\Lifecycle\LifecycleStore;
+use PTAdmin\Addon\Frontend\FrontendPublisher;
+use PTAdmin\Addon\Frontend\FrontendRegistry;
+use PTAdmin\Addon\Manifest\TrustPolicy;
+use PTAdmin\Addon\Package\PackageExtractor;
+use PTAdmin\Addon\Package\PackageDownloader;
+use PTAdmin\Addon\Lifecycle\Installer;
+use PTAdmin\Addon\Resource\ResourceSynchronizer;
+use PTAdmin\Addon\Resource\ResourceSynchronizerInterface;
+use PTAdmin\Addon\Lifecycle\OperationLock;
+use PTAdmin\Addon\Catalog\AddonCatalog;
+use PTAdmin\Addon\Runtime\RuntimeRegistrar;
+use PTAdmin\Addon\Runtime\RuntimeLifecycleValidator;
+use PTAdmin\Addon\Runtime\TemplateDirectiveLoader;
+use PTAdmin\Template\Builtin\BuiltinDirectiveProvider;
+use PTAdmin\Template\Directive\DirectiveRegistry;
+use PTAdmin\Template\Runtime\TemplateRenderer;
+use PTAdmin\Template\Parsing\DirectiveArgumentParser;
+use PTAdmin\Addon\Lifecycle\StateManager;
 use PTAdmin\Schema\Providers\SchemaServiceProvider;
 use PTAdmin\Schema\Contracts\SchemaAuthorizationInterface;
 use PTAdmin\Schema\Contracts\SchemaScopeResolverInterface;
@@ -122,107 +124,20 @@ final class PTAdminServiceProvider extends ServiceProvider
             $registry->register('addon.disable', $addonExecutor);
             return $registry;
         });
-        $this->app->singleton(AddonManifestVerifier::class, static function ($app): AddonManifestVerifier {
-            return new AddonManifestVerifier(
-                (string) $app['config']->get('ptadmin.backend_version', '0.1.0'),
-                (int) $app['config']->get('ptadmin.schema_protocol', 1),
-                $app->make(AddonTrustPolicy::class)
-            );
-        });
-        $this->app->singleton(AddonTrustPolicy::class, static function ($app): AddonTrustPolicy {
-            return new AddonTrustPolicy(
-                (array) $app['config']->get('ptadmin.addon.trust.keys', []),
-                (array) $app['config']->get('ptadmin.addon.trust.publishers', []),
-                (bool) $app['config']->get('ptadmin.addon.trust.allow_local', false),
-                (string) $app->environment()
-            );
-        });
-        $this->app->singleton(AddonLifecycleStore::class, static function (): AddonLifecycleStore {
-            return new AddonLifecycleStore(storage_path('app/ptadmin/addons'));
-        });
-        $this->app->singleton(AddonFrontendPublisher::class, static function (): AddonFrontendPublisher {
-            return new AddonFrontendPublisher(public_path());
-        });
-        $this->app->singleton(AddonFrontendRegistry::class, static function ($app): AddonFrontendRegistry {
-            return new AddonFrontendRegistry(
-                $app->make(AddonDiscovery::class),
-                $app->make(AddonManifestVerifier::class),
-                $app->make(AddonTrustPolicy::class),
-                $app->make(AddonLifecycleStore::class),
-                (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
-                public_path(),
-                (string) $app['config']->get('ptadmin.web_prefix', 'admin'),
-                (array) $app['config']->get('ptadmin.frontend.host_apis', ['admin-v1']),
-                (array) $app['config']->get('ptadmin.frontend.runtime_profiles', ['admin-v1']),
-                (array) $app['config']->get('ptadmin.frontend.capabilities', []),
-            );
-        });
-        $this->app->singleton(AddonPackageExtractor::class);
-        $this->app->singleton(AddonPackageDownloader::class);
-        $this->app->singleton(AddonResourceSynchronizer::class);
-        $this->app->alias(AddonResourceSynchronizer::class, AddonResourceSynchronizerInterface::class);
-        $this->app->singleton(AddonLock::class, static function (): AddonLock {
-            return new AddonLock(storage_path('app/ptadmin/addons/locks'));
-        });
-        $this->app->singleton(AddonDiscovery::class, static function ($app): AddonDiscovery {
-            return new AddonDiscovery(
-                (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
-                $app->make(AddonManifestVerifier::class),
-                $app->make(AddonLifecycleStore::class),
-                (bool) $app['config']->get('ptadmin.addon.require_signature', true)
-            );
-        });
-        $this->app->singleton(AddonRuntimeRegistrar::class, static function ($app): AddonRuntimeRegistrar {
-            return new AddonRuntimeRegistrar(
-                $app,
-                $app->make(AddonDiscovery::class),
-                $app->make(AddonLifecycleStore::class),
-                (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
-                $app->make(AddonTemplateDirectiveRegistry::class),
-                $app->make(RuntimeRegistry::class),
-            );
-        });
-        $this->app->singleton(AddonRuntimeLifecycleValidator::class);
-        $this->app->singleton(AddonTemplateDirectiveRegistry::class);
-        $this->app->singleton(TemplateDirectiveArgumentParser::class);
-        $this->app->singleton(AddonTemplateRuntime::class);
-        $this->app->singleton(AddonStateManager::class, static function ($app): AddonStateManager {
-            return new AddonStateManager(
-                (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
-                $app->make(AddonManifestVerifier::class),
-                $app->make(AddonLifecycleStore::class),
-                $app->make(AddonLock::class),
-                (bool) $app['config']->get('ptadmin.addon.require_signature', true),
-                $app->make(AddonResourceSynchronizerInterface::class),
-                $app->make(RuntimeCacheStore::class),
-                $app->make(AddonRuntimeLifecycleValidator::class),
-            );
-        });
+        $this->registerTemplateServices();
+        $this->registerAddonManifestServices();
+        $this->registerAddonFrontendServices();
+        $this->registerAddonRuntimeServices();
+        $this->registerAddonLifecycleServices();
         $this->app->singleton(SchemaFileLoader::class);
         $this->app->singleton(SchemaFileSynchronizer::class);
         $this->app->singleton(SchemaSourceDiscovery::class, static function ($app): SchemaSourceDiscovery {
             return new SchemaSourceDiscovery(
-                $app->make(AddonDiscovery::class),
+                $app->make(AddonCatalog::class),
                 (string) $app['config']->get('ptadmin-schema.sources.application_path', base_path('database/schemas')),
                 (string) $app['config']->get('ptadmin-schema.sources.core_path', __DIR__.'/../../../database/schemas'),
                 (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
                 (string) $app['config']->get('ptadmin-schema.sources.application_owner', 'host'),
-            );
-        });
-        $this->app->singleton(AddonInstaller::class, static function ($app): AddonInstaller {
-            return new AddonInstaller(
-                $app->make(AddonManifestVerifier::class),
-                $app->make(AddonPackageExtractor::class),
-                $app->make(AddonLifecycleStore::class),
-                $app->make(AddonFrontendPublisher::class),
-                (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
-                (string) $app['config']->get('ptadmin.addon.download_path', storage_path('app/ptadmin/addons/downloads')),
-                (bool) $app['config']->get('ptadmin.addon.require_signature', true),
-                $app->make(AddonResourceSynchronizer::class),
-                $app['db']->connection(),
-                $app->make(AddonLock::class),
-                $app->make(RuntimeCacheStore::class),
-                $app->make(AddonRuntimeLifecycleValidator::class),
             );
         });
         $this->app->singleton(AdminFrontendManifest::class, static function ($app): AdminFrontendManifest {
@@ -263,7 +178,7 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app->singleton(MenuSynchronizer::class, static function ($app): MenuSynchronizer {
             return new MenuSynchronizer(
                 $app['db'],
-                $app->make(AddonDiscovery::class),
+                $app->make(AddonCatalog::class),
                 __DIR__.'/../../../resources/menu.json',
                 (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
             );
@@ -272,6 +187,126 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app->singleton(SchemaAuthorizationInterface::class, SchemaAuthorizationBridge::class);
         $this->app->singleton(SchemaScopeResolverInterface::class, SchemaScopeResolver::class);
         $this->app->alias(SchemaSubjectContextInterface::class, 'ptadmin.schema.subject');
+    }
+
+    private function registerTemplateServices(): void
+    {
+        $this->app->singleton(DirectiveRegistry::class, static function (): DirectiveRegistry {
+            $registry = new DirectiveRegistry();
+            $registration = $registry->forNamespace('core');
+            (new BuiltinDirectiveProvider())->register($registration);
+            $registration->commit();
+
+            return $registry;
+        });
+        $this->app->singleton(DirectiveArgumentParser::class);
+        $this->app->singleton(TemplateRenderer::class);
+    }
+
+    private function registerAddonManifestServices(): void
+    {
+        $this->app->singleton(TrustPolicy::class, static function ($app): TrustPolicy {
+            return new TrustPolicy(
+                (array) $app['config']->get('ptadmin.addon.trust.keys', []),
+                (array) $app['config']->get('ptadmin.addon.trust.publishers', []),
+                (bool) $app['config']->get('ptadmin.addon.trust.allow_local', false),
+                (string) $app->environment()
+            );
+        });
+        $this->app->singleton(ManifestVerifier::class, static function ($app): ManifestVerifier {
+            return new ManifestVerifier(
+                (string) $app['config']->get('ptadmin.backend_version', '0.1.0'),
+                (int) $app['config']->get('ptadmin.schema_protocol', 1),
+                $app->make(TrustPolicy::class)
+            );
+        });
+        $this->app->singleton(PackageExtractor::class);
+        $this->app->singleton(PackageDownloader::class);
+    }
+
+    private function registerAddonFrontendServices(): void
+    {
+        $this->app->singleton(FrontendPublisher::class, static function (): FrontendPublisher {
+            return new FrontendPublisher(public_path());
+        });
+        $this->app->singleton(FrontendRegistry::class, static function ($app): FrontendRegistry {
+            return new FrontendRegistry(
+                $app->make(AddonCatalog::class),
+                $app->make(ManifestVerifier::class),
+                $app->make(TrustPolicy::class),
+                $app->make(LifecycleStore::class),
+                (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
+                public_path(),
+                (string) $app['config']->get('ptadmin.web_prefix', 'admin'),
+                (array) $app['config']->get('ptadmin.frontend.host_apis', ['admin-v1']),
+                (array) $app['config']->get('ptadmin.frontend.runtime_profiles', ['admin-v1']),
+                (array) $app['config']->get('ptadmin.frontend.capabilities', []),
+            );
+        });
+    }
+
+    private function registerAddonRuntimeServices(): void
+    {
+        $this->app->singleton(ResourceSynchronizer::class);
+        $this->app->alias(ResourceSynchronizer::class, ResourceSynchronizerInterface::class);
+        $this->app->singleton(AddonCatalog::class, static function ($app): AddonCatalog {
+            return new AddonCatalog(
+                (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
+                $app->make(ManifestVerifier::class),
+                $app->make(LifecycleStore::class),
+                (bool) $app['config']->get('ptadmin.addon.require_signature', true)
+            );
+        });
+        $this->app->singleton(TemplateDirectiveLoader::class);
+        $this->app->singleton(RuntimeRegistrar::class, static function ($app): RuntimeRegistrar {
+            return new RuntimeRegistrar(
+                $app,
+                $app->make(AddonCatalog::class),
+                $app->make(LifecycleStore::class),
+                (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
+                $app->make(TemplateDirectiveLoader::class),
+                $app->make(RuntimeRegistry::class),
+            );
+        });
+        $this->app->singleton(RuntimeLifecycleValidator::class);
+    }
+
+    private function registerAddonLifecycleServices(): void
+    {
+        $this->app->singleton(LifecycleStore::class, static function (): LifecycleStore {
+            return new LifecycleStore(storage_path('app/ptadmin/addons'));
+        });
+        $this->app->singleton(OperationLock::class, static function (): OperationLock {
+            return new OperationLock(storage_path('app/ptadmin/addons/locks'));
+        });
+        $this->app->singleton(StateManager::class, static function ($app): StateManager {
+            return new StateManager(
+                (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
+                $app->make(ManifestVerifier::class),
+                $app->make(LifecycleStore::class),
+                $app->make(OperationLock::class),
+                (bool) $app['config']->get('ptadmin.addon.require_signature', true),
+                $app->make(ResourceSynchronizerInterface::class),
+                $app->make(RuntimeCacheStore::class),
+                $app->make(RuntimeLifecycleValidator::class),
+            );
+        });
+        $this->app->singleton(Installer::class, static function ($app): Installer {
+            return new Installer(
+                $app->make(ManifestVerifier::class),
+                $app->make(PackageExtractor::class),
+                $app->make(LifecycleStore::class),
+                $app->make(FrontendPublisher::class),
+                (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
+                (string) $app['config']->get('ptadmin.addon.download_path', storage_path('app/ptadmin/addons/downloads')),
+                (bool) $app['config']->get('ptadmin.addon.require_signature', true),
+                $app->make(ResourceSynchronizer::class),
+                $app['db']->connection(),
+                $app->make(OperationLock::class),
+                $app->make(RuntimeCacheStore::class),
+                $app->make(RuntimeLifecycleValidator::class),
+            );
+        });
     }
 
     public function boot(): void
@@ -310,7 +345,7 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app['router']->aliasMiddleware('ptadmin.audit', RecordAdminOperationMiddleware::class);
         $this->loadRoutesFrom(__DIR__.'/../../../routes/ptadmin.php');
         if ((bool) $this->app['config']->get('ptadmin.addon.runtime.enabled', true)) {
-            $this->app->make(AddonRuntimeRegistrar::class)->register();
+            $this->app->make(RuntimeRegistrar::class)->register();
         }
         if (!$this->app->runningInConsole()) {
             return;

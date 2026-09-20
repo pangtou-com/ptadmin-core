@@ -4,19 +4,19 @@ parameters:
 			message: '#^Offset ''state'' on non\-empty\-array\<string, mixed\> on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 2
-			path: src/Addon/AddonDiscovery.php
+			path: src/Addon/Catalog/AddonCatalog.php
 
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Model\:\:\$resource_key\.$#'
 			identifier: property.notFound
 			count: 2
-			path: src/Addon/AddonResourceSynchronizer.php
+			path: src/Addon/Resource/ResourceSynchronizer.php
 
 		-
 			message: '#^Dead catch \- ReflectionException is never thrown in the try block\.$#'
 			identifier: catch.neverThrown
 			count: 1
-			path: src/Addon/AddonRuntimeRegistrar.php
+			path: src/Addon/Runtime/TemplateDirectiveLoader.php
 
 		-
 			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$avatar\.$#'

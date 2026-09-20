@@ -29,7 +29,7 @@ $app->make(RuntimeApplicationRegistrar::class)->register(
 );
 ```
 
-插件在 `manifest.json` 中声明 Runtime 入口，注册类必须实现 `AddonRuntimeRegistrarInterface`：
+插件在 `manifest.json` 中声明 Runtime 入口，注册类必须实现 `RuntimeRegistrarInterface`：
 
 ```json
 {

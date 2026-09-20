@@ -1,18 +1,21 @@
 # 前台模板指令协议交接
 
-本文档用于下一阶段继续实现 PTAdmin 前台模板指令运行时。交接范围仅包含 `ptadmin-core` 的 Addon 模板指令能力，不包含后台前端 API、Host API、插件前端模块加载或 CMS 业务接口。
+本文档记录 PTAdmin 前台模板指令运行时的协议和当前实现。范围仅包含 `ptadmin-core` 的通用 Template 能力及 Addon 指令接入，不包含后台前端 API、Host API、插件前端模块加载或 CMS 业务接口。
 
 ## 当前状态
 
-已完成协议讨论和文档收敛，尚未开始新的模板编译器和结构化运行时实现。
+结构化注册、参数解析和模板渲染运行时已经实现。通用能力位于 `PTAdmin\Template`，插件目录扫描和加载位于 `PTAdmin\Addon\Runtime`，Template 不反向依赖 Addon。
 
-当前 Core 已有以下基础类：
+当前主要实现入口：
 
-- `src/Addon/AddonTemplateDirectiveInterface.php`
-- `src/Addon/AddonTemplateDirectiveRegistry.php`
-- `src/Addon/AddonRuntimeRegistrar.php`
+- `src/Template/Directive/DirectiveRegistry.php`
+- `src/Template/Parsing/DirectiveArgumentParser.php`
+- `src/Template/Runtime/TemplateRenderer.php`
+- `src/Template/Builtin/BuiltinDirectiveProvider.php`
+- `src/Addon/Runtime/Contracts/TemplateDirectiveProviderInterface.php`
+- `src/Addon/Runtime/TemplateDirectiveLoader.php`
 
-现有实现仍按旧过渡方式从 `manifest.json` 的 `directives` 字段读取文件和类，并调用注册类。该实现只用于接口校验和迁移阶段，不能作为最终协议。
+Addon Runtime 固定扫描 `Directives/*.php`，在临时 Registry 完成插件级注册后一次性合并到全局 Registry；`manifest.json` 不声明 `directives` 字段。
 
 ## 已确认的正式协议
 
@@ -28,7 +31,7 @@ addons/{Code}/Directives/*.php
 
 - 只扫描这一层目录，不递归扫描插件其他目录。
 - 按文件路径排序后加载，保证注册顺序稳定。
-- 只有实现 `AddonTemplateDirectiveInterface` 的类才是指令注册类。
+- 只有实现 `TemplateDirectiveProviderInterface` 的类才是指令注册类。
 - `Directives/` 中的一个类可以注册多个指令。
 - 辅助类放在 `Support/` 等其他目录，不放在 `Directives/` 中。
 - 没有 `Directives/` 目录的插件表示没有模板指令，不视为错误。
@@ -239,10 +242,10 @@ files   -> 多个 <a>
 一个注册类可以定义多个指令：
 
 ```php
-final class CmsTemplateDirectives implements AddonTemplateDirectiveInterface
+final class CmsTemplateDirectives implements TemplateDirectiveProviderInterface
 {
     public function register(
-        AddonTemplateDirectiveRegistration $registration,
+        DirectiveRegistration $registration,
         array $manifest,
     ): void {
         $registration
@@ -266,39 +269,23 @@ final class CmsTemplateDirectives implements AddonTemplateDirectiveInterface
 
 上例由 Core 自动生成 `cms_articles` 和 `cms_banner`。最终 API 命名可以在实现时调整，但不能改变上述语义。
 
-## 当前代码与协议的差异
+## 当前实现与后续边界
 
-下一阶段必须处理以下差异：
+当前已经完成：
 
-1. `AddonRuntimeRegistrar::registerTemplateDirectives()` 当前读取 manifest `directives`，需要改为扫描 `Directives/*.php`。
-2. `AddonTemplateDirectiveRegistry` 当前只保存 `name/addon/handler`，需要增加完整名称、显式 alias、类型、参数元数据、说明、上下文、缓存和安全输出声明。
-3. 当前注册表允许点号和连字符名称，最终指令名和 alias 应按协议校验 snake_case。
-4. 当前重复名称会在全局注册过程中直接抛错，需要增加插件级临时注册和一次性提交。
-5. 现有 `AddonRuntimeRegistrarTest` 中通过 manifest 声明指令的测试需要迁移到目录自动发现测试。
-6. `ptadmin-dev/addons/Demo/manifest.json` 不应新增 `directives` 字段；Demo 指令类应放到 `Directives/`。
-7. 需要增加参数 AST、变量上下文解析和数组字面量解析，不允许恢复旧编译器的任意 PHP 表达式能力。
-8. 需要增加 Core 内置指令注册器和媒体渲染器，四个媒体指令共享统一参数模型。
+1. 不可变指令定义、参数对象、链式注册、插件级临时 Registry 和批量提交。
+2. `Directives/*.php` 自动发现、接口校验、完整名称、显式 alias、冲突检测和元数据导出。
+3. 字符串、数字、布尔值、`null`、数组和变量引用参数解析及类型校验。
+4. output、loop、`as`、`@pt:empty`、`@pt:end`、字段转义、默认值和嵌套循环上下文。
+5. `seo`、`img`、`images`、`file`、`files`、`dump` 内置指令和媒体上下文解析。
+6. Demo 插件的 `demo_banner`、`demo_articles` 注册和真实渲染验收。
 
-## 实现顺序
-
-建议按以下顺序实现：
-
-1. 设计不可变的 `TemplateDirectiveDefinition`、参数定义对象和注册构建器。
-2. 扩展 Registry，支持 `define()->output()/loop()->alias()->description()->parameter()` 链式注册。
-3. 实现插件级临时 Registry 和提交接口。
-4. 修改 Runtime Registrar，固定扫描 `Directives/*.php`，校验接口并按排序加载。
-5. 实现完整名称和显式 alias 的唯一性校验。
-6. 增加注册元数据导出，为文档和 IDE 提供稳定数组或 DTO。
-7. 实现参数 AST、数组和变量引用解析，并接入 `TemplateDirectiveInvocation`。
-8. 实现 Core 内置 `seo`、`img`、`images`、`file`、`files`、`dump` 注册和安全渲染。
-9. 实现媒体上下文自动解析、显式 `value=null` 语义和歧义诊断。
-10. 实现模板解析器、`{$item.title}` 输出和 loop 上下文。
-11. 在 `ptadmin-dev/addons/Demo` 增加 `demo_banner` 和 `demo_articles` 验收案例。
+原始 HTML 的字段级安全声明、缓存策略和更完整的生产诊断仍是独立行为议题，不属于 Addon 目录结构调整。本次迁移不改变这些语义，也不把它们标记为已解决。
 
 ## 必须覆盖的测试
 
 - `Directives/` 自动发现和稳定排序。
-- 未实现 `AddonTemplateDirectiveInterface` 的类被拒绝。
+- 未实现 `TemplateDirectiveProviderInterface` 的类被拒绝。
 - 一个注册类成功注册多个指令。
 - 没有 `Directives/` 目录的插件正常加载。
 - 完整名称冲突导致插件注册失败且不留下部分定义。
@@ -324,7 +311,7 @@ final class CmsTemplateDirectives implements AddonTemplateDirectiveInterface
 
 ## 交接后的验收标准
 
-完成注册运行时后，应能在 Demo 模板中使用：
+当前 Demo 模板可以使用：
 
 ```blade
 @pt:demo_banner(position="home")
@@ -336,7 +323,7 @@ final class CmsTemplateDirectives implements AddonTemplateDirectiveInterface
 @pt:end
 ```
 
-并能从 Registry 导出 `demo_banner`、`demo_articles` 的类型、说明、参数和 alias 元数据。完成模板编译器后，再补充真实渲染、转义、空数据和嵌套上下文验收。
+Registry 可以导出 `demo_banner`、`demo_articles` 的类型、说明、参数和 alias 元数据；真实渲染、转义、空数据和嵌套上下文已有测试覆盖。
 
 媒体验收还应覆盖：
 
@@ -349,6 +336,6 @@ final class CmsTemplateDirectives implements AddonTemplateDirectiveInterface
 
 以上调用分别验证自动上下文、显式集合、统一字段映射、空集合处理和批量 HTML 输出，不使用嵌套指令。
 
-## 本次提交范围
+## 当前结构调整范围
 
-本次只提交本交接文档，不提交当前 `ptadmin-core` 中其他会话已有的代码、测试或配置改动。后续实现应单独提交，避免把协议、运行时和前端联调混在一个版本中。
+本轮只调整 Addon/Template 目录、命名空间、服务注册分组和调用方引用，不修改模板协议、生命周期、公开 API 或既有安全行为。

@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace PTAdmin\Schema\SchemaFile;
 
-use PTAdmin\Addon\AddonDiscovery;
+use PTAdmin\Addon\Catalog\AddonCatalog;
 use RuntimeException;
 
 final class SchemaSourceDiscovery
 {
     public function __construct(
-        private AddonDiscovery $addons,
+        private AddonCatalog $addons,
         private string $applicationPath,
         private string $corePath,
         private string $addonsPath,

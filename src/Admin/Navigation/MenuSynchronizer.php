@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace PTAdmin\Admin\Navigation;
 
 use Illuminate\Database\DatabaseManager;
-use PTAdmin\Addon\AddonDiscovery;
+use PTAdmin\Addon\Catalog\AddonCatalog;
 use RuntimeException;
 
 final class MenuSynchronizer
@@ -15,7 +15,7 @@ final class MenuSynchronizer
 
     public function __construct(
         private DatabaseManager $database,
-        private AddonDiscovery $addons,
+        private AddonCatalog $addons,
         private string $coreMenuPath,
         private string $addonsPath,
     ) {

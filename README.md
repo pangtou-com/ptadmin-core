@@ -29,8 +29,8 @@
 - JSONL 任务中心：任务文件位于 `storage/app/ptadmin/tasks/{task_id}/`，后台接口提供任务创建、状态、事件 cursor、重试和取消；任务支持幂等键、心跳恢复和不可逆阶段保护，快照持久化当前消息并派生 `can_retry`/`can_cancel`，事件/载荷/结果统一脱敏并使用文件锁；核心前端可通过独立发布器校验清单后原子更新，同时保留插件 `modules/` 目录。
 - 任务执行通过 `php artisan ptadmin:task:run {task_id}` 在独立进程中完成。执行器采用 `TaskExecutorRegistry` 扩展，目前内置 `admin_frontend.update`，未注册的核心/插件任务会进入 `blocked`，不会在 PHP-FPM 请求中伪成功。
 - 可使用 `php artisan ptadmin:task:recover` 扫描超时心跳任务；默认按重试次数重新排队，也可通过 `--no-requeue` 直接标记失败。
-- 插件信任链基础位于 `src/Addon`：`AddonManifestVerifier` 校验 manifest、文件清单、摘要、兼容范围和 OpenSSL 签名；`AddonLifecycleStore` 持久化插件生命周期状态并防止非法状态跳转。
-- `AddonFrontendPublisher` 将插件前端以临时目录加原子替换发布到 `public/{PTADMIN_WEB_PREFIX}/modules/{code}`，失败时保留旧模块，卸载时仅删除对应模块目录。
+- 插件信任链基础位于 `src/Addon`：`Manifest\ManifestVerifier` 校验 manifest、文件清单、摘要、兼容范围和 OpenSSL 签名；`Lifecycle\LifecycleStore` 持久化插件生命周期状态并防止非法状态跳转。
+- `Frontend\FrontendPublisher` 将插件前端以临时目录加原子替换发布到 `public/{PTADMIN_WEB_PREFIX}/modules/{code}`，失败时保留旧模块，卸载时仅删除对应模块目录。
 
 Schema Hook、Action、Resource Event、Owner、校验和缓存规则见 [Schema Runtime 扩展](docs/schema-runtime-extensions.md)。
 

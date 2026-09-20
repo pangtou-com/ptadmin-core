@@ -6,12 +6,12 @@ namespace PTAdmin\Core\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
-use PTAdmin\Addon\AddonDiscovery;
+use PTAdmin\Addon\Catalog\AddonCatalog;
 use PTAdmin\Core\Http\Responses\AdminResponse;
 
 final class AddonController extends Controller
 {
-    public function index(AddonDiscovery $discovery): JsonResponse
+    public function index(AddonCatalog $discovery): JsonResponse
     {
         $result = $discovery->scan();
         $result['addons'] = array_map(static function (array $addon): array {

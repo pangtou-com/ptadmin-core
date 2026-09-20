@@ -10,7 +10,7 @@ use Illuminate\Routing\Controller;
 use PTAdmin\Admin\Auth\AdminAuthenticator;
 use PTAdmin\Admin\Auth\AuthorizationService;
 use PTAdmin\Admin\Models\Admin;
-use PTAdmin\Addon\AddonFrontendRegistry;
+use PTAdmin\Addon\Frontend\FrontendRegistry;
 use PTAdmin\Core\Auth\Exceptions\InvalidSessionException;
 use PTAdmin\Core\Auth\Session\SessionManager;
 use PTAdmin\Core\Http\Responses\AdminResponse;
@@ -21,7 +21,7 @@ final class SessionController extends Controller
         private SessionManager $sessions,
         private AdminAuthenticator $authenticator,
         private AuthorizationService $authorization,
-        private AddonFrontendRegistry $addonFrontends,
+        private FrontendRegistry $addonFrontends,
     )
     {
     }

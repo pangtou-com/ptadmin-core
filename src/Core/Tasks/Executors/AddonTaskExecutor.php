@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace PTAdmin\Core\Tasks\Executors;
 
-use PTAdmin\Addon\AddonInstaller;
-use PTAdmin\Addon\AddonPackageDownloader;
-use PTAdmin\Addon\AddonStateManager;
+use PTAdmin\Addon\Lifecycle\Installer;
+use PTAdmin\Addon\Package\PackageDownloader;
+use PTAdmin\Addon\Lifecycle\StateManager;
 use PTAdmin\Core\Tasks\TaskExecutorInterface;
 use PTAdmin\Core\Tasks\TaskManager;
 use PTAdmin\Core\Tasks\TaskStore;
@@ -14,7 +14,7 @@ use RuntimeException;
 
 final class AddonTaskExecutor implements TaskExecutorInterface
 {
-    public function __construct(private AddonInstaller $installer, private AddonPackageDownloader $downloader, private TaskStore $store, private AddonStateManager $states)
+    public function __construct(private Installer $installer, private PackageDownloader $downloader, private TaskStore $store, private StateManager $states)
     {
     }
 
