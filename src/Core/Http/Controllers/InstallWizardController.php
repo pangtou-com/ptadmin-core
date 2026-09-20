@@ -71,7 +71,7 @@ final class InstallWizardController extends Controller
         ]));
     }
 
-    public function account(): View|RedirectResponse
+    public function account(Request $request): View|RedirectResponse
     {
         $this->assertNotInstalled();
         if (!$this->agreementAccepted()) {
@@ -81,7 +81,9 @@ final class InstallWizardController extends Controller
             return redirect()->route('ptadmin.install.requirements', ['error' => 'requirements']);
         }
 
-        return view('ptadmin-install::env', $this->viewData(2));
+        return view('ptadmin-install::env', $this->viewData(2, [
+            'appUrl' => $request->root(),
+        ]));
     }
 
     public function stream(Request $request): StreamedResponse
@@ -92,6 +94,9 @@ final class InstallWizardController extends Controller
             'app_name', 'app_url', 'ptadmin_web_prefix', 'db_connection', 'db_database',
             'db_host', 'db_port', 'db_username', 'db_password', 'db_prefix',
         ]);
+        if (!$request->filled('app_url')) {
+            $input['app_url'] = $request->root();
+        }
 
         return response()->stream(function () use ($input): void {
             try {

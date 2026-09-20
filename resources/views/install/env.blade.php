@@ -13,7 +13,7 @@
             <div class="install-form-grid">
                 <label class="install-field">
                     <span class="install-field-label"><span class="required">*</span> {{ __('ptadmin::install.fields.app_url') }}</span>
-                    <input type="url" name="app_url" value="{{ config('app.url', 'http://localhost') }}" placeholder="{{ __('ptadmin::install.placeholders.app_url') }}" autocomplete="url" class="install-input" required>
+                    <input type="url" name="app_url" value="{{ $appUrl }}" placeholder="{{ __('ptadmin::install.placeholders.app_url') }}" autocomplete="url" class="install-input" required>
                 </label>
                 <label class="install-field">
                     <span class="install-field-label"><span class="required">*</span> {{ __('ptadmin::install.fields.app_name') }}</span>
@@ -73,7 +73,7 @@
                 </label>
                 <label class="install-field">
                     <span class="install-field-label"><span class="required">*</span> {{ __('ptadmin::install.fields.nickname') }}</span>
-                    <input type="text" name="nickname" placeholder="{{ __('ptadmin::install.placeholders.nickname') }}" autocomplete="name" class="install-input" maxlength="100" required>
+                    <input type="text" name="nickname" value="超级管理员" placeholder="{{ __('ptadmin::install.placeholders.nickname') }}" autocomplete="name" class="install-input" maxlength="100" required>
                 </label>
                 <label class="install-field">
                     <span class="install-field-label"><span class="required">*</span> {{ __('ptadmin::install.fields.password') }}</span>

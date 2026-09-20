@@ -21,7 +21,12 @@ final class InstallController extends Controller
 
     public function __invoke(Request $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
+        $input = $request->all();
+        if (!$request->filled('app_url')) {
+            $input['app_url'] = $request->root();
+        }
+
+        $validator = Validator::make($input, [
             'username' => ['required', 'string', 'regex:/^[A-Za-z0-9_.-]{3,100}$/'],
             'password' => ['required', 'string', 'min:6', 'max:4096'],
             'nickname' => ['nullable', 'string', 'max:100'],

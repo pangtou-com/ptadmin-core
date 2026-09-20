@@ -47,7 +47,7 @@ final class InstallService
         $input = $this->normalizeInput($input);
         $username = trim((string) ($input['username'] ?? ''));
         $password = (string) ($input['password'] ?? '');
-        $nickname = trim((string) ($input['nickname'] ?? $username));
+        $nickname = trim((string) ($input['nickname'] ?? '超级管理员'));
         $email = trim((string) ($input['email'] ?? ''));
         $mobile = trim((string) ($input['mobile'] ?? ''));
         $requestedWebPrefix = trim((string) ($input['ptadmin_web_prefix'] ?? $input['web_prefix'] ?? ''));
