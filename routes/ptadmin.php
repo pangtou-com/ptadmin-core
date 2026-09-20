@@ -1,0 +1,293 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Support\Facades\Route;
+use PTAdmin\Admin\Http\Controllers\AdminSessionController;
+use PTAdmin\Admin\Http\Controllers\DashboardController;
+use PTAdmin\Admin\Http\Controllers\LoginController;
+use PTAdmin\Admin\Http\Controllers\ProfileController;
+use PTAdmin\Core\Http\Controllers\AddonController;
+use PTAdmin\Core\Http\Controllers\AddonTaskController;
+use PTAdmin\Core\Http\Controllers\AdminFrontendController;
+use PTAdmin\Core\Http\Controllers\BootstrapController;
+use PTAdmin\Core\Http\Controllers\ConfigController;
+use PTAdmin\Core\Http\Controllers\SessionController;
+use PTAdmin\Core\Http\Controllers\TaskController;
+use PTAdmin\Schema\Http\Controllers\PublishController;
+use PTAdmin\Schema\Http\Controllers\ResourceController;
+use PTAdmin\Schema\Http\Controllers\RuntimeController;
+
+$apiPrefix = trim((string) config('ptadmin.api_prefix', 'ptadmin'), '/');
+$authenticatedMiddleware = ['ptadmin.request-id', 'ptadmin.session', 'ptadmin.audit'];
+
+Route::middleware('ptadmin.request-id')
+    ->get($apiPrefix.'/bootstrap', BootstrapController::class)
+    ->name('ptadmin.bootstrap');
+
+Route::middleware('ptadmin.request-id')
+    ->post($apiPrefix.'/login', LoginController::class)
+    ->name('ptadmin.login');
+
+Route::middleware(['ptadmin.request-id', 'ptadmin.session'])
+    ->group(static function () use ($apiPrefix): void {
+        Route::get($apiPrefix.'/session', [SessionController::class, 'show'])
+            ->name('ptadmin.session.show');
+        Route::post($apiPrefix.'/session/renew', [SessionController::class, 'renew'])
+            ->name('ptadmin.session.renew');
+        Route::post($apiPrefix.'/session/revoke', [SessionController::class, 'revoke'])
+            ->name('ptadmin.session.revoke');
+    });
+
+Route::middleware($authenticatedMiddleware)
+    ->prefix($apiPrefix.'/dashboard')
+    ->as('ptadmin.dashboard.')
+    ->group(static function (): void {
+        Route::get('/', [DashboardController::class, 'show'])
+            ->middleware('ptadmin.permission:dashboard,view')
+            ->name('show');
+        Route::post('application-sync', [DashboardController::class, 'synchronize'])
+            ->middleware('ptadmin.permission:dashboard,view')
+            ->name('application-sync');
+        Route::get('me/widgets', [DashboardController::class, 'settings'])
+            ->middleware('ptadmin.permission:dashboard,view')
+            ->name('widgets.settings');
+        Route::put('me/widgets', [DashboardController::class, 'saveSettings'])
+            ->middleware('ptadmin.permission:admin.dashboard_widgets,update')
+            ->name('widgets.save');
+        Route::post('widgets/query', [DashboardController::class, 'query'])
+            ->middleware('ptadmin.permission:dashboard,view')
+            ->name('widgets.query');
+    });
+
+Route::middleware($authenticatedMiddleware)
+    ->prefix($apiPrefix.'/profile')
+    ->as('ptadmin.profile.')
+    ->group(static function (): void {
+        Route::get('/', [ProfileController::class, 'show'])->name('show');
+        Route::put('/', [ProfileController::class, 'update'])->name('update');
+        Route::post('password', [ProfileController::class, 'password'])->name('password');
+    });
+
+Route::middleware($authenticatedMiddleware)
+    ->prefix($apiPrefix.'/sessions')
+    ->as('ptadmin.sessions.')
+    ->group(static function (): void {
+        Route::get('/', [AdminSessionController::class, 'index'])->name('index');
+        Route::delete('{sessionId}', [AdminSessionController::class, 'revoke'])
+            ->where('sessionId', '[A-Za-z0-9]{32}')
+            ->name('revoke');
+    });
+
+Route::middleware($authenticatedMiddleware)
+    ->prefix($apiPrefix.'/config')
+    ->as('ptadmin.config.')
+    ->group(static function (): void {
+        Route::get('definitions', [ConfigController::class, 'definitions'])
+            ->middleware('ptadmin.permission:admin.config,view')
+            ->name('definitions');
+        Route::get('{owner_type}/{owner_code}/{config_key}', [ConfigController::class, 'show'])
+            ->where(['owner_type' => '[a-z]+', 'owner_code' => '[^/]+', 'config_key' => '[^/]+'])
+            ->middleware('ptadmin.permission:admin.config,view')
+            ->name('show');
+        Route::put('{owner_type}/{owner_code}/{config_key}', [ConfigController::class, 'update'])
+            ->where(['owner_type' => '[a-z]+', 'owner_code' => '[^/]+', 'config_key' => '[^/]+'])
+            ->middleware('ptadmin.permission:admin.config,update')
+            ->name('update');
+    });
+
+Route::middleware($authenticatedMiddleware)
+    ->prefix($apiPrefix.'/addons')
+    ->as('ptadmin.addons.')
+    ->group(static function (): void {
+        Route::get('/', [AddonController::class, 'index'])
+            ->middleware('ptadmin.permission:addon.manage,view')
+            ->name('index');
+        Route::post('download', [AddonTaskController::class, 'download'])
+            ->middleware('ptadmin.permission:addon.download,create')
+            ->name('download');
+        Route::post('{code}/install', [AddonTaskController::class, 'install'])
+            ->middleware('ptadmin.permission:addon.install,create')
+            ->where('code', '[A-Za-z][A-Za-z0-9._-]{1,63}')
+            ->name('install');
+        Route::post('{code}/update', [AddonTaskController::class, 'update'])
+            ->middleware('ptadmin.permission:addon.update,update')
+            ->where('code', '[A-Za-z][A-Za-z0-9._-]{1,63}')
+            ->name('update');
+        Route::post('{code}/uninstall', [AddonTaskController::class, 'uninstall'])
+            ->middleware('ptadmin.permission:addon.uninstall,delete')
+            ->where('code', '[A-Za-z][A-Za-z0-9._-]{1,63}')
+            ->name('uninstall');
+        Route::post('{code}/frontend-sync', [AddonTaskController::class, 'frontendSync'])
+            ->middleware('ptadmin.permission:addon.frontend,update')
+            ->where('code', '[A-Za-z][A-Za-z0-9._-]{1,63}')
+            ->name('frontend-sync');
+        Route::post('{code}/enable', [AddonTaskController::class, 'enable'])
+            ->middleware('ptadmin.permission:addon.enable,update')
+            ->where('code', '[A-Za-z][A-Za-z0-9._-]{1,63}')
+            ->name('enable');
+        Route::post('{code}/disable', [AddonTaskController::class, 'disable'])
+            ->middleware('ptadmin.permission:addon.disable,update')
+            ->where('code', '[A-Za-z][A-Za-z0-9._-]{1,63}')
+            ->name('disable');
+    });
+
+Route::middleware($authenticatedMiddleware)
+    ->prefix($apiPrefix.'/tasks')
+    ->as('ptadmin.tasks.')
+    ->group(static function (): void {
+        Route::get('/', [TaskController::class, 'list'])
+            ->middleware('ptadmin.permission:core.tasks,view')
+            ->name('list');
+        Route::post('/', [TaskController::class, 'create'])->name('create');
+        Route::get('{task_id}', [TaskController::class, 'show'])
+            ->where('task_id', '[A-Za-z0-9][A-Za-z0-9._-]{7,127}')
+            ->name('show');
+        Route::get('{task_id}/events', [TaskController::class, 'events'])
+            ->where('task_id', '[A-Za-z0-9][A-Za-z0-9._-]{7,127}')
+            ->name('events');
+        Route::post('{task_id}/retry', [TaskController::class, 'retry'])
+            ->where('task_id', '[A-Za-z0-9][A-Za-z0-9._-]{7,127}')
+            ->name('retry');
+        Route::post('{task_id}/cancel', [TaskController::class, 'cancel'])
+            ->where('task_id', '[A-Za-z0-9][A-Za-z0-9._-]{7,127}')
+            ->name('cancel');
+    });
+
+$schemaPrefix = trim((string) config('ptadmin-schema.routes.prefix', 'ptadmin/schema'), '/');
+$schemaMiddleware = array_merge($authenticatedMiddleware, (array) config('ptadmin-schema.routes.middleware', ['api']));
+$schemaNamePrefix = (string) config('ptadmin-schema.routes.name_prefix', 'ptadmin.schema.');
+
+Route::middleware($schemaMiddleware)
+    ->prefix($schemaPrefix)
+    ->as($schemaNamePrefix)
+    ->group(static function (): void {
+        Route::get('resources', [ResourceController::class, 'index'])
+            ->middleware('ptadmin.permission:schema.resources,view')
+            ->name('resources.index');
+        Route::post('resources', [ResourceController::class, 'store'])
+            ->middleware('ptadmin.permission:schema.resources,create')
+            ->name('resources.store');
+        Route::get('resources/{resource}', [ResourceController::class, 'show'])
+            ->middleware('ptadmin.permission:schema.resources,view')
+            ->where('resource', '[^/]+')
+            ->name('resources.show');
+        Route::delete('resources/{resource}/draft', [ResourceController::class, 'deleteDraft'])
+            ->middleware('ptadmin.permission:schema.resources,delete')
+            ->where('resource', '[^/]+')
+            ->name('resources.draft.delete');
+        Route::get('resources/{resource}/draft', [ResourceController::class, 'draft'])
+            ->middleware('ptadmin.permission:schema.resources,view')
+            ->where('resource', '[^/]+')
+            ->name('resources.draft.show');
+        Route::post('resources/{resource}/draft/edit', [ResourceController::class, 'beginDraftEdit'])
+            ->middleware('ptadmin.permission:schema.resources,update')
+            ->where('resource', '[^/]+')
+            ->name('resources.draft.edit');
+        Route::put('resources/{resource}/draft', [ResourceController::class, 'saveDraft'])
+            ->middleware('ptadmin.permission:schema.resources,update')
+            ->where('resource', '[^/]+')
+            ->name('resources.draft.update');
+        Route::post('resources/{resource}/sync', [ResourceController::class, 'syncCode'])
+            ->middleware('ptadmin.permission:schema.resources,update')
+            ->where('resource', '[^/]+')
+            ->name('resources.sync');
+        Route::get('resources/{resource}/active-version', [ResourceController::class, 'activeVersion'])
+            ->middleware('ptadmin.permission:schema.resources,view')
+            ->where('resource', '[^/]+')
+            ->name('resources.active-version');
+        Route::get('resources/{resource}/versions', [ResourceController::class, 'versions'])
+            ->middleware('ptadmin.permission:schema.resources,view')
+            ->where('resource', '[^/]+')
+            ->name('resources.versions.index');
+        Route::get('resources/{resource}/versions/{version}', [ResourceController::class, 'version'])
+            ->middleware('ptadmin.permission:schema.resources,view')
+            ->where(['resource' => '[^/]+', 'version' => '[0-9]+'])
+            ->name('resources.versions.show');
+        Route::post('resources/{resource}/enable', [ResourceController::class, 'enable'])
+            ->middleware('ptadmin.permission:schema.resources,update')
+            ->where('resource', '[^/]+')
+            ->name('resources.enable');
+        Route::post('resources/{resource}/disable', [ResourceController::class, 'disable'])
+            ->middleware('ptadmin.permission:schema.resources,update')
+            ->where('resource', '[^/]+')
+            ->name('resources.disable');
+        Route::post('resources/{resource}/archive', [ResourceController::class, 'archive'])
+            ->middleware('ptadmin.permission:schema.resources,update')
+            ->where('resource', '[^/]+')
+            ->name('resources.archive');
+        Route::post('resources/{resource}/projection/rebuild', [ResourceController::class, 'rebuildProjection'])
+            ->middleware('ptadmin.permission:schema.resources,update')
+            ->where('resource', '[^/]+')
+            ->name('resources.projection.rebuild');
+        Route::post('resources/{resource}/check', [PublishController::class, 'check'])
+            ->middleware('ptadmin.permission:schema.resources,update')
+            ->where('resource', '[^/]+')
+            ->name('resources.check');
+        Route::get('resources/{resource}/approval', [PublishController::class, 'approval'])
+            ->middleware('ptadmin.permission:schema.resources,view')
+            ->where('resource', '[^/]+')
+            ->name('resources.approval');
+        Route::post('resources/{resource}/approve', [PublishController::class, 'approve'])
+            ->middleware('ptadmin.permission:schema.resources,publish')
+            ->where('resource', '[^/]+')
+            ->name('resources.approve');
+        Route::post('resources/{resource}/publish', [PublishController::class, 'publish'])
+            ->middleware('ptadmin.permission:schema.resources,publish')
+            ->where('resource', '[^/]+')
+            ->name('resources.publish');
+        Route::get('publish-tasks/{task}', [PublishController::class, 'task'])
+            ->middleware('ptadmin.permission:schema.resources,view')
+            ->whereNumber('task')
+            ->name('publish-tasks.show');
+
+        Route::post('runtime', [RuntimeController::class, 'dispatch'])->name('runtime.dispatch');
+        Route::get('runtime/{resource}/schema', [RuntimeController::class, 'schema'])
+            ->where('resource', '[^/]+')
+            ->name('runtime.schema');
+        Route::get('runtime/{resource}/records', [RuntimeController::class, 'list'])
+            ->where('resource', '[^/]+')
+            ->name('runtime.records.index');
+        Route::post('runtime/{resource}/records', [RuntimeController::class, 'create'])
+            ->where('resource', '[^/]+')
+            ->name('runtime.records.store');
+        Route::get('runtime/{resource}/records/{id}', [RuntimeController::class, 'detail'])
+            ->where(['resource' => '[^/]+', 'id' => '[0-9]+'])
+            ->name('runtime.records.show');
+        Route::put('runtime/{resource}/records/{id}', [RuntimeController::class, 'update'])
+            ->where(['resource' => '[^/]+', 'id' => '[0-9]+'])
+            ->name('runtime.records.update');
+        Route::delete('runtime/{resource}/records/{id}', [RuntimeController::class, 'delete'])
+            ->where(['resource' => '[^/]+', 'id' => '[0-9]+'])
+            ->name('runtime.records.destroy');
+        Route::post('runtime/{resource}/records/{id}/restore', [RuntimeController::class, 'restore'])
+            ->where(['resource' => '[^/]+', 'id' => '[0-9]+'])
+            ->name('runtime.records.restore');
+        Route::delete('runtime/{resource}/records/{id}/purge', [RuntimeController::class, 'purge'])
+            ->where(['resource' => '[^/]+', 'id' => '[0-9]+'])
+            ->name('runtime.records.purge');
+        Route::post('runtime/{resource}/records/{id}/action', [RuntimeController::class, 'action'])
+            ->where(['resource' => '[^/]+', 'id' => '[0-9]+'])
+            ->name('runtime.records.action');
+        Route::get('runtime/{resource}/relations', [RuntimeController::class, 'relationCandidates'])
+            ->where('resource', '[^/]+')
+            ->name('runtime.relations.index');
+    });
+
+$webPrefix = trim((string) config('ptadmin.web_prefix', 'admin'), '/');
+Route::prefix($webPrefix)->group(static function (): void {
+    Route::get('/', [AdminFrontendController::class, 'index'])->name('ptadmin.web.index');
+    Route::get('{path}', [AdminFrontendController::class, 'index'])
+        ->where('path', '^(?!assets(?:/|$)|modules(?:/|$)).*$')
+        ->name('ptadmin.web.spa');
+});
+
+Route::prefix('admin_{suffix}')->group(static function (): void {
+    Route::get('/', [AdminFrontendController::class, 'index'])
+        ->where('suffix', '[a-f0-9]{12}');
+    Route::get('{path}', [AdminFrontendController::class, 'index'])
+        ->where([
+            'suffix' => '[a-f0-9]{12}',
+            'path' => '^(?!assets(?:/|$)|modules(?:/|$)).*$',
+        ]);
+});

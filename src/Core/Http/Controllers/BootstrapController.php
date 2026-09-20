@@ -7,7 +7,6 @@ namespace PTAdmin\Core\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use PTAdmin\Core\ApplicationIdentity;
-use PTAdmin\Core\Exceptions\ApplicationIdentityUnavailableException;
 use PTAdmin\Core\Http\Responses\AdminResponse;
 use PTAdmin\Core\Install\AdminFrontendManifest;
 
@@ -23,15 +22,10 @@ final class BootstrapController extends Controller
     public function __invoke(): JsonResponse
     {
         $apiPrefix = trim((string) config('ptadmin.api_prefix', 'ptadmin'), '/');
-        $applicationId = null;
-        try {
-            $applicationId = $this->identity->load()['application_instance_id'];
-        } catch (ApplicationIdentityUnavailableException) {
-            // Bootstrap remains readable before installation; the installer creates the identity later.
-        }
+        $applicationId = $this->identity->load()['application_instance_id'];
 
         return AdminResponse::success('', [
-            'app_id' => $applicationId ?? '',
+            'app_id' => $applicationId,
             'runtime' => [
                 'api_base_path' => '/'.$apiPrefix,
                 'web_prefix' => (string) config('ptadmin.web_prefix', 'admin'),

@@ -211,7 +211,7 @@ final class InstallWizardController extends Controller
     private function installRedirect(string $target): string
     {
         $path = (string) (parse_url($target, PHP_URL_PATH) ?? '');
-        $installPath = '/'.trim((string) config('ptadmin.install.path', '__ptadmin__/install'), '/');
+        $installPath = '/__ptadmin__/install';
 
         return str_starts_with($path, $installPath) ? $path : '';
     }

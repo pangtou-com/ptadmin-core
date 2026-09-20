@@ -7,7 +7,7 @@
 - Composer 包骨架和 PHP/Laravel 运行约束。
 - `Core` Provider、`ptadmin.php` 基础配置和 Schema Provider 注册。
 - `ptadmin.json` 应用身份生成、加载、显式重建和原子写入。
-- 匿名 `/ptadmin/bootstrap` 路由基础。
+- 已安装模式提供匿名 `/ptadmin/bootstrap` 路由；未安装模式不启动 Admin 前端协议。
 - `X-Request-ID` 请求追踪中间件和 `code/message/data` 响应工厂基础。
 - `ptadmin-schema` 协议与 Runtime 源码提取到 `src/Schema/`。
 - 安装状态目录、进程锁、随机后台前缀和 `installed.json` 原子标记基础。
@@ -22,10 +22,10 @@
 - Admin 个人资料、本人密码修改和本人会话管理接口；密码修改、账号禁用和管理员动作可撤销现有 Bearer Session。
 - Admin 登录成功/失败记录与后台写操作审计；登录日志和操作记录作为只读 Schema Resource 提供查询。
 - 创始人、系统角色和核心权限资源保护，以及按资源/动作执行的服务端权限检查。
-- 未安装启动阶段提供安装状态查询接口 `GET /ptadmin/install/status`，不暴露敏感安装输入；安装完成后该路由不再注册。
+- 未安装启动阶段提供安装状态查询接口 `GET /__ptadmin__/install/status`，不暴露敏感安装输入；安装完成后该路由不再注册。
 - 独立 `GET /__ptadmin__/install` 安装向导，复用原 PTAdmin 分步 UI，提供协议确认、PHP/扩展与目录权限检查、基础信息、SQLite/MySQL 数据库配置、创始人账号表单和流式安装进度；数据库连接、`APP_KEY` 和核心前端 manifest 在实际安装阶段校验，不单独展示“运行环境”检测分组。完成后进入自定义或随机后台目录，已安装实例返回 404。
 - 已安装实例通过 `PTADMIN_WEB_PREFIX` 提供后台入口和 SPA fallback；入口由 Core 路由校验 `installed.json`，静态 assets 与插件 modules 仍由 Web Server 直接提供。
-- Core 在服务启动时读取安装标记：未安装时将 `ptadmin.install` 注入宿主 `web` 中间件组，统一把 Web 请求引导到保留安装地址；已安装时不注入该中间件。安装 API、Bootstrap 和安装状态接口不经过宿主 Web 组。
+- Core 在服务启动时读取安装标记并选择唯一运行模式：未安装时只加载 `routes/install.php`、安装视图和宿主 Web 重定向，不加载 Bootstrap、登录、Session、Schema HTTP、插件 Runtime 或 PTAdmin 运维命令；已安装时只加载 `routes/ptadmin.php` 和正常 Runtime，安装路由不可访问。安装 API 为 `POST /__ptadmin__/install`，状态接口为 `GET /__ptadmin__/install/status`。
 - JSONL 任务中心：任务文件位于 `storage/app/ptadmin/tasks/{task_id}/`，后台接口提供任务创建、状态、事件 cursor、重试和取消；任务支持幂等键、心跳恢复和不可逆阶段保护，快照持久化当前消息并派生 `can_retry`/`can_cancel`，事件/载荷/结果统一脱敏并使用文件锁；核心前端可通过独立发布器校验清单后原子更新，同时保留插件 `modules/` 目录。
 - 任务执行通过 `php artisan ptadmin:task:run {task_id}` 在独立进程中完成。执行器采用 `TaskExecutorRegistry` 扩展，目前内置 `admin_frontend.update`，未注册的核心/插件任务会进入 `blocked`，不会在 PHP-FPM 请求中伪成功。
 - 可使用 `php artisan ptadmin:task:recover` 扫描超时心跳任务；默认按重试次数重新排队，也可通过 `--no-requeue` 直接标记失败。

@@ -73,6 +73,5 @@ final class SchemaServiceProvider extends ServiceProvider
     {
         $this->publishes([__DIR__.'/../../../config/ptadmin-schema.php' => config_path('ptadmin-schema.php')], 'ptadmin-schema-config');
         $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
-        $this->loadRoutesFrom(__DIR__.'/../../../routes/schema.php');
     }
 }

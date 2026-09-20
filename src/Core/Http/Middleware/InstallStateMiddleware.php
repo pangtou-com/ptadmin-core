@@ -19,7 +19,7 @@ final class InstallStateMiddleware
     public function handle(Request $request, Closure $next): Response
     {
         $state = app(InstallStateStore::class);
-        $installPath = trim((string) config('ptadmin.install.path', '__ptadmin__/install'), '/');
+        $installPath = '__ptadmin__/install';
         $requestPath = trim($request->path(), '/');
         $isInstallRequest = $requestPath === $installPath || str_starts_with($requestPath, $installPath.'/');
 

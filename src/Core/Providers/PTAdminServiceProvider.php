@@ -287,50 +287,49 @@ final class PTAdminServiceProvider extends ServiceProvider
 
         $this->app['router']->aliasMiddleware('ptadmin.request-id', RequestIdMiddleware::class);
         $this->app['router']->aliasMiddleware('ptadmin.install', InstallStateMiddleware::class);
-        $this->app['router']->aliasMiddleware('ptadmin.session', AuthenticateSessionMiddleware::class);
-        $this->app['router']->aliasMiddleware('ptadmin.permission', RequirePermissionMiddleware::class);
-        $this->app['router']->aliasMiddleware('ptadmin.audit', RecordAdminOperationMiddleware::class);
 
         $this->publishes([
             __DIR__.'/../../../config/ptadmin.php' => config_path('ptadmin.php'),
         ], 'ptadmin-config');
 
         $this->loadTranslationsFrom(__DIR__.'/../../../lang', 'ptadmin');
+        $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
+        // 安装时也要同步内置 Schema；这里只注册描述符，不解析数据库连接。
+        $this->registerAdminRuntimeBindings();
+
         if (!$isInstalled) {
             $this->app->make(HttpKernel::class)->prependMiddlewareToGroup('web', InstallStateMiddleware::class);
-        }
-        $this->loadRoutesFrom(__DIR__.'/../../../routes/public.php');
-        // Installation is a bootstrap mode. Its routes and views are selected once
-        // when the application boots, rather than guarding every business request.
-        if (!$isInstalled) {
             $this->loadViewsFrom(__DIR__.'/../../../resources/views/install', 'ptadmin-install');
             $this->loadRoutesFrom(__DIR__.'/../../../routes/install.php');
-        } else {
-            $this->loadRoutesFrom(__DIR__.'/../../../routes/web.php');
-            $this->loadRoutesFrom(__DIR__.'/../../../routes/admin.php');
+
+            return;
         }
-        $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
-        $this->registerAdminRuntimeBindings();
+
+        $this->app['router']->aliasMiddleware('ptadmin.session', AuthenticateSessionMiddleware::class);
+        $this->app['router']->aliasMiddleware('ptadmin.permission', RequirePermissionMiddleware::class);
+        $this->app['router']->aliasMiddleware('ptadmin.audit', RecordAdminOperationMiddleware::class);
+        $this->loadRoutesFrom(__DIR__.'/../../../routes/ptadmin.php');
         if ((bool) $this->app['config']->get('ptadmin.addon.runtime.enabled', true)) {
             $this->app->make(AddonRuntimeRegistrar::class)->register();
         }
-        if ($this->app->runningInConsole()) {
-            $this->commands([
-                TaskRunCommand::class,
-                TaskRecoverCommand::class,
-                SchemaSyncCommand::class,
-                SchemaPublishCommand::class,
-                RuntimeCacheCommand::class,
-                RuntimeValidateCommand::class,
-                AdminSyncCommand::class,
-                MenuSyncCommand::class,
-            ]);
+        if (!$this->app->runningInConsole()) {
+            return;
         }
+
+        $this->commands([
+            TaskRunCommand::class,
+            TaskRecoverCommand::class,
+            SchemaSyncCommand::class,
+            SchemaPublishCommand::class,
+            RuntimeCacheCommand::class,
+            RuntimeValidateCommand::class,
+            AdminSyncCommand::class,
+            MenuSyncCommand::class,
+        ]);
     }
 
     private function registerAdminRuntimeBindings(): void
     {
-        $hook = $this->app->make(AdminRuntimeHook::class);
         $actions = [];
         foreach ($this->app->make(AdminSchemaDefinitions::class)->all() as $resourceKey => $definition) {
             $declared = (array) ($definition['schema']['actions'] ?? []);

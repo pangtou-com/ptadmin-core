@@ -58,7 +58,6 @@ return [
         'absolute_hours' => (int) env('PTADMIN_SESSION_ABSOLUTE_HOURS', 8),
     ],
     'install' => [
-        'path' => '__ptadmin__/install',
         'database_default' => 'mysql',
         'database_drivers' => ['sqlite', 'mysql'],
         'extensions' => ['json', 'mbstring', 'openssl', 'pdo'],
