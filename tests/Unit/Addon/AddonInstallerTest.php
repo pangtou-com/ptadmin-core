@@ -12,6 +12,8 @@ use PTAdmin\Addon\AddonManifestException;
 use PTAdmin\Addon\AddonManifestVerifier;
 use PTAdmin\Addon\AddonPackageExtractor;
 use PTAdmin\Addon\AddonResourceSynchronizerInterface;
+use PTAdmin\Schema\Runtime\RuntimeCacheStore;
+use PTAdmin\Schema\Runtime\RuntimeRegistry;
 use RuntimeException;
 
 final class AddonInstallerTest extends TestCase
@@ -52,6 +54,35 @@ final class AddonInstallerTest extends TestCase
         self::assertSame('demo-addon', $result['code']);
         self::assertFileExists($this->root.'/addons/demo-addon/Bootstrap.php');
         self::assertFileExists($public.'/admintest/modules/demo-addon/entry.js');
+    }
+
+    public function testInstallAndUninstallClearRuntimeCache(): void
+    {
+        $source = $this->root.'/source';
+        mkdir($source, 0700, true);
+        file_put_contents($source.'/manifest.json', json_encode(['code' => 'demo-addon', 'version' => '1.0.0'], JSON_THROW_ON_ERROR));
+        $cache = new RuntimeCacheStore($this->root.'/cache/ptadmin-runtime.php');
+        $this->writeRuntimeCache($cache);
+        $installer = new AddonInstaller(
+            new AddonManifestVerifier(),
+            new AddonPackageExtractor(),
+            new AddonLifecycleStore($this->root.'/state'),
+            new AddonFrontendPublisher($this->root.'/public'),
+            $this->root.'/addons',
+            $this->root.'/staging',
+            false,
+            null,
+            null,
+            null,
+            $cache,
+        );
+
+        $installer->install($source, 'admintest');
+        self::assertFileDoesNotExist($this->root.'/cache/ptadmin-runtime.php');
+
+        $this->writeRuntimeCache($cache);
+        $installer->uninstall('demo-addon', 'admintest');
+        self::assertFileDoesNotExist($this->root.'/cache/ptadmin-runtime.php');
     }
 
     public function testUninstallRemovesCodeAndFrontendButLeavesDataOutsideAddonPath(): void
@@ -263,6 +294,13 @@ final class AddonInstallerTest extends TestCase
         file_put_contents($source.'/Frontend/dist/entry.js', $frontend);
         file_put_contents($source.'/manifest.json', json_encode(['code' => 'demo-addon', 'version' => $version], JSON_THROW_ON_ERROR));
         return $source;
+    }
+
+    private function writeRuntimeCache(RuntimeCacheStore $cache): void
+    {
+        $registry = new RuntimeRegistry();
+        $registry->forOwner('core', 'ptadmin')->resource('cache.marker');
+        $cache->write($registry->build());
     }
 
     private function remove(string $path): void

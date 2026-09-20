@@ -8,6 +8,8 @@ use RuntimeException;
 
 final class RuntimeCacheStore
 {
+    private ?RuntimeRegistrySnapshot $loaded = null;
+
     public function __construct(private string $path)
     {
     }
@@ -19,25 +21,39 @@ final class RuntimeCacheStore
         }
         try {
             $value = require $this->path;
+            if (!is_array($value) || !isset($value['format'], $value['sources'], $value['resources'], $value['checksum'])
+                || !is_int($value['format']) || $value['format'] !== RuntimeRegistry::FORMAT
+                || !is_array($value['sources'])
+                || !is_array($value['resources']) || !is_string($value['checksum'])
+            ) {
+                return null;
+            }
+            foreach ($value['sources'] as $source => $checksum) {
+                if (!is_string($source) || !is_string($checksum)
+                    || preg_match('/^(?:core\/ptadmin|app\/host|addon\/[a-z][a-z0-9_-]{0,63})$/', $source) !== 1
+                    || preg_match('/^[a-f0-9]{64}$/', $checksum) !== 1) {
+                    return null;
+                }
+            }
+            $snapshot = new RuntimeRegistrySnapshot($value);
+            if (!hash_equals($value['checksum'], $snapshot->checksum())) {
+                return null;
+            }
+
+            return $snapshot;
         } catch (\Throwable) {
             return null;
         }
-        if (!is_array($value) || !isset($value['format'], $value['checksum']) || (int) $value['format'] !== RuntimeRegistry::FORMAT) {
-            return null;
-        }
-        $checksum = (string) $value['checksum'];
-        $snapshot = new RuntimeRegistrySnapshot($value);
-        if (!hash_equals($checksum, $snapshot->checksum())) {
-            return null;
-        }
-
-        return $snapshot;
     }
 
     /** @param callable(): RuntimeRegistrySnapshot $fallback */
     public function load(callable $fallback): RuntimeRegistrySnapshot
     {
-        return $this->read() ?? $fallback();
+        if ($this->loaded !== null) {
+            return $this->loaded;
+        }
+
+        return $this->loaded = $this->read() ?? $fallback();
     }
 
     public function write(RuntimeRegistrySnapshot $snapshot): void
@@ -56,10 +72,12 @@ final class RuntimeCacheStore
             @unlink($temporary);
             throw new RuntimeException('Runtime cache cannot be atomically replaced: '.$this->path);
         }
+        $this->loaded = $snapshot;
     }
 
     public function clear(): void
     {
+        $this->loaded = null;
         if (is_file($this->path) && !unlink($this->path)) {
             throw new RuntimeException('Runtime cache cannot be removed: '.$this->path);
         }

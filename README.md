@@ -32,6 +32,8 @@
 - 插件信任链基础位于 `src/Addon`：`AddonManifestVerifier` 校验 manifest、文件清单、摘要、兼容范围和 OpenSSL 签名；`AddonLifecycleStore` 持久化插件生命周期状态并防止非法状态跳转。
 - `AddonFrontendPublisher` 将插件前端以临时目录加原子替换发布到 `public/{PTADMIN_WEB_PREFIX}/modules/{code}`，失败时保留旧模块，卸载时仅删除对应模块目录。
 
+Schema Hook、Action、Resource Event、Owner、校验和缓存规则见 [Schema Runtime 扩展](docs/schema-runtime-extensions.md)。
+
 ## 代码型 Schema 文件
 
 宿主应用、Core 和插件使用相同的目录结构维护代码型 Schema：

@@ -38,17 +38,25 @@ final class AddonRuntimeRegistrar
             $directory = $this->addonsPath.'/'.$code;
             try {
                 $manifest = is_array($addon['manifest'] ?? null) ? $addon['manifest'] : [];
+                $verifiedCode = (string) ($manifest['code'] ?? '');
                 $this->assertCanonicalDirectories($directory);
                 $this->registerMigrations($directory);
                 $this->registerFunctions($directory, $manifest);
-                $this->registerBootstrap($directory, $code, $manifest);
+                $this->registerBootstrap($directory, $verifiedCode, $manifest);
                 $this->registerRoutes($directory, $manifest);
-                $this->registerProvider($directory, $code, $manifest);
-                $this->registerConfig($directory, $code, $manifest);
-                $this->registerViewsAndTranslations($directory, $code);
-                $this->registerTemplateDirectives($directory, $code, $manifest);
-                $this->registerHooks($directory, $code, $manifest);
-                $this->registerRuntime($directory, $code, $manifest);
+                $this->registerProvider($directory, $verifiedCode, $manifest);
+                $this->registerConfig($directory, $verifiedCode, $manifest);
+                $this->registerViewsAndTranslations($directory, $verifiedCode);
+                $this->registerTemplateDirectives($directory, $verifiedCode, $manifest);
+                $this->registerHooks($directory, $verifiedCode, $manifest);
+                $registry = $this->runtimeRegistry
+                    ?? ($this->app->bound(RuntimeRegistry::class) ? $this->app->make(RuntimeRegistry::class) : null);
+                if (($manifest['runtime'] ?? null) !== null) {
+                    if (!$registry instanceof RuntimeRegistry) {
+                        throw new AddonManifestException('Runtime registry is unavailable.', 'runtime_registry_unavailable');
+                    }
+                    $this->contributeRuntime($directory, $verifiedCode, $manifest, $registry);
+                }
                 $loaded[] = $code;
             } catch (\Throwable $exception) {
                 $errorCode = $exception instanceof AddonManifestException
@@ -73,7 +81,7 @@ final class AddonRuntimeRegistrar
     }
 
     /** @param array<string,mixed> $manifest */
-    private function registerRuntime(string $directory, string $code, array $manifest): void
+    public function contributeRuntime(string $directory, string $code, array $manifest, RuntimeRegistry $registry): void
     {
         $declaration = $manifest['runtime'] ?? null;
         if ($declaration === null) {
@@ -93,8 +101,6 @@ final class AddonRuntimeRegistrar
         if (!class_exists($class) || !is_a($class, AddonRuntimeRegistrarInterface::class, true)) {
             throw new AddonManifestException('Addon runtime class is invalid.', 'runtime_class_invalid');
         }
-        $registry = $this->runtimeRegistry
-            ?? ($this->app->bound(RuntimeRegistry::class) ? $this->app->make(RuntimeRegistry::class) : new RuntimeRegistry());
         $this->app->make($class)->registerRuntime($registry->forOwner('addon', $code), $manifest);
     }
 

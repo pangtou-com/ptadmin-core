@@ -11,7 +11,10 @@ use PTAdmin\Schema\Publish\Service\PublishService;
 use PTAdmin\Schema\Runtime\RuntimeEngine;
 use PTAdmin\Schema\Runtime\RuntimeCacheStore;
 use PTAdmin\Schema\Runtime\RuntimeRegistry;
-use PTAdmin\Schema\Runtime\RuntimeResourceHookRegistry;
+use PTAdmin\Schema\Runtime\RuntimeBindingExecutor;
+use PTAdmin\Schema\Runtime\RuntimeEventDispatcher;
+use PTAdmin\Schema\Runtime\RuntimeApplicationRegistrar;
+use PTAdmin\Schema\Runtime\RuntimeRegistryValidator;
 use PTAdmin\Schema\Runtime\RecordTransferService;
 use PTAdmin\Schema\Runtime\TreeService;
 use PTAdmin\Schema\Audit\Service\AuditWriter;
@@ -37,8 +40,11 @@ final class SchemaServiceProvider extends ServiceProvider
         $this->app->singleton(ResourceService::class);
         $this->app->singleton(ResourceLocator::class);
         $this->app->singleton(PublishService::class);
-        $this->app->singleton(RuntimeResourceHookRegistry::class);
         $this->app->singleton(RuntimeRegistry::class);
+        $this->app->singleton(RuntimeBindingExecutor::class);
+        $this->app->singleton(RuntimeEventDispatcher::class);
+        $this->app->singleton(RuntimeApplicationRegistrar::class);
+        $this->app->singleton(RuntimeRegistryValidator::class);
         $this->app->singleton(RuntimeCacheStore::class, static function ($app): RuntimeCacheStore {
             $path = config('ptadmin-schema.runtime.cache_path');
             if (!is_string($path) || $path === '') {

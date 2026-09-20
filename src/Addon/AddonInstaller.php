@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PTAdmin\Addon;
 
 use Illuminate\Database\ConnectionInterface;
+use PTAdmin\Schema\Runtime\RuntimeCacheStore;
 use RuntimeException;
 
 final class AddonInstaller
@@ -20,6 +21,8 @@ final class AddonInstaller
         private ?AddonResourceSynchronizerInterface $resourceSynchronizer = null,
         private ?ConnectionInterface $database = null,
         private ?AddonLock $locks = null,
+        private ?RuntimeCacheStore $runtimeCache = null,
+        private ?AddonRuntimeLifecycleValidator $runtimeValidator = null,
     ) {
         $this->addonsPath = rtrim($addonsPath, '/');
         $this->stagingPath = rtrim($stagingPath, '/');
@@ -47,6 +50,7 @@ final class AddonInstaller
                 throw new AddonManifestException('The addon code does not match the requested operation.', 'addon_code_mismatch');
             }
             $lockHandle = $this->locks?->acquire($code);
+            $this->runtimeCache?->clear();
             $target = $this->addonsPath.'/'.$code;
             $previousLifecycle = $this->lifecycle->read($code);
             $lifecycleCaptured = true;
@@ -120,6 +124,7 @@ final class AddonInstaller
         }
         $lockHandle = $this->locks?->acquire($code);
         try {
+            $this->runtimeCache?->clear();
             $target = $this->addonsPath.'/'.$code;
             if (!is_dir($target)) throw new AddonManifestException('The addon is not installed.', 'addon_not_installed');
             $previousLifecycle = $this->lifecycle->read($code);
@@ -131,6 +136,7 @@ final class AddonInstaller
                     $this->resourceSynchronizer?->deactivate($code);
                     $this->frontend->remove($webPrefix, $code);
                     $this->lifecycle->transition($code, 'disposed');
+                    $this->runtimeValidator?->assertDeactivated($code);
                 };
                 null !== $this->database ? $this->database->transaction($dispose) : $dispose();
                 $this->deleteDirectory($backup);

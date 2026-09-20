@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PTAdmin\Addon;
 
+use PTAdmin\Schema\Runtime\RuntimeCacheStore;
 use RuntimeException;
 
 final class AddonStateManager
@@ -15,6 +16,8 @@ final class AddonStateManager
         private AddonLock $locks,
         private bool $requireSignature = true,
         private ?AddonResourceSynchronizerInterface $resourceSynchronizer = null,
+        private ?RuntimeCacheStore $runtimeCache = null,
+        private ?AddonRuntimeLifecycleValidator $runtimeValidator = null,
     ) {
         $this->addonsPath = rtrim($addonsPath, '/');
     }
@@ -44,7 +47,9 @@ final class AddonStateManager
         $lock = $this->locks->acquire($code);
         try {
             $manifest = $this->verifier->verify($directory, $this->requireSignature);
+            $this->runtimeCache?->clear();
             $current = $this->lifecycle->read($code);
+            $runtimeValidationStarted = false;
             if (!$enabled) {
                 $this->resourceSynchronizer?->deactivate($code);
                 $state = (string) ($current['state'] ?? 'discovered');
@@ -69,6 +74,8 @@ final class AddonStateManager
                     'version' => $manifest['version'],
                     'manifest' => $manifest,
                 ]);
+                $runtimeValidationStarted = true;
+                $this->runtimeValidator?->assertDeactivated($code);
             } else {
                 $this->resourceSynchronizer?->sync($directory, $code);
                 $state = (string) ($current['state'] ?? 'discovered');
@@ -92,8 +99,28 @@ final class AddonStateManager
                     'version' => $manifest['version'],
                     'manifest' => $manifest,
                 ]);
+                $runtimeValidationStarted = true;
+                $this->runtimeValidator?->assertActivated($directory, $code, $manifest);
             }
             return ['code' => $code, 'enabled' => $enabled, 'state' => $result['state'], 'version' => $manifest['version']];
+        } catch (\Throwable $exception) {
+            if (($runtimeValidationStarted ?? false) && $this->runtimeValidator !== null) {
+                try {
+                    if ($enabled) {
+                        $this->resourceSynchronizer?->deactivate($code);
+                    } else {
+                        $this->resourceSynchronizer?->sync($directory, $code);
+                    }
+                } catch (\Throwable) {
+                    // Keep the original Runtime diagnostic; the next lifecycle operation can retry synchronization.
+                }
+                try {
+                    $this->lifecycle->restore($code, $current ?? null);
+                } catch (\Throwable) {
+                    // Preserve the original Runtime diagnostic.
+                }
+            }
+            throw $exception;
         } finally {
             $this->locks->release($lock);
         }

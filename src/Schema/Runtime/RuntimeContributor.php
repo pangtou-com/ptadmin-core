@@ -14,6 +14,8 @@ final class RuntimeContributor
 
     public function resource(string $resourceKey): RuntimeResourceRegistration
     {
+        $this->registry->addResource($resourceKey);
+
         return new RuntimeResourceRegistration($this->registry, $resourceKey, $this->owner);
     }
 }

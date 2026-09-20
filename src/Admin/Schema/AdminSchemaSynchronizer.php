@@ -7,6 +7,9 @@ namespace PTAdmin\Admin\Schema;
 use PTAdmin\Schema\Contracts\PublishServiceInterface;
 use PTAdmin\Schema\Contracts\ResourceServiceInterface;
 use PTAdmin\Schema\Meta\Models\Resource;
+use PTAdmin\Schema\Runtime\RuntimeCacheStore;
+use PTAdmin\Schema\Runtime\RuntimeRegistry;
+use PTAdmin\Schema\Runtime\RuntimeRegistryValidator;
 
 final class AdminSchemaSynchronizer
 {
@@ -14,6 +17,9 @@ final class AdminSchemaSynchronizer
         private AdminSchemaDefinitions $definitions,
         private ResourceServiceInterface $resources,
         private PublishServiceInterface $publish,
+        private ?RuntimeCacheStore $runtimeCache = null,
+        private ?RuntimeRegistry $runtimeRegistry = null,
+        private ?RuntimeRegistryValidator $runtimeValidator = null,
     ) {
     }
 
@@ -40,9 +46,14 @@ final class AdminSchemaSynchronizer
             }
             if (!$active || $active->checksum !== $draft->checksum) {
                 $this->publish->checkDraft(['resource' => $resourceKey, 'expected_checksum' => $draft->checksum]);
+                $this->runtimeCache?->clear();
                 $this->publish->publishDraft(['resource' => $resourceKey, 'expected_checksum' => $draft->checksum]);
             }
             $synced[] = $resourceKey;
+        }
+
+        if ($this->runtimeRegistry !== null && $this->runtimeValidator !== null) {
+            $this->runtimeValidator->assertValid($this->runtimeRegistry->build(), $synced);
         }
 
         return $synced;

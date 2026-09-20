@@ -7,6 +7,9 @@ namespace PTAdmin\Schema\SchemaFile;
 use PTAdmin\Schema\Contracts\PublishServiceInterface;
 use PTAdmin\Schema\Contracts\ResourceServiceInterface;
 use PTAdmin\Schema\Meta\Models\Resource;
+use PTAdmin\Schema\Runtime\RuntimeCacheStore;
+use PTAdmin\Schema\Runtime\RuntimeRegistry;
+use PTAdmin\Schema\Runtime\RuntimeRegistryValidator;
 use RuntimeException;
 
 final class SchemaFileSynchronizer
@@ -15,6 +18,9 @@ final class SchemaFileSynchronizer
         private Loader $loader,
         private ResourceServiceInterface $resources,
         private PublishServiceInterface $publish,
+        private ?RuntimeCacheStore $runtimeCache = null,
+        private ?RuntimeRegistry $runtimeRegistry = null,
+        private ?RuntimeRegistryValidator $runtimeValidator = null,
     ) {
     }
 
@@ -22,7 +28,7 @@ final class SchemaFileSynchronizer
      * @param list<array{path:string,relative_path:string,owner_type:string,owner_code:string,source:string}> $files
      * @return list<array{resource:string,path:string,status:string,risk:string,checksum:string}>
      */
-    public function sync(array $files, bool $draftOnly = false): array
+    public function sync(array $files, bool $draftOnly = false, bool $validateRuntime = true): array
     {
         $definitions = $this->loadAll($files);
         $results = [];
@@ -59,11 +65,16 @@ final class SchemaFileSynchronizer
                 $results[] = $this->result($definition, 'blocked', $risk, $checksum);
                 continue;
             }
+            $this->runtimeCache?->clear();
             $this->publish->publishDraft([
                 'resource' => $resourceKey,
                 'expected_checksum' => $checksum,
             ]);
             $results[] = $this->result($definition, 'published', $risk, $checksum);
+        }
+
+        if ($validateRuntime && !$draftOnly) {
+            $this->validateRuntime(array_map(static fn (array $definition): string => $definition['resource'], $definitions));
         }
 
         return $results;
@@ -96,12 +107,22 @@ final class SchemaFileSynchronizer
                 'approved_by' => 'schema:publish',
             ]);
         }
+        $this->runtimeCache?->clear();
         $this->publish->publishDraft([
             'resource' => $resourceKey,
             'expected_checksum' => $checksum,
         ]);
+        $this->validateRuntime([$resourceKey]);
 
         return ['resource' => $resourceKey, 'status' => 'published', 'risk' => $risk, 'checksum' => $checksum];
+    }
+
+    /** @param list<string> $resourceKeys */
+    private function validateRuntime(array $resourceKeys): void
+    {
+        if ($this->runtimeRegistry !== null && $this->runtimeValidator !== null) {
+            $this->runtimeValidator->assertValid($this->runtimeRegistry->build(), $resourceKeys);
+        }
     }
 
     /**

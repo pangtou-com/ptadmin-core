@@ -39,7 +39,7 @@ final class AddonResourceSynchronizer implements AddonResourceSynchronizerInterf
                 $ownerCode,
                 'addon:'.$code
             );
-            foreach ($this->schemaSynchronizer->sync($schemaFiles) as $result) {
+            foreach ($this->schemaSynchronizer->sync($schemaFiles, false, false) as $result) {
                 $schemaKey = $result['resource'];
                 if ($result['status'] === 'blocked') {
                     throw new AddonManifestException(

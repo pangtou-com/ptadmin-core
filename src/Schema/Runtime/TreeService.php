@@ -27,7 +27,9 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         private ?SchemaScopeResolverInterface $scopeResolver = null,
         private ?SchemaSubjectContextInterface $subjectContext = null,
         private ?ServerConstraintApplier $constraintApplier = null,
-        private ?RuntimeResourceHookRegistry $hooks = null,
+        private ?RuntimeRegistry $runtimeRegistry = null,
+        private ?RuntimeCacheStore $runtimeCache = null,
+        private ?RuntimeBindingExecutor $runtimeExecutor = null,
     ) {
         $this->constraintApplier ??= new ServerConstraintApplier();
     }
@@ -364,8 +366,19 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         $schema = $context['schema_object'] ?? null;
         $resourceKey = (string) ($context['resource'] ?? '');
         if ($schema instanceof Schema && $resourceKey !== '') {
-            $hook = $this->hooks?->get($resourceKey);
-            $item = $hook ? $hook->output($resourceKey, $item, $schema) : $item;
+            $snapshot = null;
+            if ($this->runtimeCache !== null && $this->runtimeRegistry !== null) {
+                $registry = $this->runtimeRegistry;
+                $snapshot = $this->runtimeCache->load(static fn (): RuntimeRegistrySnapshot => $registry->build());
+            }
+            $hookContext = new RuntimeHookContext($resourceKey, 'output.transform', $schema, input: $item);
+            if ($snapshot !== null && $this->runtimeExecutor !== null) {
+                $resource = $snapshot->toArray()['resources'][$resourceKey] ?? null;
+                $bindings = is_array($resource) ? ($resource['hooks']['output.transform'] ?? []) : [];
+                if (is_array($bindings) && $bindings !== []) {
+                    $item = $this->runtimeExecutor->transform($snapshot, $hookContext, $item);
+                }
+            }
         }
 
         $parentId = null;

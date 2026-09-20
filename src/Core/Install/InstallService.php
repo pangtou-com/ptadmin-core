@@ -15,6 +15,7 @@ use PTAdmin\Core\Install\Exceptions\InvalidInstallStateException;
 use PTAdmin\Admin\Schema\AdminSchemaSynchronizer;
 use PTAdmin\Schema\SchemaFile\SchemaFileSynchronizer;
 use PTAdmin\Schema\SchemaFile\SchemaSourceDiscovery;
+use PTAdmin\Schema\Runtime\RuntimeCacheStore;
 use RuntimeException;
 
 /**
@@ -35,6 +36,7 @@ final class InstallService
         private SchemaSourceDiscovery $schemaSources,
         private SchemaFileSynchronizer $schemaSynchronizer,
         private MenuSynchronizer $menus,
+        private RuntimeCacheStore $runtimeCache,
     ) {
     }
 
@@ -301,6 +303,7 @@ final class InstallService
 
     private function resetRuntimeCaches(): void
     {
+        $this->runtimeCache->clear();
         foreach (['cache:clear', 'config:clear', 'event:clear', 'route:clear', 'view:clear'] as $command) {
             Artisan::call($command);
         }

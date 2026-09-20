@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PTAdmin\Schema\Runtime;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use PTAdmin\Schema\Contract\CreateInput;
 use PTAdmin\Schema\Contract\DeleteInput;
 use PTAdmin\Schema\Contract\DetailQuery;
@@ -18,7 +19,6 @@ use PTAdmin\Schema\Contract\SchemaSnapshotQuery;
 use PTAdmin\Schema\Contract\UpdateInput;
 use PTAdmin\Schema\Definition\Schema;
 use PTAdmin\Schema\Contracts\SchemaAuthorizationInterface;
-use PTAdmin\Schema\Contracts\RuntimeResourceRecycleHookInterface;
 use PTAdmin\Schema\Contracts\SchemaScopeResolverInterface;
 use PTAdmin\Schema\Contracts\SchemaSubjectContextInterface;
 use PTAdmin\Schema\Meta\Models\Resource;
@@ -29,33 +29,38 @@ use PTAdmin\Schema\Support\Payload;
  */
 final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInterface
 {
-    private ?object $executor;
+    private ?RuntimeRegistrySnapshot $runtimeSnapshot = null;
+    private bool $runtimeSnapshotLoaded = false;
 
-    /**
-     * @param object|null $executor 宿主动作执行器；未注入时仅支持包内内置动作。
-     */
     public function __construct(
-        ?object $executor = null,
         ?SchemaAuthorizationInterface $authorization = null,
         ?SchemaScopeResolverInterface $scopeResolver = null,
         ?SchemaSubjectContextInterface $subjectContext = null,
-        ?RuntimeResourceHookRegistry $hooks = null,
         ?ServerConstraintApplier $constraintApplier = null,
+        ?RuntimeRegistry $runtimeRegistry = null,
+        ?RuntimeCacheStore $runtimeCache = null,
+        ?RuntimeBindingExecutor $runtimeExecutor = null,
+        ?RuntimeEventDispatcher $runtimeEvents = null,
     )
     {
-        $this->executor = $executor;
         $this->authorization = $authorization;
         $this->scopeResolver = $scopeResolver;
         $this->subjectContext = $subjectContext;
-        $this->hooks = $hooks;
         $this->constraintApplier = $constraintApplier ?? new ServerConstraintApplier();
+        $this->runtimeRegistry = $runtimeRegistry;
+        $this->runtimeCache = $runtimeCache;
+        $this->runtimeExecutor = $runtimeExecutor;
+        $this->runtimeEvents = $runtimeEvents;
     }
 
     private ?SchemaAuthorizationInterface $authorization = null;
     private ?SchemaScopeResolverInterface $scopeResolver = null;
     private ?SchemaSubjectContextInterface $subjectContext = null;
-    private ?RuntimeResourceHookRegistry $hooks = null;
     private ServerConstraintApplier $constraintApplier;
+    private ?RuntimeRegistry $runtimeRegistry = null;
+    private ?RuntimeCacheStore $runtimeCache = null;
+    private ?RuntimeBindingExecutor $runtimeExecutor = null;
+    private ?RuntimeEventDispatcher $runtimeEvents = null;
 
     /** @param array<string, mixed>|object $query */
     public function list(array|object $query): array
@@ -132,17 +137,20 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         $this->authorize($resolved['resource']->resource_key, 'create');
         $raw = (array) ($input['data'] ?? []);
         $data = $this->prepareInput($raw, $resolved['schema'], true, (string) ($input['mode'] ?? 'submit'), $resolved['resource']);
-        $hook = $this->hooks?->get($resolved['resource']->resource_key);
-        if ($hook) {
-            $data = $hook->prepareCreate($resolved['resource']->resource_key, $raw, $data, $resolved['schema']);
-        }
+        $snapshot = $this->runtimeSnapshot();
         $scope = $this->scopeFor($resolved['resource']->resource_key, 'create');
-        if (!$this->constraintApplier->matches($data, $scope, $resolved['schema'])) {
-            throw $this->error('forbidden', 'created record is outside the authorized data scope');
-        }
-        $id = DB::transaction(function () use ($resolved, $data, $hook, $raw): int {
+        $id = DB::transaction(function () use ($resolved, $data, $raw, $snapshot, $scope): int {
+            $context = new RuntimeHookContext($resolved['resource']->resource_key, 'create.prepare', $resolved['schema'], input: $raw);
+            $data = $this->prepareRuntime($snapshot, $context, $data);
+            if (!$this->constraintApplier->matches($data, $scope, $resolved['schema'])) {
+                throw $this->error('forbidden', 'created record is outside the authorized data scope');
+            }
+            $context = new RuntimeHookContext($resolved['resource']->resource_key, 'create.before', $resolved['schema'], input: $raw);
+            $this->runRuntime($snapshot, $context);
             $id = (int) DB::table($resolved['resource']->table_name)->insertGetId($data);
-            $hook?->created($resolved['resource']->resource_key, $id, $raw, $resolved['schema']);
+            $context = new RuntimeHookContext($resolved['resource']->resource_key, 'create.after', $resolved['schema'], $id, $raw);
+            $this->runRuntime($snapshot, $context);
+            $this->scheduleEvent($snapshot, $resolved['resource']->resource_key, 'created', $id, ['data' => $data]);
 
             return $id;
         });
@@ -162,29 +170,34 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         $scope = $this->scopeFor($resolved['resource']->resource_key, 'update');
         $this->applyScope($builder, $serverConstraint, $resolved['schema']);
         $this->applyScope($builder, $scope, $resolved['schema']);
-        $current = $builder->first();
-        if (!$current) {
-            throw $this->error('record_not_found', 'record not found', ['id' => $id]);
-        }
         $raw = (array) ($input['data'] ?? []);
         $data = $this->prepareInput($raw, $resolved['schema'], false, (string) ($input['mode'] ?? 'submit'), $resolved['resource'], $id);
-        $hook = $this->hooks?->get($resolved['resource']->resource_key);
-        if ($hook) {
-            $data = $hook->prepareUpdate($resolved['resource']->resource_key, $id, $raw, $data, $resolved['schema']);
-        }
-        $next = array_merge((array) $current, $data);
-        if (!$this->constraintApplier->matches($next, $serverConstraint, $resolved['schema'])
-            || !$this->constraintApplier->matches($next, $scope, $resolved['schema'])
-        ) {
-            throw $this->error('forbidden', 'updated record is outside the authorized data scope');
-        }
-        DB::transaction(function () use ($builder, $data, $hook, $resolved, $id, $raw): void {
+        $snapshot = $this->runtimeSnapshot();
+        $changed = DB::transaction(function () use ($builder, $data, $resolved, $id, $raw, $snapshot, $serverConstraint, $scope): array {
+            $current = $builder->first();
+            if (!$current) {
+                throw $this->error('record_not_found', 'record not found', ['id' => $id]);
+            }
+            $context = new RuntimeHookContext($resolved['resource']->resource_key, 'update.prepare', $resolved['schema'], $id, $raw);
+            $data = $this->prepareRuntime($snapshot, $context, $data);
+            $next = array_merge((array) $current, $data);
+            if (!$this->constraintApplier->matches($next, $serverConstraint, $resolved['schema'])
+                || !$this->constraintApplier->matches($next, $scope, $resolved['schema'])
+            ) {
+                throw $this->error('forbidden', 'updated record is outside the authorized data scope');
+            }
+            $context = new RuntimeHookContext($resolved['resource']->resource_key, 'update.before', $resolved['schema'], $id, $raw);
+            $this->runRuntime($snapshot, $context);
             if ($data !== []) {
                 $builder->update($data);
             }
-            $hook?->updated($resolved['resource']->resource_key, $id, $raw, $resolved['schema']);
+            $context = new RuntimeHookContext($resolved['resource']->resource_key, 'update.after', $resolved['schema'], $id, $raw);
+            $this->runRuntime($snapshot, $context);
+            $this->scheduleEvent($snapshot, $resolved['resource']->resource_key, 'updated', $id, ['data' => $data]);
+
+            return array_keys($data);
         });
-        return ['id' => $id, 'changed' => array_keys($data), 'item' => $this->find((string) $input['resource'], $id)['item']];
+        return ['id' => $id, 'changed' => $changed, 'item' => $this->find((string) $input['resource'], $id)['item']];
     }
 
     /** @param array<string, mixed>|object $input */
@@ -205,15 +218,18 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
             throw $this->error('record_not_found', 'record not found');
         }
         $id = (int) ($input['id'] ?? 0);
-        $hook = $this->hooks?->get($resolved['resource']->resource_key);
-        DB::transaction(function () use ($resolved, $builder, $hook, $id): void {
-            $hook?->deleting($resolved['resource']->resource_key, $id, $resolved['schema']);
+        $snapshot = $this->runtimeSnapshot();
+        DB::transaction(function () use ($resolved, $builder, $id, $snapshot): void {
+            $context = new RuntimeHookContext($resolved['resource']->resource_key, 'delete.before', $resolved['schema'], $id);
+            $this->runRuntime($snapshot, $context);
             if ($this->usesSoftDelete($resolved['schema'], $resolved['resource'])) {
                 $builder->update(['deleted_at' => now()]);
             } else {
                 $builder->delete();
             }
-            $hook?->deleted($resolved['resource']->resource_key, $id, $resolved['schema']);
+            $context = new RuntimeHookContext($resolved['resource']->resource_key, 'delete.after', $resolved['schema'], $id);
+            $this->runRuntime($snapshot, $context);
+            $this->scheduleEvent($snapshot, $resolved['resource']->resource_key, 'deleted', $id);
         });
         return ['success' => true, 'affected' => 1];
     }
@@ -237,15 +253,12 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
             throw $this->error('record_not_found', 'record not found');
         }
         $id = (int) ($input['id'] ?? 0);
-        $hook = $this->hooks?->get($resolved['resource']->resource_key);
-        DB::transaction(function () use ($restoreBuilder, $hook, $resolved, $id): void {
-            if ($hook instanceof RuntimeResourceRecycleHookInterface) {
-                $hook->restoring($resolved['resource']->resource_key, $id, $resolved['schema']);
-            }
+        $snapshot = $this->runtimeSnapshot();
+        DB::transaction(function () use ($restoreBuilder, $resolved, $id, $snapshot): void {
+            $this->runRuntime($snapshot, new RuntimeHookContext($resolved['resource']->resource_key, 'restore.before', $resolved['schema'], $id));
             $restoreBuilder->update(['deleted_at' => null]);
-            if ($hook instanceof RuntimeResourceRecycleHookInterface) {
-                $hook->restored($resolved['resource']->resource_key, $id, $resolved['schema']);
-            }
+            $this->runRuntime($snapshot, new RuntimeHookContext($resolved['resource']->resource_key, 'restore.after', $resolved['schema'], $id));
+            $this->scheduleEvent($snapshot, $resolved['resource']->resource_key, 'restored', $id);
         });
 
         return ['success' => true, 'affected' => 1];
@@ -267,15 +280,12 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
             throw $this->error('record_not_found', 'record not found');
         }
         $id = (int) ($input['id'] ?? 0);
-        $hook = $this->hooks?->get($resolved['resource']->resource_key);
-        DB::transaction(function () use ($purgeBuilder, $hook, $resolved, $id): void {
-            if ($hook instanceof RuntimeResourceRecycleHookInterface) {
-                $hook->purging($resolved['resource']->resource_key, $id, $resolved['schema']);
-            }
+        $snapshot = $this->runtimeSnapshot();
+        DB::transaction(function () use ($purgeBuilder, $resolved, $id, $snapshot): void {
+            $this->runRuntime($snapshot, new RuntimeHookContext($resolved['resource']->resource_key, 'purge.before', $resolved['schema'], $id));
             $purgeBuilder->delete();
-            if ($hook instanceof RuntimeResourceRecycleHookInterface) {
-                $hook->purged($resolved['resource']->resource_key, $id, $resolved['schema']);
-            }
+            $this->runRuntime($snapshot, new RuntimeHookContext($resolved['resource']->resource_key, 'purge.after', $resolved['schema'], $id));
+            $this->scheduleEvent($snapshot, $resolved['resource']->resource_key, 'purged', $id);
         });
 
         return ['success' => true, 'affected' => 1];
@@ -313,14 +323,30 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
                 throw $this->error('record_not_found', 'record not found', ['id' => $recordId]);
             }
         }
-        $hook = $this->hooks?->get($resolved['resource']->resource_key);
-        if ($hook) {
-            return $hook->executeAction($resolved['resource']->resource_key, $action, $input, $resolved['schema']);
+        $snapshot = $this->runtimeSnapshot();
+        $eventRecorder = function (string $eventKey, array $payload = []) use ($snapshot, $resolved, $recordId): void {
+            $this->scheduleEvent(
+                $snapshot,
+                $resolved['resource']->resource_key,
+                $eventKey,
+                $recordId > 0 ? $recordId : null,
+                $payload,
+            );
+        };
+        $context = new RuntimeHookContext(
+            $resolved['resource']->resource_key,
+            'action',
+            $resolved['schema'],
+            $recordId > 0 ? $recordId : null,
+            (array) $input,
+            $action,
+            eventRecorder: $eventRecorder,
+        );
+        if ($snapshot === null || !$this->hasActionBinding($snapshot, $context)) {
+            throw $this->error('action_binding_missing', 'action executor is not configured', ['action' => $action]);
         }
-        if ($this->executor && method_exists($this->executor, 'executeAction')) {
-            return (array) $this->executor->executeAction($input);
-        }
-        throw $this->error('action_not_available', 'action executor is not configured', ['action' => $action]);
+
+        return DB::transaction(fn (): array => $this->runtimeExecutor?->action($snapshot, $context, (array) $input) ?? []);
     }
 
     /** @param array<string, mixed>|object $query */
@@ -917,9 +943,135 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
             }
             $this->applyMirrorOutput($row, $field);
         }
-        $hook = $resourceKey !== '' ? $this->hooks?->get($resourceKey) : null;
+        if ($resourceKey !== '') {
+            $snapshot = $this->runtimeSnapshot();
+            $context = new RuntimeHookContext($resourceKey, 'output.transform', $schema, input: $row);
+            if ($snapshot !== null && $this->hasHookBinding($snapshot, $context)) {
+                return $this->runtimeExecutor?->transform($snapshot, $context, $row) ?? $row;
+            }
+        }
 
-        return $hook ? $hook->output($resourceKey, $row, $schema) : $row;
+        return $row;
+    }
+
+    private function runtimeSnapshot(): ?RuntimeRegistrySnapshot
+    {
+        if ($this->runtimeSnapshotLoaded) {
+            return $this->runtimeSnapshot;
+        }
+        $this->runtimeSnapshotLoaded = true;
+        if ($this->runtimeRegistry === null || $this->runtimeCache === null || $this->runtimeExecutor === null) {
+            return null;
+        }
+
+        $registry = $this->runtimeRegistry;
+        $this->runtimeSnapshot = $this->runtimeCache->load(static fn (): RuntimeRegistrySnapshot => $registry->build());
+
+        return $this->runtimeSnapshot;
+    }
+
+    private function hasHookBinding(RuntimeRegistrySnapshot $snapshot, RuntimeHookContext $context): bool
+    {
+        $resource = $snapshot->toArray()['resources'][$context->resourceKey] ?? null;
+        $bindings = is_array($resource) ? ($resource['hooks'][$context->stage] ?? []) : [];
+
+        return is_array($bindings) && $bindings !== [];
+    }
+
+    private function hasActionBinding(RuntimeRegistrySnapshot $snapshot, RuntimeHookContext $context): bool
+    {
+        $resource = $snapshot->toArray()['resources'][$context->resourceKey] ?? null;
+
+        return is_array($resource) && is_array($resource['actions'] ?? null)
+            && isset($resource['actions'][$context->actionKey ?? '']);
+    }
+
+    /** @param array<string, mixed> $data @return array<string, mixed> */
+    private function prepareRuntime(?RuntimeRegistrySnapshot $snapshot, RuntimeHookContext $context, array $data): array
+    {
+        if ($snapshot === null || !$this->hasHookBinding($snapshot, $context)) {
+            return $data;
+        }
+
+        return $this->runtimeExecutor?->prepare($snapshot, $context, $data) ?? $data;
+    }
+
+    private function runRuntime(?RuntimeRegistrySnapshot $snapshot, RuntimeHookContext $context): void
+    {
+        if ($snapshot !== null && $this->hasHookBinding($snapshot, $context)) {
+            $this->runtimeExecutor?->run($snapshot, $context);
+        }
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function eventContext(string $resourceKey, string $eventKey, ?int $recordId, array $payload = []): RuntimeEventContext
+    {
+        $eventId = (string) Str::uuid();
+        $actor = [];
+        $subject = $this->subjectContext?->get();
+        if (is_object($subject) && method_exists($subject, 'getKey')) {
+            $actor = [
+                'type' => method_exists($subject, 'getMorphClass') ? (string) $subject->getMorphClass() : $subject::class,
+                'id' => (string) $subject->getKey(),
+            ];
+        }
+        $requestId = '';
+        if (function_exists('request') && app()->bound('request')) {
+            $requestId = (string) request()->attributes->get('ptadmin.request_id', '');
+        }
+
+        return new RuntimeEventContext(
+            $eventId,
+            $eventKey,
+            $resourceKey,
+            $recordId,
+            $actor,
+            now()->toIso8601String(),
+            $requestId,
+            $payload,
+            hash('sha256', $eventId.'|'.$resourceKey.'|'.$eventKey.'|'.($recordId ?? '')),
+        );
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function scheduleEvent(
+        ?RuntimeRegistrySnapshot $snapshot,
+        string $resourceKey,
+        string $eventKey,
+        ?int $recordId,
+        array $payload = [],
+    ): void
+    {
+        if ($snapshot !== null && $this->hasEventBinding($snapshot, $resourceKey, $eventKey)) {
+            $this->runtimeEvents?->schedule($snapshot, $this->eventContext(
+                $resourceKey,
+                $eventKey,
+                $recordId,
+                $this->normalizeEventPayload($payload),
+            ));
+        }
+    }
+
+    private function hasEventBinding(RuntimeRegistrySnapshot $snapshot, string $resourceKey, string $eventKey): bool
+    {
+        $resource = $snapshot->toArray()['resources'][$resourceKey] ?? null;
+        $bindings = is_array($resource) ? ($resource['events'][$eventKey] ?? []) : [];
+
+        return is_array($bindings) && $bindings !== [];
+    }
+
+    /** @param array<string, mixed> $payload @return array<string, mixed> */
+    private function normalizeEventPayload(array $payload): array
+    {
+        foreach ($payload as $key => $value) {
+            if ($value instanceof \DateTimeInterface) {
+                $payload[$key] = $value->format(DATE_ATOM);
+            } elseif (is_array($value)) {
+                $payload[$key] = $this->normalizeEventPayload($value);
+            }
+        }
+
+        return $payload;
     }
 
     /**

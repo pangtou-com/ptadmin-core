@@ -31,6 +31,9 @@ final class RuntimeRegistryTest extends TestCase
         self::assertSame('host', $resource['hooks']['output.transform'][0]['owner']['code']);
         self::assertSame('sync_roles', $resource['actions']['sync_roles']['action_key'] ?? 'sync_roles');
         self::assertSame('queued', $resource['events']['created'][0]['mode']);
+        self::assertArrayHasKey('core/ptadmin', $snapshot->toArray()['sources']);
+        self::assertArrayHasKey('app/host', $snapshot->toArray()['sources']);
+        self::assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $snapshot->toArray()['sources']['core/ptadmin']);
         self::assertSame($snapshot->checksum(), $snapshot->toArray()['checksum']);
     }
 
@@ -51,12 +54,40 @@ final class RuntimeRegistryTest extends TestCase
         self::assertSame(['eventHigh', 'event'], array_column($descriptor['events']['created'], 'method'));
     }
 
+    public function testChangingOneOwnerOnlyChangesThatOwnerSourceChecksum(): void
+    {
+        $first = new RuntimeRegistry();
+        $first->forOwner('core', 'ptadmin')->resource('cms.articles')->hook('create.before', RuntimeHandler::class, 'before');
+        $first->forOwner('app', 'host')->resource('cms.articles')->hook('output.transform', RuntimeHandler::class, 'output');
+        $firstSources = $first->build()->toArray()['sources'];
+
+        $second = new RuntimeRegistry();
+        $second->forOwner('core', 'ptadmin')->resource('cms.articles')->hook('create.before', RuntimeHandler::class, 'before');
+        $second->forOwner('app', 'host')->resource('cms.articles')->hook('output.transform', RuntimeHandler::class, 'action');
+        $secondSources = $second->build()->toArray()['sources'];
+
+        self::assertSame($firstSources['core/ptadmin'], $secondSources['core/ptadmin']);
+        self::assertNotSame($firstSources['app/host'], $secondSources['app/host']);
+    }
+
     public function testRegistryRejectsInvalidOwnerAndHookStage(): void
     {
         $this->expectException(RuntimeDiagnostic::class);
         $this->expectExceptionMessage('Application Runtime Owner');
 
         (new RuntimeRegistry())->forOwner('app', 'frontend');
+    }
+
+    public function testEmptyResourceProducesStableDescriptorShape(): void
+    {
+        $registry = new RuntimeRegistry();
+        $registry->forOwner('core', 'ptadmin')->resource('cms.articles');
+
+        self::assertSame([
+            'actions' => [],
+            'events' => [],
+            'hooks' => [],
+        ], $registry->build()->toArray()['resources']['cms.articles']);
     }
 
     public function testRegistryRejectsInvalidHookStage(): void
@@ -122,6 +153,23 @@ final class RuntimeRegistryTest extends TestCase
         }
     }
 
+    public function testFailedBuildDoesNotFreezeRegistry(): void
+    {
+        $registry = new RuntimeRegistry();
+        $registry->forOwner('core', 'ptadmin')->resource('cms.articles')
+            ->hook('create.invalid', RuntimeHandler::class, 'before');
+
+        try {
+            $registry->build();
+            self::fail('Expected invalid Hook stage diagnostic.');
+        } catch (RuntimeDiagnostic $exception) {
+            self::assertSame('hook_stage_invalid', $exception->diagnosticCode);
+        }
+
+        $registry->forOwner('core', 'ptadmin')->resource('cms.other');
+        self::assertTrue(true);
+    }
+
     public function testRegistryFreezesAfterSuccessfulBuild(): void
     {
         $registry = new RuntimeRegistry();
@@ -131,6 +179,36 @@ final class RuntimeRegistryTest extends TestCase
         $this->expectException(RuntimeDiagnostic::class);
         $this->expectExceptionMessage('already been built');
         $registry->forOwner('core', 'ptadmin');
+    }
+
+    public function testSuccessfulBuildCanBeReadAgainAfterRegistryFreezes(): void
+    {
+        $registry = new RuntimeRegistry();
+        $registry->forOwner('core', 'ptadmin')->resource('cms.articles');
+
+        $first = $registry->build();
+        $second = $registry->build();
+
+        self::assertSame($first, $second);
+    }
+
+    public function testSnapshotCanReplaceOneAddonOwnerWithoutDroppingOtherBindings(): void
+    {
+        $registry = new RuntimeRegistry();
+        $registry->forOwner('core', 'ptadmin')->resource('cms.articles')
+            ->hook('create.before', RuntimeHandler::class, 'before');
+        $registry->forOwner('addon', 'cms')->resource('cms.articles')
+            ->action('publish', RuntimeHandler::class, 'action');
+        $replacement = new RuntimeRegistry();
+        $replacement->forOwner('addon', 'cms')->resource('cms.articles')
+            ->action('archive', RuntimeHandler::class, 'other');
+
+        $resource = $registry->build()->replaceOwner(['type' => 'addon', 'code' => 'cms'], $replacement->build())
+            ->toArray()['resources']['cms.articles'];
+
+        self::assertArrayHasKey('create.before', $resource['hooks']);
+        self::assertArrayNotHasKey('publish', $resource['actions']);
+        self::assertArrayHasKey('archive', $resource['actions']);
     }
 
     public function testCacheStoreWritesAtomicallyAndFallsBackForInvalidCache(): void
@@ -151,6 +229,12 @@ final class RuntimeRegistryTest extends TestCase
         $contents = file_get_contents($path);
         self::assertIsString($contents);
         file_put_contents($path, str_replace("'checksum' => '", "'checksum' => 'broken", $contents));
+        self::assertNull($store->read());
+
+        file_put_contents($path, "<?php return ['format' => 1, 'resources' => 'invalid', 'checksum' => ''];");
+        self::assertNull($store->read());
+
+        file_put_contents($path, "<?php return ['format' => 1, 'sources' => ['core/ptadmin' => 'invalid'], 'resources' => [], 'checksum' => ''];");
         self::assertNull($store->read());
 
         unlink($path);

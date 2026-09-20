@@ -30,8 +30,11 @@ final class RuntimeRegistry
     private array $actions = [];
     /** @var list<array<string, mixed>> */
     private array $events = [];
+    /** @var array<string, true> */
+    private array $resources = [];
     private int $sequence = 0;
     private bool $built = false;
+    private ?RuntimeRegistrySnapshot $snapshot = null;
 
     public function forOwner(string $ownerType, string $ownerCode): RuntimeContributor
     {
@@ -43,8 +46,9 @@ final class RuntimeRegistry
 
     public function build(): RuntimeRegistrySnapshot
     {
-        $this->assertMutable();
-        $this->built = true;
+        if ($this->snapshot !== null) {
+            return $this->snapshot;
+        }
 
         foreach ($this->hooks as $binding) {
             $this->validateBinding($binding, 'hook');
@@ -59,9 +63,6 @@ final class RuntimeRegistry
             $this->validateBinding($binding, 'event');
         }
 
-        $hooks = $this->sortedBindings($this->hooks);
-        $events = $this->sortedBindings($this->events);
-
         $actions = [];
         foreach ($this->actions as $binding) {
             $key = $binding['resource_key'].'|'.$binding['action_key'];
@@ -71,10 +72,21 @@ final class RuntimeRegistry
             $actions[$key] = true;
         }
 
+        $hooks = $this->sortedBindings($this->hooks);
+        $events = $this->sortedBindings($this->events);
+
         $descriptor = [
             'format' => self::FORMAT,
+            'sources' => $this->sourceChecksums(),
             'resources' => [],
         ];
+        foreach (array_keys($this->resources) as $resourceKey) {
+            $descriptor['resources'][$resourceKey] = [
+                'hooks' => [],
+                'actions' => [],
+                'events' => [],
+            ];
+        }
         foreach ($hooks as $binding) {
             $descriptor['resources'][$binding['resource_key']]['hooks'][$binding['stage']][] = $binding['descriptor'];
         }
@@ -87,8 +99,44 @@ final class RuntimeRegistry
 
         $snapshot = new RuntimeRegistrySnapshot($descriptor);
         $descriptor['checksum'] = $snapshot->checksum();
+        $this->built = true;
 
-        return new RuntimeRegistrySnapshot($descriptor);
+        return $this->snapshot = new RuntimeRegistrySnapshot($descriptor);
+    }
+
+    /** @return array<string, string> */
+    private function sourceChecksums(): array
+    {
+        $sources = [];
+        foreach ([
+            'hook' => $this->hooks,
+            'action' => $this->actions,
+            'event' => $this->events,
+        ] as $kind => $bindings) {
+            foreach ($bindings as $binding) {
+                $owner = $binding['owner'] ?? null;
+                if (!is_array($owner) || !isset($owner['type'], $owner['code'])) {
+                    continue;
+                }
+                $key = (string) $owner['type'].'/'.(string) $owner['code'];
+                $sources[$key][] = [
+                    'resource_key' => $binding['resource_key'],
+                    'kind' => $kind,
+                    ...$binding['descriptor'],
+                ];
+            }
+        }
+        ksort($sources, SORT_STRING);
+        foreach ($sources as $key => $bindings) {
+            usort($bindings, static fn (array $left, array $right): int => ((int) ($left['sequence'] ?? 0)) <=> ((int) ($right['sequence'] ?? 0)));
+            foreach ($bindings as $index => &$binding) {
+                $binding['sequence'] = $index + 1;
+            }
+            unset($binding);
+            $sources[$key] = hash('sha256', json_encode($bindings, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+        }
+
+        return $sources;
     }
 
     /** @param list<array<string, mixed>> $bindings @return list<array<string, mixed>> */
@@ -109,6 +157,7 @@ final class RuntimeRegistry
     public function addHook(array $owner, string $resourceKey, string $stage, string $service, string $method, int $priority): void
     {
         $this->assertMutable();
+        $this->addResource($resourceKey);
         $this->hooks[] = $this->binding($owner, $resourceKey, $service, $method, [
             'stage' => $stage,
             'priority' => $priority,
@@ -119,6 +168,7 @@ final class RuntimeRegistry
     public function addAction(array $owner, string $resourceKey, string $actionKey, string $service, string $method): void
     {
         $this->assertMutable();
+        $this->addResource($resourceKey);
         $this->actions[] = $this->binding($owner, $resourceKey, $service, $method, [
             'action_key' => $actionKey,
         ]);
@@ -128,11 +178,23 @@ final class RuntimeRegistry
     public function addEvent(array $owner, string $resourceKey, string $eventKey, string $service, string $method, EventMode $mode, int $priority): void
     {
         $this->assertMutable();
+        $this->addResource($resourceKey);
         $this->events[] = $this->binding($owner, $resourceKey, $service, $method, [
             'event_key' => $eventKey,
             'mode' => $mode->value,
             'priority' => $priority,
         ]);
+    }
+
+    public function addResource(string $resourceKey): void
+    {
+        $this->assertMutable();
+        if (!preg_match('/^[a-z][a-z0-9_-]{0,99}(?:\.[a-z][a-z0-9_-]{0,99})+$/', $resourceKey)) {
+            throw $this->diagnostic('resource_key_invalid', 'Runtime resource key is invalid.', [
+                'resource_key' => $resourceKey,
+            ]);
+        }
+        $this->resources[$resourceKey] = true;
     }
 
     /** @param array<string, scalar> $owner @param array<string, scalar> $extra @return array<string, mixed> */

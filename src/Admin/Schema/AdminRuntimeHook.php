@@ -12,13 +12,13 @@ use PTAdmin\Admin\Models\AdminResource;
 use PTAdmin\Core\Auth\DataScopeRegistry;
 use PTAdmin\Core\Auth\Session\SessionManager;
 use PTAdmin\Schema\Contract\SchemaError;
-use PTAdmin\Schema\Contracts\RuntimeResourceHookInterface;
 use PTAdmin\Schema\Definition\Schema;
+use PTAdmin\Schema\Runtime\RuntimeHookContext;
 
 /**
  * Admin 管理与审计资源的领域规则。普通字段仍由 Runtime 校验，敏感字段和关联写入在这里集中处理。
  */
-final class AdminRuntimeHook implements RuntimeResourceHookInterface
+final class AdminRuntimeHook
 {
     public function __construct(
         private ConnectionInterface $database,
@@ -27,25 +27,9 @@ final class AdminRuntimeHook implements RuntimeResourceHookInterface
     ) {
     }
 
-    public function resources(): array
+    public function prepareCreate(RuntimeHookContext $context, array $prepared): array
     {
-        return [
-            'admin.management_users',
-            'admin.management_roles',
-            'admin.management_menus',
-            'admin.login_logs',
-            'admin.operation_records',
-            'admin.dashboard_widgets',
-            'admin.notification_scenes',
-            'admin.notification_templates',
-            'admin.notification_messages',
-            'admin.notification_receipts',
-            'admin.notification_deliveries',
-        ];
-    }
-
-    public function prepareCreate(string $resourceKey, array $input, array $prepared, Schema $schema): array
-    {
+        [$resourceKey, $input, $schema] = $this->contextValues($context);
         $this->assertWritable($resourceKey);
         $timestamp = in_array($resourceKey, [
             'admin.dashboard_widgets',
@@ -86,8 +70,9 @@ final class AdminRuntimeHook implements RuntimeResourceHookInterface
         return $prepared;
     }
 
-    public function created(string $resourceKey, int $id, array $input, Schema $schema): void
+    public function created(RuntimeHookContext $context): void
     {
+        [$resourceKey, $input, $schema, $id] = $this->contextValues($context, true);
         if ($resourceKey === 'admin.management_users') {
             $this->syncUserRelations($id, $input);
         } elseif ($resourceKey === 'admin.management_roles') {
@@ -95,8 +80,9 @@ final class AdminRuntimeHook implements RuntimeResourceHookInterface
         }
     }
 
-    public function prepareUpdate(string $resourceKey, int $id, array $input, array $prepared, Schema $schema): array
+    public function prepareUpdate(RuntimeHookContext $context, array $prepared): array
     {
+        [$resourceKey, $input, $schema, $id] = $this->contextValues($context, true);
         $this->assertWritable($resourceKey);
         $prepared['updated_at'] = in_array($resourceKey, [
             'admin.dashboard_widgets',
@@ -146,8 +132,9 @@ final class AdminRuntimeHook implements RuntimeResourceHookInterface
         return $prepared;
     }
 
-    public function updated(string $resourceKey, int $id, array $input, Schema $schema): void
+    public function updated(RuntimeHookContext $context): void
     {
+        [$resourceKey, $input, $schema, $id] = $this->contextValues($context, true);
         if ($resourceKey === 'admin.management_users') {
             $this->syncUserRelations($id, $input);
             if (array_key_exists('status', $input) && !(bool) $input['status']) {
@@ -158,8 +145,9 @@ final class AdminRuntimeHook implements RuntimeResourceHookInterface
         }
     }
 
-    public function deleting(string $resourceKey, int $id, Schema $schema): void
+    public function deleting(RuntimeHookContext $context): void
     {
+        [$resourceKey, , $schema, $id] = $this->contextValues($context, true);
         $this->assertWritable($resourceKey);
         if ($resourceKey === 'admin.management_users') {
             $admin = Admin::query()->findOrFail($id);
@@ -178,8 +166,9 @@ final class AdminRuntimeHook implements RuntimeResourceHookInterface
         }
     }
 
-    public function deleted(string $resourceKey, int $id, Schema $schema): void
+    public function deleted(RuntimeHookContext $context): void
     {
+        [$resourceKey, , $schema, $id] = $this->contextValues($context, true);
         if ($resourceKey === 'admin.management_users') {
             $this->database->table('admin_user_roles')->where('admin_id', $id)->delete();
             $this->database->table('admin_grants')->where('subject_type', 'admin')->where('subject_id', (string) $id)->delete();
@@ -189,8 +178,9 @@ final class AdminRuntimeHook implements RuntimeResourceHookInterface
         }
     }
 
-    public function output(string $resourceKey, array $row, Schema $schema): array
+    public function output(RuntimeHookContext $context, array $row): array
     {
+        [$resourceKey, , $schema] = $this->contextValues($context);
         if ($resourceKey === 'admin.management_users') {
             unset($row['password']);
             $row['role_ids'] = $this->database->table('admin_user_roles')->where('admin_id', (int) ($row['id'] ?? 0))->pluck('role_id')->map(static fn ($id): int => (int) $id)->values()->all();
@@ -222,8 +212,10 @@ final class AdminRuntimeHook implements RuntimeResourceHookInterface
         };
     }
 
-    public function executeAction(string $resourceKey, string $action, array $input, Schema $schema): array
+    public function executeAction(RuntimeHookContext $context, array $input): array
     {
+        [$resourceKey, , $schema] = $this->contextValues($context);
+        $action = (string) $context->actionKey;
         $id = (int) ($input['id'] ?? 0);
         if ($resourceKey === 'admin.management_users' && $action === 'sync_roles') {
             $this->admin($id);
@@ -692,7 +684,7 @@ final class AdminRuntimeHook implements RuntimeResourceHookInterface
 
         $moved = AdminResource::query()->findOrFail($id)->getAttributes();
 
-        return ['id' => $id, 'item' => $this->output('admin.management_menus', $moved, $schema)];
+        return ['id' => $id, 'item' => $this->output(new RuntimeHookContext('admin.management_menus', 'output.transform', $schema), $moved)];
     }
 
     private function assertResourceCanBeRemoved(AdminResource $resource): void
@@ -727,6 +719,19 @@ final class AdminRuntimeHook implements RuntimeResourceHookInterface
     private function error(string $code, string $message, array $details = []): SchemaError
     {
         return new SchemaError($code, $message, $details);
+    }
+
+    /** @return array{0:string,1:array<string,mixed>,2:Schema,3:int|null} */
+    private function contextValues(RuntimeHookContext $context, bool $requiresRecord = false): array
+    {
+        if (!$context->schema instanceof Schema) {
+            throw $this->error('runtime_context_invalid', 'Runtime Hook context lacks a Schema.', ['resource_key' => $context->resourceKey]);
+        }
+        if ($requiresRecord && ($context->recordId === null || $context->recordId < 1)) {
+            throw $this->error('runtime_context_invalid', 'Runtime Hook context lacks a record ID.', ['resource_key' => $context->resourceKey]);
+        }
+
+        return [$context->resourceKey, $context->input, $context->schema, $context->recordId];
     }
 
     private function isCoreResource(string $resourceKey): bool

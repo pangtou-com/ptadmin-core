@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 return [
     'runtime' => [
-        'cache_path' => bootstrap_path('cache/ptadmin-runtime.php'),
+        // Resolve the application-specific bootstrap path in the ServiceProvider;
+        // package config may be loaded before Laravel's global path helpers.
+        'cache_path' => null,
         'cache_enabled' => env('PTADMIN_RUNTIME_CACHE', true),
     ],
     'sources' => [

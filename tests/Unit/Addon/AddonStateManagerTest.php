@@ -14,6 +14,8 @@ use PTAdmin\Addon\AddonManifestVerifier;
 use PTAdmin\Addon\AddonPackageExtractor;
 use PTAdmin\Addon\AddonResourceSynchronizerInterface;
 use PTAdmin\Addon\AddonStateManager;
+use PTAdmin\Schema\Runtime\RuntimeCacheStore;
+use PTAdmin\Schema\Runtime\RuntimeRegistry;
 
 final class AddonStateManagerTest extends TestCase
 {
@@ -53,11 +55,16 @@ final class AddonStateManagerTest extends TestCase
                 $this->calls[] = ['deactivate', $code];
             }
         };
-        $states = new AddonStateManager($this->root.'/addons', new AddonManifestVerifier(), $lifecycle, new AddonLock($this->root.'/locks'), false, $synchronizer);
+        $cache = new RuntimeCacheStore($this->root.'/cache/ptadmin-runtime.php');
+        $states = new AddonStateManager($this->root.'/addons', new AddonManifestVerifier(), $lifecycle, new AddonLock($this->root.'/locks'), false, $synchronizer, $cache);
 
+        $this->writeRuntimeCache($cache);
         self::assertFalse($states->disable('state-addon')['enabled']);
+        self::assertFileDoesNotExist($this->root.'/cache/ptadmin-runtime.php');
         self::assertTrue($lifecycle->read('state-addon')['disabled_by_user']);
+        $this->writeRuntimeCache($cache);
         self::assertTrue($states->enable('state-addon')['enabled']);
+        self::assertFileDoesNotExist($this->root.'/cache/ptadmin-runtime.php');
         self::assertFalse($lifecycle->read('state-addon')['disabled_by_user']);
         self::assertSame('active', $lifecycle->read('state-addon')['state']);
         self::assertSame('deactivate', $synchronizer->calls[0][0]);
@@ -86,5 +93,12 @@ final class AddonStateManagerTest extends TestCase
             is_dir($entry) ? $this->remove($entry) : @unlink($entry);
         }
         @rmdir($path);
+    }
+
+    private function writeRuntimeCache(RuntimeCacheStore $cache): void
+    {
+        $registry = new RuntimeRegistry();
+        $registry->forOwner('core', 'ptadmin')->resource('cache.marker');
+        $cache->write($registry->build());
     }
 }

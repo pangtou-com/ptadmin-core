@@ -59,6 +59,7 @@ use PTAdmin\Addon\AddonResourceSynchronizerInterface;
 use PTAdmin\Addon\AddonLock;
 use PTAdmin\Addon\AddonDiscovery;
 use PTAdmin\Addon\AddonRuntimeRegistrar;
+use PTAdmin\Addon\AddonRuntimeLifecycleValidator;
 use PTAdmin\Addon\AddonTemplateDirectiveRegistry;
 use PTAdmin\Addon\AddonTemplateRuntime;
 use PTAdmin\Addon\TemplateDirectiveArgumentParser;
@@ -67,7 +68,10 @@ use PTAdmin\Schema\Providers\SchemaServiceProvider;
 use PTAdmin\Schema\Contracts\SchemaAuthorizationInterface;
 use PTAdmin\Schema\Contracts\SchemaScopeResolverInterface;
 use PTAdmin\Schema\Contracts\SchemaSubjectContextInterface;
-use PTAdmin\Schema\Runtime\RuntimeResourceHookRegistry;
+use PTAdmin\Schema\Runtime\RuntimeRegistry;
+use PTAdmin\Schema\Runtime\RuntimeCacheStore;
+use PTAdmin\Schema\Console\Commands\RuntimeCacheCommand;
+use PTAdmin\Schema\Console\Commands\RuntimeValidateCommand;
 use PTAdmin\Schema\SchemaFile\Loader as SchemaFileLoader;
 use PTAdmin\Schema\SchemaFile\SchemaFileSynchronizer;
 use PTAdmin\Schema\SchemaFile\SchemaSourceDiscovery;
@@ -174,9 +178,11 @@ final class PTAdminServiceProvider extends ServiceProvider
                 $app->make(AddonDiscovery::class),
                 $app->make(AddonLifecycleStore::class),
                 (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
-                $app->make(AddonTemplateDirectiveRegistry::class)
+                $app->make(AddonTemplateDirectiveRegistry::class),
+                $app->make(RuntimeRegistry::class),
             );
         });
+        $this->app->singleton(AddonRuntimeLifecycleValidator::class);
         $this->app->singleton(AddonTemplateDirectiveRegistry::class);
         $this->app->singleton(TemplateDirectiveArgumentParser::class);
         $this->app->singleton(AddonTemplateRuntime::class);
@@ -188,6 +194,8 @@ final class PTAdminServiceProvider extends ServiceProvider
                 $app->make(AddonLock::class),
                 (bool) $app['config']->get('ptadmin.addon.require_signature', true),
                 $app->make(AddonResourceSynchronizerInterface::class),
+                $app->make(RuntimeCacheStore::class),
+                $app->make(AddonRuntimeLifecycleValidator::class),
             );
         });
         $this->app->singleton(SchemaFileLoader::class);
@@ -212,7 +220,9 @@ final class PTAdminServiceProvider extends ServiceProvider
                 (bool) $app['config']->get('ptadmin.addon.require_signature', true),
                 $app->make(AddonResourceSynchronizer::class),
                 $app['db']->connection(),
-                $app->make(AddonLock::class)
+                $app->make(AddonLock::class),
+                $app->make(RuntimeCacheStore::class),
+                $app->make(AddonRuntimeLifecycleValidator::class),
             );
         });
         $this->app->singleton(AdminFrontendManifest::class, static function ($app): AdminFrontendManifest {
@@ -259,9 +269,6 @@ final class PTAdminServiceProvider extends ServiceProvider
             );
         });
         $this->app->singleton(AdminRuntimeHook::class);
-        $this->app->afterResolving(RuntimeResourceHookRegistry::class, static function (RuntimeResourceHookRegistry $registry, $app): void {
-            $registry->register($app->make(AdminRuntimeHook::class));
-        });
         $this->app->singleton(SchemaAuthorizationInterface::class, SchemaAuthorizationBridge::class);
         $this->app->singleton(SchemaScopeResolverInterface::class, SchemaScopeResolver::class);
         $this->app->alias(SchemaSubjectContextInterface::class, 'ptadmin.schema.subject');
@@ -303,6 +310,7 @@ final class PTAdminServiceProvider extends ServiceProvider
             $this->loadRoutesFrom(__DIR__.'/../../../routes/admin.php');
         }
         $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
+        $this->registerAdminRuntimeBindings();
         if ((bool) $this->app['config']->get('ptadmin.addon.runtime.enabled', true)) {
             $this->app->make(AddonRuntimeRegistrar::class)->register();
         }
@@ -312,9 +320,39 @@ final class PTAdminServiceProvider extends ServiceProvider
                 TaskRecoverCommand::class,
                 SchemaSyncCommand::class,
                 SchemaPublishCommand::class,
+                RuntimeCacheCommand::class,
+                RuntimeValidateCommand::class,
                 AdminSyncCommand::class,
                 MenuSyncCommand::class,
             ]);
+        }
+    }
+
+    private function registerAdminRuntimeBindings(): void
+    {
+        $hook = $this->app->make(AdminRuntimeHook::class);
+        $actions = [];
+        foreach ($this->app->make(AdminSchemaDefinitions::class)->all() as $resourceKey => $definition) {
+            $declared = (array) ($definition['schema']['actions'] ?? []);
+            $actions[$resourceKey] = array_values(array_filter(
+                array_keys($declared),
+                static fn (string $action): bool => !in_array($action, ['list', 'view', 'create', 'update', 'delete', 'restore', 'purge'], true),
+            ));
+        }
+        $owner = $this->app->make(RuntimeRegistry::class)->forOwner('core', 'ptadmin');
+        foreach (array_keys($this->app->make(AdminSchemaDefinitions::class)->all()) as $resourceKey) {
+            $resource = $owner->resource($resourceKey);
+            $resource
+                ->hook('create.prepare', AdminRuntimeHook::class, 'prepareCreate')
+                ->hook('create.after', AdminRuntimeHook::class, 'created')
+                ->hook('update.prepare', AdminRuntimeHook::class, 'prepareUpdate')
+                ->hook('update.after', AdminRuntimeHook::class, 'updated')
+                ->hook('delete.before', AdminRuntimeHook::class, 'deleting')
+                ->hook('delete.after', AdminRuntimeHook::class, 'deleted')
+                ->hook('output.transform', AdminRuntimeHook::class, 'output');
+            foreach ($actions[$resourceKey] ?? [] as $actionKey) {
+                $resource->action($actionKey, AdminRuntimeHook::class, 'executeAction');
+            }
         }
     }
 }

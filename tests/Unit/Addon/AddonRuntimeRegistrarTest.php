@@ -175,6 +175,46 @@ PHP);
     }
 
     /** @runInSeparateProcess */
+    public function testRuntimeOwnerUsesVerifiedManifestCodeInsteadOfDirectoryName(): void
+    {
+        rename($this->root.'/runtime-addon', $this->root.'/RuntimeAddon');
+        mkdir($this->root.'/RuntimeAddon/Runtime', 0700, true);
+        file_put_contents($this->root.'/RuntimeAddon/Runtime/Registrar.php', <<<'PHP'
+<?php
+namespace RuntimeAddon;
+use PTAdmin\Addon\AddonRuntimeRegistrarInterface;
+use PTAdmin\Schema\Runtime\RuntimeContributor;
+final class Registrar implements AddonRuntimeRegistrarInterface
+{
+    public function registerRuntime(RuntimeContributor $runtime, array $manifest): void
+    {
+        $runtime->resource('runtime.posts')->hook('create.before', Handler::class, 'before');
+    }
+}
+final class Handler { public function before(): void {} }
+PHP);
+        $manifestPath = $this->root.'/RuntimeAddon/manifest.json';
+        $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+        $manifest['runtime'] = ['file' => 'Runtime/Registrar.php', 'class' => 'RuntimeAddon\\Registrar'];
+        $manifest['files'][] = 'Runtime/Registrar.php';
+        file_put_contents($manifestPath, json_encode($manifest, JSON_THROW_ON_ERROR));
+        $registry = new RuntimeRegistry();
+        $app = new Application($this->root);
+        $registrar = new AddonRuntimeRegistrar(
+            $app,
+            new AddonDiscovery($this->root, new AddonManifestVerifier(), new AddonLifecycleStore($this->lifecycle), false),
+            new AddonLifecycleStore($this->lifecycle),
+            $this->root,
+            null,
+            $registry,
+        );
+
+        self::assertSame(['RuntimeAddon'], $registrar->register()['loaded']);
+        $binding = $registry->build()->toArray()['resources']['runtime.posts']['hooks']['create.before'][0];
+        self::assertSame(['code' => 'runtime-addon', 'type' => 'addon'], $binding['owner']);
+    }
+
+    /** @runInSeparateProcess */
     public function testUserDisabledAddonDoesNotLoadRuntimeManifest(): void
     {
         mkdir($this->root.'/runtime-addon/Runtime', 0700, true);
@@ -246,6 +286,36 @@ PHP);
         self::assertSame('inactive', $state['state']);
         self::assertSame('addon_runtime_registration_failed', $state['runtime_error_code']);
         self::assertSame('runtime registration failed', $state['runtime_error']);
+    }
+
+    /** @runInSeparateProcess */
+    public function testRuntimeManifestRequiresTheSharedRegistry(): void
+    {
+        mkdir($this->root.'/runtime-addon/Runtime', 0700, true);
+        file_put_contents($this->root.'/runtime-addon/Runtime/Registrar.php', <<<'PHP'
+<?php
+namespace RuntimeAddon;
+use PTAdmin\Addon\AddonRuntimeRegistrarInterface;
+use PTAdmin\Schema\Runtime\RuntimeContributor;
+final class Registrar implements AddonRuntimeRegistrarInterface
+{
+    public function registerRuntime(RuntimeContributor $runtime, array $manifest): void {}
+}
+PHP);
+        $this->writeRuntimeManifest(['file' => 'Runtime/Registrar.php', 'class' => 'RuntimeAddon\\Registrar']);
+        $lifecycle = new AddonLifecycleStore($this->lifecycle);
+        $registrar = new AddonRuntimeRegistrar(
+            new Application($this->root),
+            new AddonDiscovery($this->root, new AddonManifestVerifier(), $lifecycle, false),
+            $lifecycle,
+            $this->root,
+        );
+
+        $result = $registrar->register();
+
+        self::assertSame([], $result['loaded']);
+        self::assertSame('runtime_registry_unavailable', $result['errors'][0]['error_code']);
+        self::assertSame('inactive', $lifecycle->read('runtime-addon')['state']);
     }
 
     /** @runInSeparateProcess */
