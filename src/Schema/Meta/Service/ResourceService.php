@@ -233,6 +233,10 @@ final class ResourceService implements \PTAdmin\Schema\Contracts\ResourceService
         if (!in_array($ownerType, ['app', 'addon', 'core'], true) || $ownerCode === '') {
             throw $this->error('invalid_input', 'code resource owner is invalid', 'resource');
         }
+        $requestedMigrationOwner = trim((string) ($input['migration_owner'] ?? ''));
+        if ($requestedMigrationOwner !== '' && !in_array($requestedMigrationOwner, ['schema', 'domain'], true)) {
+            throw $this->error('invalid_input', 'migration_owner is invalid', 'resource', ['migration_owner' => $requestedMigrationOwner]);
+        }
         $resource = Resource::query()->where('resource_key', $key)->first();
         if (!$resource) {
             $parts = explode('.', $key, 2);
@@ -240,10 +244,8 @@ final class ResourceService implements \PTAdmin\Schema\Contracts\ResourceService
             $name = count($parts) > 1 ? $parts[1] : $parts[0];
             $tableName = (string) ($input['table_name'] ?? '');
             $tableName = $tableName !== '' ? $tableName : ($namespace === '' ? $name : $namespace.'_'.$name);
-            $create = ['namespace' => $namespace, 'name' => $name, 'title' => $schema->title ?: $name, 'description' => $schema->description ?? '', 'source_type' => 'code', 'owner_type' => $ownerType, 'owner_code' => $ownerCode, 'table_name' => $tableName, 'migration_owner' => $input['migration_owner'] ?? 'schema'];
-            if (!empty($input['adopt_existing_table']) && !DB::getSchemaBuilder()->hasTable($tableName)) {
-                throw $this->error('invalid_input', 'adopt_existing_table requires an existing table', 'resource', ['resource_key' => $key, 'table_name' => $tableName]);
-            }
+            $migrationOwner = $requestedMigrationOwner !== '' ? $requestedMigrationOwner : 'schema';
+            $create = ['namespace' => $namespace, 'name' => $name, 'title' => $schema->title ?: $name, 'description' => $schema->description ?? '', 'source_type' => 'code', 'owner_type' => $ownerType, 'owner_code' => $ownerCode, 'table_name' => $tableName, 'migration_owner' => $migrationOwner];
             return DB::transaction(function () use ($create, $key, $schema): SyncCodeResourceResult {
                 $this->createResource($create);
                 $saved = $this->saveDraftSchema(['resource' => $key, 'schema' => $schema->toArray()]);
@@ -270,15 +272,8 @@ final class ResourceService implements \PTAdmin\Schema\Contracts\ResourceService
             }
             $resource->table_name = $tableName;
         }
-        $migrationOwner = (string) ($input['migration_owner'] ?? '');
-        if ($migrationOwner !== '') {
-            if (!in_array($migrationOwner, ['schema', 'domain'], true)) {
-                throw $this->error('invalid_input', 'migration_owner is invalid', 'resource', ['migration_owner' => $migrationOwner]);
-            }
-            $resource->migration_owner = $migrationOwner;
-        }
-        if (!empty($input['adopt_existing_table']) && !DB::getSchemaBuilder()->hasTable($resource->table_name)) {
-            throw $this->error('invalid_input', 'adopt_existing_table requires an existing table', 'resource', ['resource_key' => $key, 'table_name' => $resource->table_name]);
+        if ($requestedMigrationOwner !== '') {
+            $resource->migration_owner = $requestedMigrationOwner;
         }
         $resource->save();
         if (!$resource->versions()->where('status', 'draft')->exists()) {

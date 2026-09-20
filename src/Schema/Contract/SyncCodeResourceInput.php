@@ -15,7 +15,6 @@ final class SyncCodeResourceInput extends ContractObject
         'schema' => \PTAdmin\Schema\Definition\Schema::class,
         'table_name' => 'string',
         'migration_owner' => 'string',
-        'adopt_existing_table' => 'bool',
         'owner_type' => 'string',
         'owner_code' => 'string',
         'summary' => 'array',
@@ -25,7 +24,6 @@ final class SyncCodeResourceInput extends ContractObject
     protected const FIELD_OPTIONS = [
         'table_name' => ['omit_empty' => true],
         'migration_owner' => ['omit_empty' => true],
-        'adopt_existing_table' => ['omit_empty' => true],
         'owner_type' => ['omit_empty' => true],
         'owner_code' => ['omit_empty' => true],
         'summary' => ['omit_empty' => true],
@@ -42,9 +40,6 @@ final class SyncCodeResourceInput extends ContractObject
 
     /** MigrationOwner 指定 Schema 迁移计划的执行方，空值由 Schema 执行。 */
     public string $migration_owner = '';
-
-    /** AdoptExistingTable 表示首次接管已经由领域迁移创建的物理表。 */
-    public bool $adopt_existing_table = false;
 
     /** OwnerType identifies the code resource owner, such as app or addon. */
     public string $owner_type = '';

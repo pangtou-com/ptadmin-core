@@ -1,0 +1,180 @@
+{
+    "resource": "admin.notification_scenes",
+    "table_name": "notification_scenes",
+    "migration_owner": "domain",
+    "schema": {
+        "name": "notification_scenes",
+        "title": "通知场景",
+        "description": "管理系统和插件通知场景定义。",
+        "features": {
+            "layout": "single"
+        },
+        "fields": [
+            {
+                "name": "source_type",
+                "type": "string",
+                "label": "来源类型",
+                "persisted": true,
+                "default": "system",
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "options": {
+                    "mode": "static",
+                    "value_policy": "closed",
+                    "items": [
+                        {
+                            "value": "system",
+                            "label": "系统"
+                        },
+                        {
+                            "value": "addon",
+                            "label": "插件"
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "source_code",
+                "type": "string",
+                "label": "来源编码",
+                "persisted": true,
+                "required": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "normalize": {
+                    "trim": true
+                },
+                "validation": []
+            },
+            {
+                "name": "group_code",
+                "type": "string",
+                "label": "分组编码",
+                "persisted": true,
+                "required": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "normalize": {
+                    "trim": true
+                },
+                "validation": []
+            },
+            {
+                "name": "group_title",
+                "type": "string",
+                "label": "分组名称",
+                "persisted": true,
+                "required": true,
+                "formable": true,
+                "listable": true,
+                "searchable": false,
+                "sortable": false,
+                "normalize": [],
+                "validation": []
+            },
+            {
+                "name": "code",
+                "type": "string",
+                "label": "场景编码",
+                "persisted": true,
+                "required": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "normalize": {
+                    "trim": true,
+                    "case": "lower"
+                },
+                "validation": []
+            },
+            {
+                "name": "title",
+                "type": "string",
+                "label": "场景名称",
+                "persisted": true,
+                "required": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "normalize": [],
+                "validation": []
+            },
+            {
+                "name": "description",
+                "type": "text",
+                "label": "场景说明",
+                "persisted": true,
+                "formable": true,
+                "listable": false
+            },
+            {
+                "name": "purpose",
+                "type": "string",
+                "label": "用途类型",
+                "persisted": true,
+                "default": "transactional",
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "options": {
+                    "mode": "static",
+                    "value_policy": "closed",
+                    "items": [
+                        {
+                            "value": "transactional",
+                            "label": "事务通知"
+                        },
+                        {
+                            "value": "verification",
+                            "label": "验证通知"
+                        },
+                        {
+                            "value": "marketing",
+                            "label": "营销通知"
+                        },
+                        {
+                            "value": "security",
+                            "label": "安全通知"
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "variables",
+                "type": "json",
+                "label": "变量定义",
+                "persisted": true,
+                "formable": true,
+                "listable": false
+            },
+            {
+                "name": "default_channels",
+                "type": "json",
+                "label": "默认渠道",
+                "persisted": true,
+                "formable": true,
+                "listable": false
+            },
+            {
+                "name": "enabled",
+                "type": "boolean",
+                "label": "是否启用",
+                "persisted": true,
+                "default": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true
+            }
+        ]
+    }
+}

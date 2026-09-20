@@ -39,7 +39,6 @@ final class SchemaFileSynchronizer
                 'schema' => $definition['schema']->toArray(),
                 'table_name' => $definition['table_name'],
                 'migration_owner' => $definition['migration_owner'],
-                'adopt_existing_table' => (bool) ($definition['metadata']['adopt_existing_table'] ?? false),
                 'owner_type' => $definition['owner_type'],
                 'owner_code' => $definition['owner_code'],
                 'summary' => ['path' => $definition['path'], 'source' => $definition['source']],

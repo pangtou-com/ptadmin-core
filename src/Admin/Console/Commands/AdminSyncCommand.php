@@ -6,8 +6,10 @@ namespace PTAdmin\Admin\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Schema;
-use PTAdmin\Admin\Schema\AdminSchemaSynchronizer;
 use PTAdmin\Core\Install\InstallService;
+use PTAdmin\Schema\SchemaFile\SchemaFileSynchronizer;
+use PTAdmin\Schema\SchemaFile\SchemaSourceDiscovery;
+use RuntimeException;
 use Throwable;
 
 final class AdminSyncCommand extends Command
@@ -17,7 +19,8 @@ final class AdminSyncCommand extends Command
     protected $description = '在数据库迁移后同步 PTAdmin 内置 Schema、配置和权限资源';
 
     public function __construct(
-        private AdminSchemaSynchronizer $schemas,
+        private SchemaSourceDiscovery $schemaSources,
+        private SchemaFileSynchronizer $schemaSynchronizer,
         private InstallService $install,
     ) {
         parent::__construct();
@@ -34,7 +37,19 @@ final class AdminSyncCommand extends Command
         }
 
         try {
-            $schemaResources = $this->schemas->sync();
+            $schemaResources = $this->schemaSynchronizer->sync($this->schemaSources->discoverCore());
+            $blockedSchemas = array_values(array_filter(
+                $schemaResources,
+                static fn (array $result): bool => $result['status'] === 'blocked'
+            ));
+            if ($blockedSchemas !== []) {
+                $blocked = $blockedSchemas[0];
+                throw new RuntimeException(sprintf(
+                    '内置 Schema 发布被阻止：%s（%s）。',
+                    $blocked['resource'],
+                    $blocked['risk'],
+                ));
+            }
             $authorization = $this->install->syncAuthorizationResources();
             $configDefinitions = $this->install->syncConfigDefinitions();
         } catch (Throwable $exception) {

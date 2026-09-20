@@ -1,0 +1,174 @@
+{
+    "resource": "admin.management_roles",
+    "table_name": "admin_roles",
+    "migration_owner": "domain",
+    "schema": {
+        "name": "management_roles",
+        "title": "角色权限",
+        "description": "管理角色及其资源动作授权。",
+        "features": {
+            "layout": "single"
+        },
+        "capabilities": {
+            "allow_recycle": true
+        },
+        "views": {
+            "forms": {
+                "default": {
+                    "span": 12,
+                    "gap": 18,
+                    "props": {
+                        "labelPosition": "top"
+                    },
+                    "children": [
+                        {
+                            "type": "section",
+                            "title": "角色信息",
+                            "span": 24,
+                            "children": [
+                                {
+                                    "type": "field",
+                                    "field": "code"
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "name"
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "description",
+                                    "span": 24
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "status"
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "sort"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "section",
+                            "title": "资源授权",
+                            "span": 24,
+                            "children": [
+                                {
+                                    "type": "field",
+                                    "field": "permissions",
+                                    "component": "permission-grant-editor",
+                                    "span": 24
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        "fields": [
+            {
+                "name": "code",
+                "type": "string",
+                "label": "角色编码",
+                "persisted": true,
+                "required": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "normalize": {
+                    "trim": true,
+                    "case": "lower"
+                },
+                "validation": [
+                    {
+                        "type": "format",
+                        "value": "identifier",
+                        "message": "角色编码必须是小写标识符"
+                    },
+                    {
+                        "type": "max_length",
+                        "value": 100,
+                        "message": "角色编码不能超过 100 个字符"
+                    }
+                ]
+            },
+            {
+                "name": "name",
+                "type": "string",
+                "label": "角色名称",
+                "persisted": true,
+                "required": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "normalize": [],
+                "validation": [
+                    {
+                        "type": "max_length",
+                        "value": 100,
+                        "message": "角色名称不能超过 100 个字符"
+                    }
+                ]
+            },
+            {
+                "name": "description",
+                "type": "text",
+                "label": "角色说明",
+                "persisted": true,
+                "formable": true,
+                "listable": false
+            },
+            {
+                "name": "status",
+                "type": "boolean",
+                "label": "角色状态",
+                "persisted": true,
+                "default": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true
+            },
+            {
+                "name": "is_system",
+                "type": "boolean",
+                "label": "系统角色",
+                "persisted": true,
+                "readonly": true,
+                "formable": false,
+                "listable": true,
+                "searchable": true,
+                "sortable": true
+            },
+            {
+                "name": "sort",
+                "type": "integer",
+                "label": "排序",
+                "persisted": true,
+                "default": 0,
+                "formable": true,
+                "listable": true,
+                "sortable": true
+            },
+            {
+                "name": "permissions",
+                "type": "json",
+                "label": "资源授权",
+                "persisted": false,
+                "formable": true,
+                "listable": false,
+                "extensions": {
+                    "component": "permission-grant-editor"
+                }
+            }
+        ],
+        "actions": {
+            "sync_permissions": {
+                "label": "设置权限"
+            }
+        }
+    }
+}

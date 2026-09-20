@@ -10,8 +10,6 @@ use PTAdmin\Admin\Auth\AuthorizationService;
 use PTAdmin\Admin\Auth\AdminAuthenticator;
 use PTAdmin\Admin\Dashboard\DashboardService;
 use PTAdmin\Admin\Schema\AdminRuntimeHook;
-use PTAdmin\Admin\Schema\AdminSchemaDefinitions;
-use PTAdmin\Admin\Schema\AdminSchemaSynchronizer;
 use PTAdmin\Admin\Console\Commands\AdminSyncCommand;
 use PTAdmin\Admin\Console\Commands\MenuSyncCommand;
 use PTAdmin\Admin\Navigation\MenuSynchronizer;
@@ -173,8 +171,6 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app->singleton(AuthorizationService::class);
         $this->app->singleton(DataScopeRegistry::class);
         $this->app->singleton(DashboardService::class);
-        $this->app->singleton(AdminSchemaDefinitions::class);
-        $this->app->singleton(AdminSchemaSynchronizer::class);
         $this->app->singleton(MenuSynchronizer::class, static function ($app): MenuSynchronizer {
             return new MenuSynchronizer(
                 $app['db'],
@@ -365,16 +361,20 @@ final class PTAdminServiceProvider extends ServiceProvider
 
     private function registerAdminRuntimeBindings(): void
     {
-        $actions = [];
-        foreach ($this->app->make(AdminSchemaDefinitions::class)->all() as $resourceKey => $definition) {
-            $declared = (array) ($definition['schema']['actions'] ?? []);
-            $actions[$resourceKey] = array_values(array_filter(
-                array_keys($declared),
+        $owner = $this->app->make(RuntimeRegistry::class)->forOwner('core', 'ptadmin');
+        $loader = $this->app->make(SchemaFileLoader::class);
+        foreach ($this->app->make(SchemaSourceDiscovery::class)->discoverCore() as $file) {
+            if (!str_starts_with($file['relative_path'], 'admin/')) {
+                continue;
+            }
+
+            $definition = $loader->resourceFromFile($file['path']);
+            $resourceKey = $definition['resource'];
+            $schema = $definition['schema']->toArray();
+            $actions = array_values(array_filter(
+                array_keys((array) ($schema['actions'] ?? [])),
                 static fn (string $action): bool => !in_array($action, ['list', 'view', 'create', 'update', 'delete', 'restore', 'purge'], true),
             ));
-        }
-        $owner = $this->app->make(RuntimeRegistry::class)->forOwner('core', 'ptadmin');
-        foreach (array_keys($this->app->make(AdminSchemaDefinitions::class)->all()) as $resourceKey) {
             $resource = $owner->resource($resourceKey);
             $resource
                 ->hook('create.prepare', AdminRuntimeHook::class, 'prepareCreate')
@@ -384,7 +384,7 @@ final class PTAdminServiceProvider extends ServiceProvider
                 ->hook('delete.before', AdminRuntimeHook::class, 'deleting')
                 ->hook('delete.after', AdminRuntimeHook::class, 'deleted')
                 ->hook('output.transform', AdminRuntimeHook::class, 'output');
-            foreach ($actions[$resourceKey] ?? [] as $actionKey) {
+            foreach ($actions as $actionKey) {
                 $resource->action($actionKey, AdminRuntimeHook::class, 'executeAction');
             }
         }

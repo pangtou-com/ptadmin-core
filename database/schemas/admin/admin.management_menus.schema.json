@@ -1,0 +1,489 @@
+{
+    "resource": "admin.management_menus",
+    "table_name": "admin_resources",
+    "migration_owner": "domain",
+    "schema": {
+        "name": "management_menus",
+        "title": "菜单与权限资源",
+        "description": "以同一棵稳定资源树管理后台导航和服务端权限资源。",
+        "features": {
+            "layout": "single"
+        },
+        "capabilities": {
+            "soft_delete": true
+        },
+        "tree": {
+            "enabled": true,
+            "key_field": "resource_key",
+            "parent_field": "parent_key",
+            "order_field": "sort"
+        },
+        "views": {
+            "searches": false,
+            "page": {
+                "table": "default",
+                "createForm": "default",
+                "updateForm": "default"
+            },
+            "tables": {
+                "default": {
+                    "mode": "tree",
+                    "tree": {
+                        "default_expand": "all",
+                        "expand_column": "title"
+                    },
+                    "fields": [
+                        "title",
+                        "resource_key",
+                        "type",
+                        "path",
+                        "status"
+                    ],
+                    "pagination": false,
+                    "toolbar": {
+                        "left": [
+                            {
+                                "action": "create",
+                                "title": "新增资源"
+                            }
+                        ],
+                        "right": [
+                            {
+                                "action": "reload",
+                                "title": "刷新"
+                            }
+                        ],
+                        "batch": []
+                    },
+                    "selection": false,
+                    "operate": [
+                        {
+                            "action": "update",
+                            "title": "编辑"
+                        },
+                        {
+                            "action": "delete",
+                            "title": "删除",
+                            "show_when": {
+                                "field": "is_core",
+                                "op": "neq",
+                                "value": true
+                            }
+                        }
+                    ]
+                }
+            },
+            "forms": {
+                "default": {
+                    "title": "资源配置",
+                    "wrapper": {
+                        "type": "dialog",
+                        "props": {
+                            "width": "760px"
+                        }
+                    },
+                    "span": 12,
+                    "gap": 18,
+                    "props": {
+                        "labelPosition": "top"
+                    },
+                    "children": [
+                        {
+                            "type": "section",
+                            "title": "资源信息",
+                            "span": 24,
+                            "children": [
+                                {
+                                    "type": "field",
+                                    "field": "resource_key",
+                                    "span": 12
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "title",
+                                    "span": 12
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "type",
+                                    "span": 12
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "parent_key",
+                                    "span": 12
+                                }
+                            ]
+                        },
+                        {
+                            "type": "section",
+                            "title": "页面与导航",
+                            "span": 24,
+                            "show_when": {
+                                "field": "type",
+                                "op": "neq",
+                                "value": "action"
+                            },
+                            "children": [
+                                {
+                                    "type": "field",
+                                    "field": "is_menu",
+                                    "span": 12
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "path",
+                                    "span": 12
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "page_key",
+                                    "span": 12,
+                                    "show_when": {
+                                        "field": "type",
+                                        "op": "eq",
+                                        "value": "page"
+                                    }
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "target_resource_key",
+                                    "span": 12,
+                                    "show_when": {
+                                        "field": "type",
+                                        "op": "eq",
+                                        "value": "schema"
+                                    }
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "external_url",
+                                    "span": 12,
+                                    "show_when": {
+                                        "field": "type",
+                                        "op": "eq",
+                                        "value": "external"
+                                    }
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "icon",
+                                    "span": 12,
+                                    "show_when": {
+                                        "field": "is_menu",
+                                        "op": "eq",
+                                        "value": true
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "type": "section",
+                            "title": "状态与排序",
+                            "span": 24,
+                            "children": [
+                                {
+                                    "type": "field",
+                                    "field": "status",
+                                    "span": 12
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "sort",
+                                    "span": 12
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        "actions": {
+            "move_resource": {
+                "label": "移动资源"
+            },
+            "move_menu": {
+                "label": "移动资源"
+            }
+        },
+        "fields": [
+            {
+                "name": "resource_key",
+                "type": "string",
+                "label": "资源编码",
+                "persisted": true,
+                "required": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "normalize": {
+                    "trim": true,
+                    "case": "lower"
+                },
+                "validation": [
+                    {
+                        "type": "pattern",
+                        "value": "^[a-z][a-z0-9._-]{1,190}$",
+                        "message": "资源编码格式不正确"
+                    }
+                ]
+            },
+            {
+                "name": "title",
+                "type": "string",
+                "label": "资源名称",
+                "persisted": true,
+                "required": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "normalize": [],
+                "validation": [
+                    {
+                        "type": "max_length",
+                        "value": 150,
+                        "message": "资源名称不能超过 150 个字符"
+                    }
+                ]
+            },
+            {
+                "name": "type",
+                "type": "string",
+                "label": "资源类型",
+                "persisted": true,
+                "default": "page",
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "options": {
+                    "mode": "static",
+                    "value_policy": "closed",
+                    "items": [
+                        {
+                            "value": "group",
+                            "label": "导航分组"
+                        },
+                        {
+                            "value": "schema",
+                            "label": "Schema 资源"
+                        },
+                        {
+                            "value": "page",
+                            "label": "内部页面"
+                        },
+                        {
+                            "value": "external",
+                            "label": "外部链接"
+                        },
+                        {
+                            "value": "action",
+                            "label": "操作权限"
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "parent_key",
+                "type": "string",
+                "label": "父资源",
+                "persisted": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": false,
+                "normalize": {
+                    "trim": true
+                },
+                "validation": [
+                    {
+                        "type": "max_length",
+                        "value": 191,
+                        "message": "父资源编码不能超过 191 个字符"
+                    }
+                ],
+                "reference": {
+                    "resource": "admin.management_menus",
+                    "value_field": "resource_key",
+                    "label_field": "title"
+                }
+            },
+            {
+                "name": "path",
+                "type": "string",
+                "label": "前端相对路径",
+                "persisted": true,
+                "required": false,
+                "formable": true,
+                "listable": true,
+                "searchable": false,
+                "sortable": false,
+                "normalize": {
+                    "trim": true
+                },
+                "validation": [
+                    {
+                        "type": "max_length",
+                        "value": 255,
+                        "message": "前端路径不能超过 255 个字符"
+                    }
+                ]
+            },
+            {
+                "name": "page_key",
+                "type": "string",
+                "label": "页面注册键",
+                "persisted": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "normalize": {
+                    "trim": true
+                },
+                "validation": [
+                    {
+                        "type": "max_length",
+                        "value": 150,
+                        "message": "页面注册键不能超过 150 个字符"
+                    }
+                ]
+            },
+            {
+                "name": "target_resource_key",
+                "type": "string",
+                "label": "目标 Schema 资源编码",
+                "persisted": false,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "normalize": {
+                    "trim": true,
+                    "case": "lower"
+                },
+                "validation": [
+                    {
+                        "type": "max_length",
+                        "value": 191,
+                        "message": "目标资源编码不能超过 191 个字符"
+                    }
+                ]
+            },
+            {
+                "name": "icon",
+                "type": "string",
+                "label": "菜单图标",
+                "persisted": true,
+                "formable": true,
+                "listable": true,
+                "normalize": {
+                    "trim": true
+                },
+                "validation": [
+                    {
+                        "type": "max_length",
+                        "value": 100,
+                        "message": "菜单图标编码不能超过 100 个字符"
+                    }
+                ],
+                "extensions": {
+                    "component": "admin-menu-icon-picker"
+                }
+            },
+            {
+                "name": "external_url",
+                "type": "string",
+                "label": "外部链接",
+                "persisted": false,
+                "formable": true,
+                "listable": false,
+                "normalize": {
+                    "trim": true
+                },
+                "validation": [
+                    {
+                        "type": "max_length",
+                        "value": 2048,
+                        "message": "外部链接不能超过 2048 个字符"
+                    }
+                ]
+            },
+            {
+                "name": "meta_json",
+                "type": "json",
+                "label": "菜单元数据",
+                "persisted": true,
+                "readonly": true,
+                "formable": false,
+                "listable": false
+            },
+            {
+                "name": "is_menu",
+                "type": "boolean",
+                "label": "显示为菜单",
+                "persisted": true,
+                "default": false,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true
+            },
+            {
+                "name": "status",
+                "type": "boolean",
+                "label": "资源状态",
+                "persisted": true,
+                "default": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true
+            },
+            {
+                "name": "sort",
+                "type": "integer",
+                "label": "排序",
+                "persisted": true,
+                "default": 0,
+                "formable": true,
+                "listable": true,
+                "sortable": true,
+                "validation": [
+                    {
+                        "type": "min",
+                        "value": 0,
+                        "message": "排序值不能小于 0"
+                    }
+                ]
+            },
+            {
+                "name": "is_core",
+                "type": "boolean",
+                "label": "核心资源",
+                "persisted": false,
+                "readonly": true,
+                "formable": false,
+                "listable": true
+            },
+            {
+                "name": "owner_type",
+                "type": "string",
+                "label": "资源来源",
+                "persisted": false,
+                "readonly": true,
+                "formable": false,
+                "listable": true
+            },
+            {
+                "name": "owner_code",
+                "type": "string",
+                "label": "来源编码",
+                "persisted": false,
+                "readonly": true,
+                "formable": false,
+                "listable": false
+            }
+        ]
+    }
+}

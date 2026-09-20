@@ -1,0 +1,169 @@
+{
+    "resource": "admin.notification_messages",
+    "table_name": "notification_messages",
+    "migration_owner": "domain",
+    "schema": {
+        "name": "notification_messages",
+        "title": "通知消息",
+        "description": "查询系统产生的通知消息。",
+        "features": {
+            "layout": "single",
+            "read_only": true
+        },
+        "actions": {
+            "create": {
+                "enabled": false
+            },
+            "update": {
+                "enabled": false
+            },
+            "delete": {
+                "enabled": false
+            }
+        },
+        "fields": [
+            {
+                "name": "audience_type",
+                "type": "string",
+                "label": "接收对象类型",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "source_type",
+                "type": "string",
+                "label": "来源类型",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "source_code",
+                "type": "string",
+                "label": "来源编码",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "category",
+                "type": "string",
+                "label": "消息分类",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "level",
+                "type": "string",
+                "label": "消息等级",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "title",
+                "type": "string",
+                "label": "标题",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "content",
+                "type": "text",
+                "label": "内容",
+                "persisted": true,
+                "readonly": true,
+                "listable": false
+            },
+            {
+                "name": "action_type",
+                "type": "string",
+                "label": "点击动作类型",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "action_url",
+                "type": "string",
+                "label": "点击动作地址",
+                "persisted": true,
+                "readonly": true,
+                "listable": false
+            },
+            {
+                "name": "biz_type",
+                "type": "string",
+                "label": "业务类型",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "biz_id",
+                "type": "string",
+                "label": "业务标识",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "biz_key",
+                "type": "string",
+                "label": "业务幂等键",
+                "persisted": true,
+                "readonly": true,
+                "listable": false,
+                "searchable": true
+            },
+            {
+                "name": "data",
+                "type": "json",
+                "label": "扩展数据",
+                "persisted": true,
+                "readonly": true,
+                "listable": false
+            },
+            {
+                "name": "created_by",
+                "type": "integer",
+                "label": "创建主体 ID",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "expires_at",
+                "type": "datetime",
+                "label": "过期时间",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "sortable": true
+            },
+            {
+                "name": "created_at",
+                "type": "datetime",
+                "label": "创建时间",
+                "persisted": true,
+                "readonly": true,
+                "formable": false,
+                "listable": true,
+                "sortable": true
+            }
+        ]
+    }
+}

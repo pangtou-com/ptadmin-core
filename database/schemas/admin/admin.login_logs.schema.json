@@ -1,0 +1,93 @@
+{
+    "resource": "admin.login_logs",
+    "table_name": "admin_login_logs",
+    "migration_owner": "domain",
+    "schema": {
+        "name": "login_logs",
+        "title": "登录日志",
+        "description": "只读展示后台登录成功与失败记录。",
+        "features": {
+            "layout": "single",
+            "read_only": true
+        },
+        "actions": {
+            "create": {
+                "enabled": false
+            },
+            "update": {
+                "enabled": false
+            },
+            "delete": {
+                "enabled": false
+            }
+        },
+        "fields": [
+            {
+                "name": "admin_id",
+                "type": "integer",
+                "label": "管理员 ID",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true
+            },
+            {
+                "name": "username",
+                "type": "string",
+                "label": "登录用户名",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true
+            },
+            {
+                "name": "successful",
+                "type": "boolean",
+                "label": "登录成功",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true
+            },
+            {
+                "name": "failure_reason",
+                "type": "string",
+                "label": "失败原因",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "ip_address",
+                "type": "string",
+                "label": "IP 地址",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "user_agent",
+                "type": "text",
+                "label": "User-Agent",
+                "persisted": true,
+                "readonly": true,
+                "listable": false
+            },
+            {
+                "name": "created_at",
+                "type": "datetime",
+                "label": "登录时间",
+                "persisted": true,
+                "readonly": true,
+                "formable": false,
+                "listable": true,
+                "sortable": true
+            }
+        ]
+    }
+}

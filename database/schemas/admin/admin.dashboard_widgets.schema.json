@@ -1,0 +1,102 @@
+{
+    "resource": "admin.dashboard_widgets",
+    "table_name": "admin_dashboard_widgets",
+    "migration_owner": "domain",
+    "schema": {
+        "name": "dashboard_widgets",
+        "title": "仪表盘组件配置",
+        "description": "管理管理员或角色的仪表盘组件布局。",
+        "features": {
+            "layout": "single"
+        },
+        "fields": [
+            {
+                "name": "subject_type",
+                "type": "string",
+                "label": "主体类型",
+                "persisted": true,
+                "default": "admin",
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "options": {
+                    "mode": "static",
+                    "value_policy": "closed",
+                    "items": [
+                        {
+                            "value": "admin",
+                            "label": "管理员"
+                        },
+                        {
+                            "value": "role",
+                            "label": "角色"
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "subject_id",
+                "type": "integer",
+                "label": "主体 ID",
+                "persisted": true,
+                "required": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "widget_code",
+                "type": "string",
+                "label": "组件编码",
+                "persisted": true,
+                "required": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "normalize": {
+                    "trim": true
+                },
+                "validation": []
+            },
+            {
+                "name": "enabled",
+                "type": "boolean",
+                "label": "是否启用",
+                "persisted": true,
+                "default": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true
+            },
+            {
+                "name": "sort",
+                "type": "integer",
+                "label": "排序",
+                "persisted": true,
+                "default": 0,
+                "formable": true,
+                "listable": true,
+                "sortable": true
+            },
+            {
+                "name": "layout_json",
+                "type": "json",
+                "label": "布局参数",
+                "persisted": true,
+                "formable": true,
+                "listable": false
+            },
+            {
+                "name": "config_json",
+                "type": "json",
+                "label": "组件配置",
+                "persisted": true,
+                "formable": true,
+                "listable": false
+            }
+        ]
+    }
+}

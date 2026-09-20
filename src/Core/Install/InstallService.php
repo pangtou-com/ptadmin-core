@@ -12,7 +12,6 @@ use PTAdmin\Admin\Navigation\MenuSynchronizer;
 use PTAdmin\Core\Config\ConfigService;
 use PTAdmin\Core\Http\AdminFrontendRouteRegistrar;
 use PTAdmin\Core\Install\Exceptions\InvalidInstallStateException;
-use PTAdmin\Admin\Schema\AdminSchemaSynchronizer;
 use PTAdmin\Schema\SchemaFile\SchemaFileSynchronizer;
 use PTAdmin\Schema\SchemaFile\SchemaSourceDiscovery;
 use PTAdmin\Schema\Runtime\RuntimeCacheStore;
@@ -32,7 +31,6 @@ final class InstallService
         private AdminFrontendRouteRegistrar $frontendRoutes,
         private AdminFrontendPublisher $frontend,
         private ConfigService $configs,
-        private AdminSchemaSynchronizer $adminSchemas,
         private SchemaSourceDiscovery $schemaSources,
         private SchemaFileSynchronizer $schemaSynchronizer,
         private MenuSynchronizer $menus,
@@ -77,7 +75,6 @@ final class InstallService
             $this->progress($progress, 'database_ready');
 
             $this->progress($progress, 'schema_syncing');
-            $adminResources = $this->adminSchemas->sync();
             $coreSchemaResults = $this->schemaSynchronizer->sync($this->schemaSources->discoverCore());
             $blockedSchemas = array_values(array_filter(
                 $coreSchemaResults,
@@ -93,7 +90,6 @@ final class InstallService
             }
             $state = $this->stateStore->writeState(array_merge($state, [
                 'stage' => 'schema_ready',
-                'admin_schema_resources' => $adminResources,
                 'core_schema_resources' => array_column($coreSchemaResults, 'resource'),
                 'failure' => null,
             ]));

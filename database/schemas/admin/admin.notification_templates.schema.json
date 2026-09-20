@@ -1,0 +1,105 @@
+{
+    "resource": "admin.notification_templates",
+    "table_name": "notification_templates",
+    "migration_owner": "domain",
+    "schema": {
+        "name": "notification_templates",
+        "title": "通知模板",
+        "description": "管理通知场景的渠道模板和语言版本。",
+        "features": {
+            "layout": "single"
+        },
+        "fields": [
+            {
+                "name": "scene_id",
+                "type": "integer",
+                "label": "通知场景",
+                "persisted": true,
+                "required": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "reference": {
+                    "resource": "admin.notification_scenes",
+                    "value_field": "id",
+                    "label_field": "title"
+                }
+            },
+            {
+                "name": "channel",
+                "type": "string",
+                "label": "渠道",
+                "persisted": true,
+                "required": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "normalize": {
+                    "trim": true
+                },
+                "validation": []
+            },
+            {
+                "name": "locale",
+                "type": "string",
+                "label": "语言区域",
+                "persisted": true,
+                "required": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "normalize": {
+                    "trim": true
+                },
+                "validation": []
+            },
+            {
+                "name": "mode",
+                "type": "string",
+                "label": "内容模式",
+                "persisted": true,
+                "required": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "normalize": {
+                    "trim": true
+                },
+                "validation": []
+            },
+            {
+                "name": "config",
+                "type": "json",
+                "label": "模板配置",
+                "persisted": true,
+                "formable": true,
+                "listable": false
+            },
+            {
+                "name": "customized",
+                "type": "boolean",
+                "label": "是否自定义",
+                "persisted": true,
+                "default": false,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true
+            },
+            {
+                "name": "enabled",
+                "type": "boolean",
+                "label": "是否启用",
+                "persisted": true,
+                "default": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true
+            }
+        ]
+    }
+}

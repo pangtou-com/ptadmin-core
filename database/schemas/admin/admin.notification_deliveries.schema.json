@@ -1,0 +1,205 @@
+{
+    "resource": "admin.notification_deliveries",
+    "table_name": "notification_deliveries",
+    "migration_owner": "domain",
+    "schema": {
+        "name": "notification_deliveries",
+        "title": "通知投递记录",
+        "description": "查询通知渠道的外部投递结果。",
+        "features": {
+            "layout": "single",
+            "read_only": true
+        },
+        "actions": {
+            "create": {
+                "enabled": false
+            },
+            "update": {
+                "enabled": false
+            },
+            "delete": {
+                "enabled": false
+            }
+        },
+        "fields": [
+            {
+                "name": "notification_id",
+                "type": "integer",
+                "label": "通知 ID",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "receipt_id",
+                "type": "integer",
+                "label": "通知回执 ID",
+                "persisted": true,
+                "readonly": true,
+                "listable": false,
+                "searchable": true
+            },
+            {
+                "name": "receiver_type",
+                "type": "string",
+                "label": "接收对象类型",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "receiver_id",
+                "type": "integer",
+                "label": "接收对象 ID",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "channel",
+                "type": "string",
+                "label": "渠道",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "provider",
+                "type": "string",
+                "label": "提供者",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "addon_code",
+                "type": "string",
+                "label": "插件编码",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "provider_group",
+                "type": "string",
+                "label": "提供者分组",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "instance_code",
+                "type": "string",
+                "label": "实例编码",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "route_revision",
+                "type": "integer",
+                "label": "路由修订号",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "sortable": true
+            },
+            {
+                "name": "strategy",
+                "type": "string",
+                "label": "选择策略",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "message_id",
+                "type": "string",
+                "label": "外部消息标识",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "batch_id",
+                "type": "string",
+                "label": "外部批次标识",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "status",
+                "type": "string",
+                "label": "投递状态",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "accepted_at",
+                "type": "datetime",
+                "label": "受理时间",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "sortable": true
+            },
+            {
+                "name": "delivered_at",
+                "type": "datetime",
+                "label": "送达时间",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "sortable": true
+            },
+            {
+                "name": "error_message",
+                "type": "text",
+                "label": "失败原因",
+                "persisted": true,
+                "readonly": true,
+                "listable": false
+            },
+            {
+                "name": "meta",
+                "type": "json",
+                "label": "投递上下文",
+                "persisted": true,
+                "readonly": true,
+                "listable": false
+            },
+            {
+                "name": "raw",
+                "type": "json",
+                "label": "外部原始响应",
+                "persisted": true,
+                "readonly": true,
+                "listable": false
+            },
+            {
+                "name": "created_at",
+                "type": "datetime",
+                "label": "创建时间",
+                "persisted": true,
+                "readonly": true,
+                "formable": false,
+                "listable": true,
+                "sortable": true
+            }
+        ]
+    }
+}

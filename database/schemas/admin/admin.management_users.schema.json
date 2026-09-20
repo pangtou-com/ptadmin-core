@@ -1,0 +1,303 @@
+{
+    "resource": "admin.management_users",
+    "table_name": "admins",
+    "migration_owner": "domain",
+    "schema": {
+        "name": "management_users",
+        "title": "管理员",
+        "description": "管理后台登录账号、角色和直接授权。",
+        "features": {
+            "layout": "single"
+        },
+        "capabilities": {
+            "allow_recycle": true
+        },
+        "views": {
+            "forms": {
+                "default": {
+                    "span": 12,
+                    "gap": 18,
+                    "props": {
+                        "labelPosition": "top"
+                    },
+                    "children": [
+                        {
+                            "type": "section",
+                            "title": "账号信息",
+                            "span": 24,
+                            "children": [
+                                {
+                                    "type": "field",
+                                    "field": "username"
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "nickname"
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "email"
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "mobile"
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "avatar"
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "status"
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "password",
+                                    "component": "password"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "section",
+                            "title": "角色",
+                            "span": 24,
+                            "children": [
+                                {
+                                    "type": "field",
+                                    "field": "role_ids"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "section",
+                            "title": "直接授权",
+                            "span": 24,
+                            "children": [
+                                {
+                                    "type": "field",
+                                    "field": "permissions",
+                                    "component": "permission-grant-editor",
+                                    "span": 24
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        "fields": [
+            {
+                "name": "username",
+                "type": "string",
+                "label": "用户名",
+                "persisted": true,
+                "required": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "normalize": {
+                    "trim": true
+                },
+                "validation": [
+                    {
+                        "type": "pattern",
+                        "value": "^[A-Za-z0-9_.-]{3,100}$",
+                        "message": "用户名只能包含字母、数字、点、下划线和短横线，长度为 3 到 100 个字符"
+                    }
+                ]
+            },
+            {
+                "name": "nickname",
+                "type": "string",
+                "label": "显示名称",
+                "persisted": true,
+                "required": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "normalize": [],
+                "validation": [
+                    {
+                        "type": "max_length",
+                        "value": 100,
+                        "message": "显示名称不能超过 100 个字符"
+                    }
+                ]
+            },
+            {
+                "name": "email",
+                "type": "string",
+                "label": "电子邮箱",
+                "persisted": true,
+                "required": false,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true,
+                "normalize": {
+                    "empty_as_null": true
+                },
+                "validation": [
+                    {
+                        "type": "format",
+                        "value": "email",
+                        "message": "电子邮箱格式不正确"
+                    },
+                    {
+                        "type": "max_length",
+                        "value": 255,
+                        "message": "电子邮箱不能超过 255 个字符"
+                    }
+                ]
+            },
+            {
+                "name": "mobile",
+                "type": "string",
+                "label": "手机号码",
+                "persisted": true,
+                "required": false,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": false,
+                "normalize": {
+                    "empty_as_null": true
+                },
+                "validation": [
+                    {
+                        "type": "max_length",
+                        "value": 30,
+                        "message": "手机号码不能超过 30 个字符"
+                    }
+                ]
+            },
+            {
+                "name": "avatar",
+                "type": "string",
+                "label": "头像地址",
+                "persisted": true,
+                "required": false,
+                "formable": true,
+                "listable": true,
+                "searchable": false,
+                "sortable": false,
+                "normalize": {
+                    "empty_as_null": true
+                },
+                "validation": [
+                    {
+                        "type": "max_length",
+                        "value": 255,
+                        "message": "头像地址不能超过 255 个字符"
+                    }
+                ]
+            },
+            {
+                "name": "status",
+                "type": "boolean",
+                "label": "账号状态",
+                "persisted": true,
+                "default": true,
+                "formable": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true
+            },
+            {
+                "name": "is_founder",
+                "type": "boolean",
+                "label": "创始人",
+                "persisted": true,
+                "readonly": true,
+                "formable": false,
+                "listable": true,
+                "searchable": true,
+                "sortable": true
+            },
+            {
+                "name": "login_at",
+                "type": "datetime",
+                "label": "最近登录时间",
+                "persisted": true,
+                "readonly": true,
+                "formable": false,
+                "listable": true,
+                "sortable": true
+            },
+            {
+                "name": "login_ip",
+                "type": "string",
+                "label": "最近登录 IP",
+                "persisted": true,
+                "readonly": true,
+                "formable": false,
+                "listable": true
+            },
+            {
+                "name": "password",
+                "type": "string",
+                "label": "密码",
+                "persisted": false,
+                "required": true,
+                "formable": true,
+                "listable": false,
+                "extensions": {
+                    "secret": {
+                        "readable": false
+                    }
+                },
+                "validation": [
+                    {
+                        "type": "complexity",
+                        "params": {
+                            "min_length": 6,
+                            "max_length": 4096
+                        },
+                        "message": "密码长度必须为 6 到 4096 个字符"
+                    }
+                ]
+            },
+            {
+                "name": "role_ids",
+                "type": "integer",
+                "label": "角色",
+                "persisted": false,
+                "multiple": true,
+                "formable": true,
+                "listable": false,
+                "reference": {
+                    "resource": "admin.management_roles",
+                    "value_field": "id",
+                    "label_field": "name"
+                }
+            },
+            {
+                "name": "permissions",
+                "type": "json",
+                "label": "直接授权",
+                "persisted": false,
+                "formable": true,
+                "listable": false,
+                "extensions": {
+                    "component": "permission-grant-editor"
+                }
+            }
+        ],
+        "actions": {
+            "sync_roles": {
+                "label": "设置角色"
+            },
+            "sync_permissions": {
+                "label": "设置直接授权"
+            },
+            "reset_password": {
+                "label": "重置密码"
+            },
+            "revoke_sessions": {
+                "label": "撤销会话"
+            }
+        }
+    }
+}
