@@ -30,7 +30,9 @@ final class AddonTaskExecutor implements TaskExecutorInterface
             $artifactRoot = $this->store->artifactsPath($taskId);
             $source = (string) ($payload['url'] ?? $payload['source'] ?? '');
             $filename = (string) ($payload['filename'] ?? basename((string) parse_url($source, PHP_URL_PATH)) ?: 'addon.zip');
-            if (preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/', $filename) !== 1) throw new RuntimeException('The addon artifact filename is invalid.');
+            if (preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/', $filename) !== 1) {
+                throw new RuntimeException('The addon artifact filename is invalid.');
+            }
             $result = $this->downloader->download($source, $artifactRoot.'/'.$filename, isset($payload['sha256']) ? (string) $payload['sha256'] : null);
         } elseif ($type === TaskManager::ADDON_FRONTEND_SYNC) {
             $result = $this->installer->syncFrontend((string) ($payload['code'] ?? ''), $webPrefix);
@@ -60,5 +62,4 @@ final class AddonTaskExecutor implements TaskExecutorInterface
         $tasks->heartbeat($taskId, 'activated', 100, 'Addon operation completed.', $result);
         return $result;
     }
-
 }

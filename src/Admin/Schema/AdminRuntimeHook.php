@@ -230,7 +230,9 @@ final class AdminRuntimeHook
         if ($resourceKey === 'admin.management_users' && $action === 'reset_password') {
             $this->admin($id);
             $password = (string) (($input['data'] ?? [])['password'] ?? '');
-            if (strlen($password) < 6 || strlen($password) > 4096) throw $this->error('invalid_input', '新密码长度必须为 6 到 4096 个字符。', ['field' => 'password']);
+            if (strlen($password) < 6 || strlen($password) > 4096) {
+                throw $this->error('invalid_input', '新密码长度必须为 6 到 4096 个字符。', ['field' => 'password']);
+            }
             Admin::query()->whereKey($id)->update(['password' => Hash::make($password), 'updated_at' => now()]);
             $this->sessions->revokeSubject(Admin::class, $id, 'admin');
             return ['id' => $id, 'success' => true];
@@ -764,7 +766,9 @@ final class AdminRuntimeHook
     private function admin(int $id): Admin
     {
         $admin = Admin::query()->find($id);
-        if (!$admin) throw $this->error('record_not_found', '管理员不存在。', ['id' => $id]);
+        if (!$admin) {
+            throw $this->error('record_not_found', '管理员不存在。', ['id' => $id]);
+        }
 
         return $admin;
     }
@@ -772,14 +776,18 @@ final class AdminRuntimeHook
     private function role(int $id): AdminRole
     {
         $role = AdminRole::query()->find($id);
-        if (!$role) throw $this->error('record_not_found', '角色不存在。', ['id' => $id]);
+        if (!$role) {
+            throw $this->error('record_not_found', '角色不存在。', ['id' => $id]);
+        }
 
         return $role;
     }
 
     private function assertParentResource(string $resourceKey, string $parentKey): void
     {
-        if ($parentKey === '') return;
+        if ($parentKey === '') {
+            return;
+        }
         if ($parentKey === $resourceKey) {
             throw $this->error('resource_parent_cycle', '权限资源不能将自身设为父级。', ['resource_key' => $resourceKey]);
         }
@@ -795,5 +803,4 @@ final class AdminRuntimeHook
             $parentKey = (string) AdminResource::query()->where('resource_key', $parentKey)->value('parent_key');
         }
     }
-
 }

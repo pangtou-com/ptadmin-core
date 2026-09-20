@@ -36,29 +36,44 @@ final class AddonBuiltinTemplateDirectives
     public function seo(array $arguments, array $context = []): string
     {
         $data = $arguments['data'] ?? ($context['seo'] ?? []);
-        if (!is_array($data)) $data = [];
+        if (!is_array($data)) {
+            $data = [];
+        }
         $only = $arguments['only'] ?? null;
         $keys = is_array($only) ? $only : ['title', 'description', 'keywords', 'canonical'];
         $html = '';
         foreach ($keys as $key) {
             $value = $data[$key] ?? null;
-            if (!is_scalar($value) || $value === '') continue;
+            if (!is_scalar($value) || $value === '') {
+                continue;
+            }
             $escaped = htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-            $html .= match ($key) { 'title' => '<title>'.$escaped.'</title>', 'description', 'keywords' => '<meta name="'.$key.'" content="'.$escaped.'">', 'canonical' => '<link rel="canonical" href="'.$escaped.'">', default => '' };
+            $html .= match ($key) {
+                'title' => '<title>'.$escaped.'</title>',
+                'description',
+                'keywords' => '<meta name="'.$key.'" content="'.$escaped.'">',
+                'canonical' => '<link rel="canonical" href="'.$escaped.'">', default => ''
+            };
         }
         return $html;
     }
 
     public function dump(array $arguments, array $context = []): string
     {
-        if (($context['environment'] ?? 'production') !== 'local' && ($context['debug'] ?? false) !== true) return '';
+        if (($context['environment'] ?? 'production') !== 'local' && ($context['debug'] ?? false) !== true) {
+            return '';
+        }
         $label = (string) ($arguments['label'] ?? '');
         $once = ($arguments['once'] ?? false) === true;
         if ($once) {
             $state =& $context['__ptadmin_render_state'];
-            if (!is_array($state)) $state = [];
+            if (!is_array($state)) {
+                $state = [];
+            }
             $key = 'dump:'.($label !== '' ? $label : 'default');
-            if (($state[$key] ?? false) === true) return '';
+            if (($state[$key] ?? false) === true) {
+                return '';
+            }
             $state[$key] = true;
         }
         $value = $arguments['context'] ?? $context;
@@ -71,28 +86,59 @@ final class AddonBuiltinTemplateDirectives
         return '<pre>'.$prefix.htmlspecialchars(print_r($value, true), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</pre>';
     }
 
-    public function img(array $arguments, array $context = []): string { return $this->media($arguments, $context, false, true); }
-    public function images(array $arguments, array $context = []): string { return $this->media($arguments, $context, true, true); }
-    public function file(array $arguments, array $context = []): string { return $this->media($arguments, $context, false, false); }
-    public function files(array $arguments, array $context = []): string { return $this->media($arguments, $context, true, false); }
+    public function img(array $arguments, array $context = []): string
+    {
+        return $this->media($arguments, $context, false, true);
+    }
+    public function images(array $arguments, array $context = []): string
+    {
+        return $this->media($arguments, $context, true, true);
+    }
+    public function file(array $arguments, array $context = []): string
+    {
+        return $this->media($arguments, $context, false, false);
+    }
+    public function files(array $arguments, array $context = []): string
+    {
+        return $this->media($arguments, $context, true, false);
+    }
 
     private function media(array $arguments, array $context, bool $many, bool $image): string
     {
         $value = array_key_exists('value', $arguments)
             ? $arguments['value']
             : $this->resolveMediaContext($context);
-        if ($value === null) return $this->escapeHtml((string) ($arguments['empty'] ?? ''));
+        if ($value === null) {
+            return $this->escapeHtml((string) ($arguments['empty'] ?? ''));
+        }
         $items = $many ? (is_array($value) ? $value : [$value]) : [$value];
-        if (isset($arguments['limit']) && is_int($arguments['limit'])) $items = array_slice($items, 0, $arguments['limit']);
-        $key = (string) ($arguments['key'] ?? 'key'); $label = (string) ($arguments['label'] ?? 'label'); $attrs = is_array($arguments['attrs'] ?? null) ? $arguments['attrs'] : [];
+        if (isset($arguments['limit']) && is_int($arguments['limit'])) {
+            $items = array_slice($items, 0, $arguments['limit']);
+        }
+        $key = (string) ($arguments['key'] ?? 'key');
+        $label = (string) ($arguments['label'] ?? 'label');
+        $attrs = is_array($arguments['attrs'] ?? null) ? $arguments['attrs'] : [];
         $output = [];
         foreach ($items as $item) {
-            $item = is_array($item) ? $item : ['key' => $item]; $url = $item[$key] ?? null; if (!is_string($url) || !preg_match('#^(?:https?://|/|\.{1,2}/)#i', $url) || preg_match('/[\x00-\x20"\']/', $url)) continue;
-            $safeAttrs = ''; foreach ($attrs as $attribute => $attributeValue) { if (!is_string($attribute) || preg_match('/^on/i', $attribute)) continue; $safeAttrs .= ' '.htmlspecialchars($attribute, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'="'.htmlspecialchars((string) $attributeValue, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'"'; }
-            $text = htmlspecialchars((string) ($item[$label] ?? $url), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); $escapedUrl = htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $item = is_array($item) ? $item : ['key' => $item];
+            $url = $item[$key] ?? null;
+            if (!is_string($url) || !preg_match('#^(?:https?://|/|\.{1,2}/)#i', $url) || preg_match('/[\x00-\x20"\']/', $url)) {
+                continue;
+            }
+            $safeAttrs = '';
+            foreach ($attrs as $attribute => $attributeValue) {
+                if (!is_string($attribute) || preg_match('/^on/i', $attribute)) {
+                    continue;
+                }
+                $safeAttrs .= ' '.htmlspecialchars($attribute, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'="'.htmlspecialchars((string) $attributeValue, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'"';
+            }
+            $text = htmlspecialchars((string) ($item[$label] ?? $url), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $escapedUrl = htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             $output[] = $image ? '<img src="'.$escapedUrl.'" alt="'.$text.'"'.$safeAttrs.'>' : '<a href="'.$escapedUrl.'"'.$safeAttrs.'>'.$text.'</a>';
         }
-        if ($output === []) return $this->escapeHtml((string) ($arguments['empty'] ?? ''));
+        if ($output === []) {
+            return $this->escapeHtml((string) ($arguments['empty'] ?? ''));
+        }
 
         return implode($this->escapeHtml((string) ($arguments['separator'] ?? '')), $output);
     }
@@ -129,18 +175,34 @@ final class AddonBuiltinTemplateDirectives
 
     private function resolveMediaContext(array $context): mixed
     {
-        if (array_key_exists('current_item', $context)) return $context['current_item'];
-        if (array_key_exists('media', $context)) return $context['media'];
+        if (array_key_exists('current_item', $context)) {
+            return $context['current_item'];
+        }
+        if (array_key_exists('media', $context)) {
+            return $context['media'];
+        }
 
         $schema = $context['schema_media'] ?? null;
-        if (!is_array($schema)) return null;
-        if (array_key_exists('unique', $schema)) return $schema['unique'];
-        if (array_key_exists('value', $schema)) return $schema['value'];
-        if (array_key_exists('collection', $schema)) return $schema['collection'];
-        if (!array_key_exists('candidates', $schema)) return null;
+        if (!is_array($schema)) {
+            return null;
+        }
+        if (array_key_exists('unique', $schema)) {
+            return $schema['unique'];
+        }
+        if (array_key_exists('value', $schema)) {
+            return $schema['value'];
+        }
+        if (array_key_exists('collection', $schema)) {
+            return $schema['collection'];
+        }
+        if (!array_key_exists('candidates', $schema)) {
+            return null;
+        }
 
         $candidates = is_array($schema['candidates']) ? array_values($schema['candidates']) : [];
-        if (count($candidates) === 1) return $candidates[0];
+        if (count($candidates) === 1) {
+            return $candidates[0];
+        }
         if (count($candidates) > 1 && is_callable($context['diagnostic'] ?? null)) {
             ($context['diagnostic'])('media_ambiguous', ['count' => count($candidates)]);
         }

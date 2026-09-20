@@ -22,7 +22,9 @@ final class AddonPackageDownloader
         $input = $this->openSource($source);
         $output = fopen($temporary, 'wb');
         if (false === $output) {
-            if (is_resource($input)) fclose($input);
+            if (is_resource($input)) {
+                fclose($input);
+            }
             throw new RuntimeException('Unable to create addon artifact.');
         }
         try {

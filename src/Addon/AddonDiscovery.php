@@ -20,10 +20,14 @@ final class AddonDiscovery
     {
         $addons = [];
         $errors = [];
-        if (!is_dir($this->addonsPath)) return ['addons' => [], 'errors' => []];
+        if (!is_dir($this->addonsPath)) {
+            return ['addons' => [], 'errors' => []];
+        }
         foreach (glob($this->addonsPath.'/*', GLOB_ONLYDIR) ?: [] as $directory) {
             $code = basename($directory);
-            if (str_starts_with($code, '.') || preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1) continue;
+            if (str_starts_with($code, '.') || preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1) {
+                continue;
+            }
             try {
                 $current = $this->lifecycle->read($code);
                 if (null === $current) {
@@ -67,7 +71,9 @@ final class AddonDiscovery
                     'runtime_error' => null,
                 ]);
                 $state = $this->lifecycle->read($code);
-                if (($state['state'] ?? null) !== 'active') $this->lifecycle->transition($code, 'active');
+                if (($state['state'] ?? null) !== 'active') {
+                    $this->lifecycle->transition($code, 'active');
+                }
                 $addons[] = [
                     'code' => $code,
                     'version' => $manifest['version'],

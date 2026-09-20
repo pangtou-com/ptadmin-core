@@ -22,7 +22,9 @@ final class AddonLock
             throw new AddonManifestException('The addon code is invalid.', 'invalid_addon_code');
         }
         $handle = fopen($this->root.'/'.strtolower($code).'.lock', 'c+');
-        if (false === $handle) throw new RuntimeException('Unable to open addon operation lock.');
+        if (false === $handle) {
+            throw new RuntimeException('Unable to open addon operation lock.');
+        }
         if (!flock($handle, LOCK_EX | LOCK_NB)) {
             fclose($handle);
             throw new AddonManifestException('Another addon operation is already running.', 'addon_busy');

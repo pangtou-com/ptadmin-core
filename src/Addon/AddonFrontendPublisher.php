@@ -58,13 +58,21 @@ final class AddonFrontendPublisher
                 throw new RuntimeException('Unable to stage current addon frontend.');
             }
             if (!rename($staging, $target)) {
-                if (is_dir($backup)) rename($backup, $target);
+                if (is_dir($backup)) {
+                    rename($backup, $target);
+                }
                 throw new RuntimeException('Unable to activate addon frontend.');
             }
-            if (is_dir($backup)) $this->deleteDirectory($backup);
+            if (is_dir($backup)) {
+                $this->deleteDirectory($backup);
+            }
         } finally {
-            if (is_dir($staging)) $this->deleteDirectory($staging);
-            if (is_dir($backup)) $this->deleteDirectory($backup);
+            if (is_dir($staging)) {
+                $this->deleteDirectory($staging);
+            }
+            if (is_dir($backup)) {
+                $this->deleteDirectory($backup);
+            }
         }
         return ['published' => true, 'code' => $code, 'path' => $target, 'files' => $count];
     }
@@ -75,7 +83,9 @@ final class AddonFrontendPublisher
             throw new AddonManifestException('The addon frontend target is invalid.', 'invalid_target');
         }
         $target = rtrim($this->publicRoot, '/').'/'.$webPrefix.'/modules/'.$code;
-        if (is_dir($target)) $this->deleteDirectory($target);
+        if (is_dir($target)) {
+            $this->deleteDirectory($target);
+        }
     }
 
     private function safePath(string $path): bool

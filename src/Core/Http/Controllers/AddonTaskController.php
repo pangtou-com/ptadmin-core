@@ -20,7 +20,9 @@ final class AddonTaskController extends Controller
             return AdminResponse::error(42200, 'Addon source is required.', ['error_code' => 'addon_source_required'], 422);
         }
         $payload = ['source' => trim($source)];
-        if ($request->filled('filename')) $payload['filename'] = (string) $request->input('filename');
+        if ($request->filled('filename')) {
+            $payload['filename'] = (string) $request->input('filename');
+        }
         if ($request->filled('sha256')) {
             $sha256 = (string) $request->input('sha256');
             if (preg_match('/^[a-f0-9]{64}$/i', $sha256) !== 1) {

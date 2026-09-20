@@ -121,15 +121,21 @@ final class AddonRuntimeRegistrar
         $declared = $manifest['functions'] ?? null;
         if ($declared === null) {
             $default = $directory.'/functions.php';
-            if (is_file($default)) require_once $default;
+            if (is_file($default)) {
+                require_once $default;
+            }
             return;
         }
         $paths = is_string($declared) ? [$declared] : (is_array($declared) ? $declared : []);
         foreach ($paths as $relative) {
             $relative = $this->safeRelative((string) $relative);
-            if ($relative === '') throw new AddonManifestException('Addon functions declaration is invalid.', 'invalid_functions');
+            if ($relative === '') {
+                throw new AddonManifestException('Addon functions declaration is invalid.', 'invalid_functions');
+            }
             $path = $directory.'/'.$relative;
-            if (!is_file($path)) throw new AddonManifestException('Addon functions file is unavailable.', 'functions_unavailable');
+            if (!is_file($path)) {
+                throw new AddonManifestException('Addon functions file is unavailable.', 'functions_unavailable');
+            }
             require_once $path;
         }
     }
@@ -156,16 +162,28 @@ final class AddonRuntimeRegistrar
         $bootstrapValue = $manifest['bootstrap'] ?? null;
         $bootstrap = is_string($bootstrapValue) ? ['file' => $bootstrapValue] : (is_array($bootstrapValue) ? $bootstrapValue : []);
         $file = $this->safeRelative((string) ($bootstrap['file'] ?? 'Bootstrap.php'));
-        if (!is_file($directory.'/'.$file) && !array_key_exists('bootstrap', $manifest)) return;
+        if (!is_file($directory.'/'.$file) && !array_key_exists('bootstrap', $manifest)) {
+            return;
+        }
         $class = trim((string) ($bootstrap['class'] ?? ''));
-        if ($class === '' && isset($manifest['namespace'])) $class = trim((string) $manifest['namespace'], "\\").'\\Bootstrap';
-        if ($class === '' || $file === '') throw new AddonManifestException('Addon bootstrap declaration is invalid.', 'invalid_bootstrap');
+        if ($class === '' && isset($manifest['namespace'])) {
+            $class = trim((string) $manifest['namespace'], "\\").'\\Bootstrap';
+        }
+        if ($class === '' || $file === '') {
+            throw new AddonManifestException('Addon bootstrap declaration is invalid.', 'invalid_bootstrap');
+        }
         $path = $directory.'/'.$file;
-        if (!is_file($path)) throw new AddonManifestException('Addon bootstrap file is unavailable.', 'bootstrap_unavailable');
+        if (!is_file($path)) {
+            throw new AddonManifestException('Addon bootstrap file is unavailable.', 'bootstrap_unavailable');
+        }
         require_once $path;
-        if (!class_exists($class)) throw new AddonManifestException('Addon bootstrap class is unavailable.', 'bootstrap_class_unavailable');
+        if (!class_exists($class)) {
+            throw new AddonManifestException('Addon bootstrap class is unavailable.', 'bootstrap_class_unavailable');
+        }
         $instance = $this->app->make($class);
-        if (!$instance instanceof AddonBootstrapInterface) throw new AddonManifestException('Addon bootstrap class must implement AddonBootstrapInterface.', 'invalid_bootstrap');
+        if (!$instance instanceof AddonBootstrapInterface) {
+            throw new AddonManifestException('Addon bootstrap class must implement AddonBootstrapInterface.', 'invalid_bootstrap');
+        }
         $instance->register($this->app, $code, $manifest);
     }
 
@@ -178,12 +196,20 @@ final class AddonRuntimeRegistrar
             sort($paths, SORT_STRING);
             $routes = array_map(static fn (string $path): string => 'Routes/'.basename($path), $paths);
         }
-        if (is_string($routes)) $routes = [$routes];
-        if (!is_array($routes)) throw new AddonManifestException('Addon routes declaration is invalid.', 'invalid_routes');
+        if (is_string($routes)) {
+            $routes = [$routes];
+        }
+        if (!is_array($routes)) {
+            throw new AddonManifestException('Addon routes declaration is invalid.', 'invalid_routes');
+        }
         foreach ($routes as $route) {
-            if (!is_string($route) || ($relative = $this->safeRelative($route)) === '') throw new AddonManifestException('Addon route path is invalid.', 'invalid_routes');
+            if (!is_string($route) || ($relative = $this->safeRelative($route)) === '') {
+                throw new AddonManifestException('Addon route path is invalid.', 'invalid_routes');
+            }
             $path = $directory.'/'.$relative;
-            if (!is_file($path)) throw new AddonManifestException('Addon route file is unavailable.', 'routes_unavailable');
+            if (!is_file($path)) {
+                throw new AddonManifestException('Addon route file is unavailable.', 'routes_unavailable');
+            }
             $registered = require $path;
             if (!$registered instanceof Closure) {
                 continue;
@@ -222,13 +248,23 @@ final class AddonRuntimeRegistrar
         $provider = is_string($declaration) ? ['file' => $declaration] : (is_array($declaration) ? $declaration : []);
         $file = $this->safeRelative((string) ($provider['file'] ?? 'Providers/ServiceProvider.php'));
         $class = trim((string) ($provider['class'] ?? ''));
-        if ($class === '' && isset($manifest['namespace'])) $class = trim((string) $manifest['namespace'], "\\").'\\Providers\\ServiceProvider';
-        if ($class === '' && !is_file($directory.'/'.$file)) return;
-        if ($class === '' || $file === '') throw new AddonManifestException('Addon provider declaration is invalid.', 'invalid_provider');
+        if ($class === '' && isset($manifest['namespace'])) {
+            $class = trim((string) $manifest['namespace'], "\\").'\\Providers\\ServiceProvider';
+        }
+        if ($class === '' && !is_file($directory.'/'.$file)) {
+            return;
+        }
+        if ($class === '' || $file === '') {
+            throw new AddonManifestException('Addon provider declaration is invalid.', 'invalid_provider');
+        }
         $path = $directory.'/'.$file;
-        if (!is_file($path)) throw new AddonManifestException('Addon provider file is unavailable.', 'provider_unavailable');
+        if (!is_file($path)) {
+            throw new AddonManifestException('Addon provider file is unavailable.', 'provider_unavailable');
+        }
         require_once $path;
-        if (!class_exists($class)) throw new AddonManifestException('Addon provider class is unavailable.', 'provider_class_unavailable');
+        if (!class_exists($class)) {
+            throw new AddonManifestException('Addon provider class is unavailable.', 'provider_class_unavailable');
+        }
         if (!is_a($class, AddonProviderInterface::class, true) || !is_a($class, ServiceProvider::class, true)) {
             throw new AddonManifestException('Addon provider must implement AddonProviderInterface and extend ServiceProvider.', 'invalid_provider');
         }
@@ -240,11 +276,17 @@ final class AddonRuntimeRegistrar
     {
         $declared = $manifest['config'] ?? 'Config/config.php';
         $relative = is_string($declared) ? $this->safeRelative($declared) : '';
-        if ($relative === '') throw new AddonManifestException('Addon config declaration is invalid.', 'invalid_config');
+        if ($relative === '') {
+            throw new AddonManifestException('Addon config declaration is invalid.', 'invalid_config');
+        }
         $path = $directory.'/'.$relative;
-        if (!is_file($path)) return;
+        if (!is_file($path)) {
+            return;
+        }
         $values = require $path;
-        if (!is_array($values)) throw new AddonManifestException('Addon config.php must return an array.', 'invalid_config');
+        if (!is_array($values)) {
+            throw new AddonManifestException('Addon config.php must return an array.', 'invalid_config');
+        }
         config(['addon.'.strtolower($code) => $values]);
     }
 
@@ -252,12 +294,16 @@ final class AddonRuntimeRegistrar
     {
         $views = $directory.'/Resources/Views';
         if (is_dir($views)) {
-            $callback = static function ($factory) use ($views, $code): void { $factory->addNamespace(strtolower($code), $views); };
+            $callback = static function ($factory) use ($views, $code): void {
+                $factory->addNamespace(strtolower($code), $views);
+            };
             $this->app->resolved('view') ? $callback($this->app->make('view')) : $this->app->afterResolving('view', $callback);
         }
         $lang = $directory.'/Resources/Lang';
         if (is_dir($lang)) {
-            $callback = static function ($translator) use ($lang, $code): void { $translator->addNamespace(strtolower($code), $lang); };
+            $callback = static function ($translator) use ($lang, $code): void {
+                $translator->addNamespace(strtolower($code), $lang);
+            };
             $this->app->resolved('translator') ? $callback($this->app->make('translator')) : $this->app->afterResolving('translator', $callback);
         }
     }
@@ -272,7 +318,9 @@ final class AddonRuntimeRegistrar
             }
         }
         $path = $directory.'/Directives';
-        if (!is_dir($path)) return;
+        if (!is_dir($path)) {
+            return;
+        }
         $staging = new AddonTemplateDirectiveRegistry();
         $files = glob($path.'/*.php') ?: [];
         sort($files, SORT_STRING);
@@ -295,10 +343,18 @@ final class AddonRuntimeRegistrar
                 }
                 $declared[] = $class;
             }
-            foreach ($declared as $class) if (is_a($class, AddonTemplateDirectiveInterface::class, true)) $directiveClasses[] = $class;
-            if ($directiveClasses === []) throw new AddonManifestException('Addon directive file must declare AddonTemplateDirectiveInterface.', 'invalid_directives');
+            foreach ($declared as $class) {
+                if (is_a($class, AddonTemplateDirectiveInterface::class, true)) {
+                    $directiveClasses[] = $class;
+                }
+            }
+            if ($directiveClasses === []) {
+                throw new AddonManifestException('Addon directive file must declare AddonTemplateDirectiveInterface.', 'invalid_directives');
+            }
             $registration = $staging->forAddon($code);
-            foreach ($directiveClasses as $class) $this->app->make($class)->register($registration, $manifest);
+            foreach ($directiveClasses as $class) {
+                $this->app->make($class)->register($registration, $manifest);
+            }
             $registration->commit();
         }
         $registry->commitBatch(array_values($staging->all()));
@@ -307,7 +363,9 @@ final class AddonRuntimeRegistrar
     private function registerCoreTemplateDirectives(): void
     {
         $registry = $this->templateDirectives ??= new AddonTemplateDirectiveRegistry();
-        if ($registry->get('seo') !== null) return;
+        if ($registry->get('seo') !== null) {
+            return;
+        }
         $core = new AddonBuiltinTemplateDirectives();
         $registration = $registry->forAddon('core');
         $core->register($registration);
@@ -360,7 +418,9 @@ final class AddonRuntimeRegistrar
     {
         $path = trim(str_replace('\\', '/', $path), '/');
         $segments = explode('/', $path);
-        if ($path === '' || in_array('', $segments, true) || in_array('.', $segments, true) || in_array('..', $segments, true)) return '';
+        if ($path === '' || in_array('', $segments, true) || in_array('.', $segments, true) || in_array('..', $segments, true)) {
+            return '';
+        }
         return $path;
     }
 }

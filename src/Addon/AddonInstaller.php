@@ -35,8 +35,7 @@ final class AddonInstaller
         bool $update = false,
         ?string $expectedCode = null,
         ?string $expectedSha256 = null,
-    ): array
-    {
+    ): array {
         $this->verifyArtifactChecksum($source, $expectedSha256);
         $stage = $this->stagingPath.'/'.bin2hex(random_bytes(8));
         if (!is_dir($stage) && !mkdir($stage, 0700, true) && !is_dir($stage)) {
@@ -75,7 +74,9 @@ final class AddonInstaller
                 throw new RuntimeException('Unable to stage installed addon.');
             }
             if (!rename($replacement, $target)) {
-                if (is_dir($backup)) rename($backup, $target);
+                if (is_dir($backup)) {
+                    rename($backup, $target);
+                }
                 throw new RuntimeException('Unable to activate addon package.');
             }
             $frontendSource = $target.'/Frontend/dist';
@@ -91,11 +92,15 @@ final class AddonInstaller
                 return $synced;
             };
             $synced = null !== $this->database ? $this->database->transaction($activate) : $activate();
-            if (is_dir($backup)) $this->deleteDirectory($backup);
+            if (is_dir($backup)) {
+                $this->deleteDirectory($backup);
+            }
             return ['code' => $code, 'version' => $manifest['version'], 'path' => $target, 'frontend' => is_dir($frontendSource), 'resources' => $synced];
         } catch (\Throwable $exception) {
             if (isset($target, $backup) && is_dir($backup)) {
-                if (is_dir($target)) $this->deleteDirectory($target);
+                if (is_dir($target)) {
+                    $this->deleteDirectory($target);
+                }
                 @rename($backup, $target);
             } elseif (isset($target, $replacement) && is_dir($target) && !is_dir($replacement)) {
                 $this->deleteDirectory($target);
@@ -111,8 +116,12 @@ final class AddonInstaller
             }
             throw $exception;
         } finally {
-            if (is_dir($stage)) $this->deleteDirectory($stage);
-            if (isset($lockHandle) && is_resource($lockHandle)) $this->locks?->release($lockHandle);
+            if (is_dir($stage)) {
+                $this->deleteDirectory($stage);
+            }
+            if (isset($lockHandle) && is_resource($lockHandle)) {
+                $this->locks?->release($lockHandle);
+            }
         }
     }
 
@@ -126,10 +135,14 @@ final class AddonInstaller
         try {
             $this->runtimeCache?->clear();
             $target = $this->addonsPath.'/'.$code;
-            if (!is_dir($target)) throw new AddonManifestException('The addon is not installed.', 'addon_not_installed');
+            if (!is_dir($target)) {
+                throw new AddonManifestException('The addon is not installed.', 'addon_not_installed');
+            }
             $previousLifecycle = $this->lifecycle->read($code);
             $backup = $target.'.uninstall-'.bin2hex(random_bytes(5));
-            if (!rename($target, $backup)) throw new RuntimeException('Unable to stage addon for uninstall.');
+            if (!rename($target, $backup)) {
+                throw new RuntimeException('Unable to stage addon for uninstall.');
+            }
             try {
                 $dispose = function () use ($code, $webPrefix): void {
                     $this->lifecycle->transition($code, 'disposing');
@@ -141,15 +154,21 @@ final class AddonInstaller
                 null !== $this->database ? $this->database->transaction($dispose) : $dispose();
                 $this->deleteDirectory($backup);
             } catch (\Throwable $exception) {
-                if (is_dir($backup)) @rename($backup, $target);
+                if (is_dir($backup)) {
+                    @rename($backup, $target);
+                }
                 $this->lifecycle->restore($code, $previousLifecycle);
                 $frontendSource = $target.'/Frontend/dist';
-                if (is_dir($frontendSource)) $this->frontend->publish($webPrefix, $code, $frontendSource);
+                if (is_dir($frontendSource)) {
+                    $this->frontend->publish($webPrefix, $code, $frontendSource);
+                }
                 throw $exception;
             }
             return ['code' => $code, 'removed' => true, 'data_preserved' => true];
         } finally {
-            if (isset($lockHandle) && is_resource($lockHandle)) $this->locks?->release($lockHandle);
+            if (isset($lockHandle) && is_resource($lockHandle)) {
+                $this->locks?->release($lockHandle);
+            }
         }
     }
 
@@ -162,11 +181,15 @@ final class AddonInstaller
         $lockHandle = $this->locks?->acquire($code);
         try {
             $source = $this->addonsPath.'/'.$code.'/Frontend/dist';
-            if (!is_dir($source)) throw new AddonManifestException('The addon frontend source is unavailable.', 'source_unavailable');
+            if (!is_dir($source)) {
+                throw new AddonManifestException('The addon frontend source is unavailable.', 'source_unavailable');
+            }
             $this->validateFrontendSource($this->addonsPath.'/'.$code, $source);
             return $this->frontend->publish($webPrefix, $code, $source);
         } finally {
-            if (isset($lockHandle) && is_resource($lockHandle)) $this->locks?->release($lockHandle);
+            if (isset($lockHandle) && is_resource($lockHandle)) {
+                $this->locks?->release($lockHandle);
+            }
         }
     }
 
@@ -239,7 +262,9 @@ final class AddonInstaller
     private function deleteDirectory(string $directory): void
     {
         $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
-        foreach ($iterator as $item) $item->isDir() && !$item->isLink() ? @rmdir($item->getPathname()) : @unlink($item->getPathname());
+        foreach ($iterator as $item) {
+            $item->isDir() && !$item->isLink() ? @rmdir($item->getPathname()) : @unlink($item->getPathname());
+        }
         @rmdir($directory);
     }
 }

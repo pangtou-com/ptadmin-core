@@ -80,8 +80,11 @@ final class AddonStateManager
                 $this->resourceSynchronizer?->sync($directory, $code);
                 $state = (string) ($current['state'] ?? 'discovered');
                 if ($current === null || $state === 'disposed') {
-                    if ($state === 'disposed') $this->lifecycle->transition($code, 'discovered');
-                    else $this->lifecycle->transition($code, 'discovered');
+                    if ($state === 'disposed') {
+                        $this->lifecycle->transition($code, 'discovered');
+                    } else {
+                        $this->lifecycle->transition($code, 'discovered');
+                    }
                     $state = 'discovered';
                 }
                 if ($state === 'discovered') {
@@ -92,7 +95,9 @@ final class AddonStateManager
                     $this->lifecycle->transition($code, 'loading');
                     $state = 'loading';
                 }
-                if ($state === 'loading') $this->lifecycle->transition($code, 'ready');
+                if ($state === 'loading') {
+                    $this->lifecycle->transition($code, 'ready');
+                }
                 $result = $this->lifecycle->transition($code, 'active', [
                     'disabled_by_user' => false,
                     'runtime_error' => null,

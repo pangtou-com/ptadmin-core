@@ -21,7 +21,9 @@ final class AddonManifestVerifierTest extends TestCase
     protected function tearDown(): void
     {
         foreach (scandir($this->directory) ?: [] as $name) {
-            if (in_array($name, ['.', '..'], true)) continue;
+            if (in_array($name, ['.', '..'], true)) {
+                continue;
+            }
             unlink($this->directory.'/'.$name);
         }
         @rmdir($this->directory);

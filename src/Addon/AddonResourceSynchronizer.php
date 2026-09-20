@@ -49,7 +49,9 @@ final class AddonResourceSynchronizer implements AddonResourceSynchronizerInterf
                     );
                 }
                 $storedResource = Resource::query()->where('resource_key', $schemaKey)->first();
-                if ($storedResource?->status === 'disabled') $this->resources->enableResource($schemaKey);
+                if ($storedResource?->status === 'disabled') {
+                    $this->resources->enableResource($schemaKey);
+                }
                 $schemaKeys[] = $schemaKey;
                 $counts['schemas']++;
             }
@@ -66,11 +68,17 @@ final class AddonResourceSynchronizer implements AddonResourceSynchronizerInterf
             $menuResult = $this->menus->syncAddon($directory, $code);
             $counts['admin_resources'] = count($menuResult['resource_keys']);
             $schemaQuery = Resource::query()->where(['owner_type' => 'addon', 'owner_code' => $ownerCode]);
-            if ($schemaKeys !== []) $schemaQuery->whereNotIn('resource_key', $schemaKeys);
-            foreach ($schemaQuery->get() as $resource) $this->resources->disableResource((string) $resource->resource_key);
+            if ($schemaKeys !== []) {
+                $schemaQuery->whereNotIn('resource_key', $schemaKeys);
+            }
+            foreach ($schemaQuery->get() as $resource) {
+                $this->resources->disableResource((string) $resource->resource_key);
+            }
 
             $configQuery = ConfigDefinition::query()->where(['owner_type' => 'addon', 'owner_code' => $ownerCode]);
-            if ($configKeys !== []) $configQuery->whereNotIn('config_key', $configKeys);
+            if ($configKeys !== []) {
+                $configQuery->whereNotIn('config_key', $configKeys);
+            }
             $configQuery->update(['status' => false]);
 
             return $counts;
@@ -92,7 +100,9 @@ final class AddonResourceSynchronizer implements AddonResourceSynchronizerInterf
     /** @return array<int, string> */
     private function jsonFiles(string $directory): array
     {
-        if (!is_dir($directory)) return [];
+        if (!is_dir($directory)) {
+            return [];
+        }
         $paths = glob($directory.'/*.json') ?: [];
         sort($paths, SORT_STRING);
         return $paths;
@@ -102,9 +112,15 @@ final class AddonResourceSynchronizer implements AddonResourceSynchronizerInterf
     private function objectOrList(string $path): array
     {
         $decoded = json_decode((string) file_get_contents($path), true);
-        if (!is_array($decoded)) throw new AddonManifestException('Addon resource JSON is invalid.', 'invalid_resource_definition', ['path' => $path]);
+        if (!is_array($decoded)) {
+            throw new AddonManifestException('Addon resource JSON is invalid.', 'invalid_resource_definition', ['path' => $path]);
+        }
         $items = array_is_list($decoded) ? $decoded : [$decoded];
-        foreach ($items as $item) if (!is_array($item) || array_is_list($item)) throw new AddonManifestException('Addon resource definition must be an object.', 'invalid_resource_definition', ['path' => $path]);
+        foreach ($items as $item) {
+            if (!is_array($item) || array_is_list($item)) {
+                throw new AddonManifestException('Addon resource definition must be an object.', 'invalid_resource_definition', ['path' => $path]);
+            }
+        }
         return $items;
     }
 }

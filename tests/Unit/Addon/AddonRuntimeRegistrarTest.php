@@ -548,9 +548,13 @@ PHP);
 
     private function remove(string $path): void
     {
-        if (!is_dir($path)) return;
+        if (!is_dir($path)) {
+            return;
+        }
         foreach (scandir($path) ?: [] as $name) {
-            if (in_array($name, ['.', '..'], true)) continue;
+            if (in_array($name, ['.', '..'], true)) {
+                continue;
+            }
             $entry = $path.'/'.$name;
             is_dir($entry) ? $this->remove($entry) : @unlink($entry);
         }

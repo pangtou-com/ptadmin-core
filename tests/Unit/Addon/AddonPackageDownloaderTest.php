@@ -20,7 +20,9 @@ final class AddonPackageDownloaderTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (glob($this->root.'/*') ?: [] as $path) @unlink($path);
+        foreach (glob($this->root.'/*') ?: [] as $path) {
+            @unlink($path);
+        }
         @rmdir($this->root);
     }
 
