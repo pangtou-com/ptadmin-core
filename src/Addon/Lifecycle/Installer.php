@@ -35,6 +35,7 @@ final class Installer
         private ?OperationLock $locks = null,
         private ?RuntimeCacheStore $runtimeCache = null,
         private ?RuntimeLifecycleValidator $runtimeValidator = null,
+        private ?LifecycleRegistrar $lifecycleRegistrar = null,
     ) {
         $this->addonsPath = rtrim($addonsPath, '/');
         $this->stagingPath = rtrim($stagingPath, '/');
@@ -107,6 +108,7 @@ final class Installer
             // 数据库资源在事务内同步；文件与前端产物由外层 catch 使用目录备份执行补偿回滚。
             $activate = function () use ($target, $code, $manifest, $frontendSource, $webPrefix, $update): array {
                 $synced = $this->resourceSynchronizer?->sync($target, $code) ?? ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'admin_resources' => 0];
+                $this->lifecycleRegistrar?->invoke('install', $target, $code, $manifest);
                 $this->lifecycle->transition($code, 'ready', ['version' => $manifest['version'], 'manifest' => $manifest]);
                 $this->lifecycle->transition($code, 'active');
                 if (is_dir($frontendSource)) {
@@ -173,7 +175,8 @@ final class Installer
                 throw new RuntimeException('Unable to stage addon for uninstall.');
             }
             try {
-                $dispose = function () use ($code, $webPrefix): void {
+                $dispose = function () use ($code, $webPrefix, $backup, $previousLifecycle): void {
+                    $this->lifecycleRegistrar?->invoke('uninstall', $backup, $code, (array) ($previousLifecycle['manifest'] ?? []));
                     $this->lifecycle->transition($code, 'disposing');
                     $this->resourceSynchronizer?->deactivate($code);
                     $this->frontend->remove($webPrefix, $code);

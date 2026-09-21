@@ -67,7 +67,7 @@ final class ResourceSynchronizer implements ResourceSynchronizerInterface
                 $schemaKeys[] = $schemaKey;
                 $counts['schemas']++;
             }
-            foreach ($this->jsonFiles($directory.'/Config') as $path) {
+            foreach ($this->jsonFiles($directory.'/Resources', 'config.') as $path) {
                 $definitions = $this->objectOrList($path);
                 foreach ($definitions as $definition) {
                     $definition['owner_type'] = 'addon';
@@ -106,19 +106,18 @@ final class ResourceSynchronizer implements ResourceSynchronizerInterface
             foreach (Resource::query()->where(['owner_type' => 'addon', 'owner_code' => $ownerCode])->get() as $resource) {
                 $this->resources->disableResource((string) $resource->resource_key);
             }
-            ConfigDefinition::query()->where(['owner_type' => 'addon', 'owner_code' => $ownerCode])->update(['status' => false]);
             $this->menus->deactivateAddon($ownerCode);
             $this->dictionaries->deactivate('plugin', $ownerCode);
         });
     }
 
     /** @return array<int, string> */
-    private function jsonFiles(string $directory): array
+    private function jsonFiles(string $directory, string $prefix): array
     {
         if (!is_dir($directory)) {
             return [];
         }
-        $paths = glob($directory.'/*.json') ?: [];
+        $paths = glob($directory.'/'.$prefix.'*.json') ?: [];
         sort($paths, SORT_STRING);
         return $paths;
     }

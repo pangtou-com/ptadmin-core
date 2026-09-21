@@ -14,7 +14,7 @@ use RuntimeException;
 /**
  * 编排已安装插件的启用和禁用流程。
  *
- * 状态切换会同步或停用 Schema、配置和菜单资源，清理 Runtime 缓存，并在最终状态上校验 Runtime 绑定。
+ * 状态切换会同步或停用 Schema、配置和菜单资源，调用插件生命周期回调，清理 Runtime 缓存，并在最终状态上校验 Runtime 绑定。
  * 操作失败时尽量恢复资源和生命周期快照，原始异常始终优先返回给调用方。
  */
 final class StateManager
@@ -28,6 +28,7 @@ final class StateManager
         private ?ResourceSynchronizerInterface $resourceSynchronizer = null,
         private ?RuntimeCacheStore $runtimeCache = null,
         private ?RuntimeLifecycleValidator $runtimeValidator = null,
+        private ?LifecycleRegistrar $lifecycleRegistrar = null,
     ) {
         $this->addonsPath = rtrim($addonsPath, '/');
     }
@@ -46,7 +47,7 @@ final class StateManager
     }
 
     /**
-     * 重新验证插件包、恢复资源并在 Runtime 校验通过后标记为 active。
+     * 读取插件运行时 manifest、恢复资源并在 Runtime 校验通过后标记为 active。
      *
      * @param string $code
      * @return array<string,mixed>
@@ -78,12 +79,15 @@ final class StateManager
         }
         $lock = $this->locks->acquire($code);
         try {
-            $manifest = $this->verifier->verify($directory, $this->requireSignature);
+            $manifest = $this->verifier->verifyRuntime($directory);
             $this->runtimeCache?->clear();
             $current = $this->lifecycle->read($code);
             $runtimeValidationStarted = false;
+            $resourcesChanged = false;
             if (!$enabled) {
+                $this->lifecycleRegistrar?->invoke('disable', $directory, $code, $manifest);
                 $this->resourceSynchronizer?->deactivate($code);
+                $resourcesChanged = true;
                 $state = (string) ($current['state'] ?? 'discovered');
                 if ($current === null) {
                     $this->lifecycle->transition($code, 'discovered');
@@ -110,6 +114,8 @@ final class StateManager
                 $this->runtimeValidator?->assertDeactivated($code);
             } else {
                 $this->resourceSynchronizer?->sync($directory, $code);
+                $resourcesChanged = true;
+                $this->lifecycleRegistrar?->invoke('enable', $directory, $code, $manifest);
                 $state = (string) ($current['state'] ?? 'discovered');
                 if ($current === null || $state === 'disposed') {
                     if ($state === 'disposed') {
@@ -141,7 +147,7 @@ final class StateManager
             }
             return ['code' => $code, 'enabled' => $enabled, 'state' => $result['state'], 'version' => $manifest['version']];
         } catch (\Throwable $exception) {
-            if (($runtimeValidationStarted ?? false) && $this->runtimeValidator !== null) {
+            if (($runtimeValidationStarted ?? false) || $resourcesChanged) {
                 try {
                     if ($enabled) {
                         $this->resourceSynchronizer?->deactivate($code);

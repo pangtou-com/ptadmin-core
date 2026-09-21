@@ -57,6 +57,7 @@ use PTAdmin\Addon\Manifest\TrustPolicy;
 use PTAdmin\Addon\Package\PackageExtractor;
 use PTAdmin\Addon\Package\PackageDownloader;
 use PTAdmin\Addon\Lifecycle\Installer;
+use PTAdmin\Addon\Lifecycle\LifecycleRegistrar;
 use PTAdmin\Addon\Resource\ResourceSynchronizer;
 use PTAdmin\Addon\Resource\ResourceSynchronizerInterface;
 use PTAdmin\Addon\Lifecycle\OperationLock;
@@ -86,6 +87,8 @@ use PTAdmin\Schema\Console\Commands\SchemaSyncCommand;
 
 final class PTAdminServiceProvider extends ServiceProvider
 {
+    private bool $adminRuntimeBindingsRegistered = false;
+
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../../../config/ptadmin.php', 'ptadmin');
@@ -289,6 +292,7 @@ final class PTAdminServiceProvider extends ServiceProvider
 
     private function registerAddonLifecycleServices(): void
     {
+        $this->app->singleton(LifecycleRegistrar::class);
         $this->app->singleton(LifecycleStore::class, static function (): LifecycleStore {
             return new LifecycleStore(storage_path('app/ptadmin/addons'));
         });
@@ -305,6 +309,7 @@ final class PTAdminServiceProvider extends ServiceProvider
                 $app->make(ResourceSynchronizerInterface::class),
                 $app->make(RuntimeCacheStore::class),
                 $app->make(RuntimeLifecycleValidator::class),
+                $app->make(LifecycleRegistrar::class),
             );
         });
         $this->app->singleton(Installer::class, static function ($app): Installer {
@@ -321,6 +326,7 @@ final class PTAdminServiceProvider extends ServiceProvider
                 $app->make(OperationLock::class),
                 $app->make(RuntimeCacheStore::class),
                 $app->make(RuntimeLifecycleValidator::class),
+                $app->make(LifecycleRegistrar::class),
             );
         });
     }
@@ -382,6 +388,11 @@ final class PTAdminServiceProvider extends ServiceProvider
 
     private function registerAdminRuntimeBindings(): void
     {
+        if ($this->adminRuntimeBindingsRegistered) {
+            return;
+        }
+
+        $this->adminRuntimeBindingsRegistered = true;
         $owner = $this->app->make(RuntimeRegistry::class)->forOwner('core', 'ptadmin');
         $loader = $this->app->make(SchemaFileLoader::class);
         foreach ($this->app->make(SchemaSourceDiscovery::class)->discoverCore() as $file) {
