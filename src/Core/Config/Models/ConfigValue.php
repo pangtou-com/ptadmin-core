@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $scope_type
  * @property string $scope_id
  * @property array<string, mixed> $value_json
+ * @property int $revision
  */
 final class ConfigValue extends Model
 {
@@ -25,5 +26,6 @@ final class ConfigValue extends Model
     protected $guarded = [];
     protected $casts = [
         'value_json' => 'json',
+        'revision' => 'integer',
     ];
 }

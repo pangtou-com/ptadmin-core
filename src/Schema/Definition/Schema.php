@@ -45,7 +45,8 @@ final class Schema extends DataObject
     public function toArray(): array
     {
         $schema = parent::toArray();
-        $schema = Protocol::withoutEmpty($schema, ['title', 'name', 'capabilities', 'constraints', 'views']);
+        // fields 是 Schema 协议的稳定数组，即使为空也必须保留，避免消费者把空定义误判为缺失字段。
+        $schema = Protocol::withoutEmpty($schema, ['title', 'name', 'capabilities', 'constraints', 'views', 'fields']);
         if (!array_key_exists('capabilities', $schema)) {
             $schema['capabilities'] = (object) [];
         }

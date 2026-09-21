@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Hash;
 use PTAdmin\Admin\Models\Admin;
 use PTAdmin\Admin\Navigation\MenuSynchronizer;
 use PTAdmin\Core\Config\ConfigService;
+use PTAdmin\Core\Config\ConfigException;
 use PTAdmin\Core\Dictionary\DictionarySynchronizer;
 use PTAdmin\Core\Http\AdminFrontendRouteRegistrar;
 use PTAdmin\Core\Install\Exceptions\InvalidInstallStateException;
@@ -180,29 +181,86 @@ final class InstallService
 
     public function syncConfigDefinitions(): int
     {
-        $definitions = [
-            [
-                'group_code' => 'appearance',
-                'config_key' => 'appearance',
-                'title' => '后台外观',
-                'description' => '后台主题和布局默认设置。',
-                'schema' => [
-                    'name' => 'appearance',
-                    'title' => '后台外观',
-                    'fields' => [
-                        ['name' => 'theme_preset', 'type' => 'string', 'label' => '主题预设', 'default' => (string) config('ptadmin.theme.preset', 'classic-blue')],
-                        ['name' => 'theme_mode', 'type' => 'string', 'label' => '主题模式', 'default' => (string) config('ptadmin.theme.mode', 'light'), 'options' => ['mode' => 'static', 'value_policy' => 'closed', 'items' => [['value' => 'light', 'label' => '浅色'], ['value' => 'dark', 'label' => '深色']]]],
-                        ['name' => 'layout_navigation', 'type' => 'string', 'label' => '导航布局', 'default' => (string) config('ptadmin.layout.navigation', 'sidebar'), 'options' => ['mode' => 'static', 'value_policy' => 'closed', 'items' => [['value' => 'sidebar', 'label' => '侧边导航'], ['value' => 'topbar', 'label' => '顶部导航']]]],
-                        ['name' => 'layout_density', 'type' => 'string', 'label' => '界面密度', 'default' => (string) config('ptadmin.layout.density', 'comfortable'), 'options' => ['mode' => 'static', 'value_policy' => 'closed', 'items' => [['value' => 'comfortable', 'label' => '舒适'], ['value' => 'compact', 'label' => '紧凑']]]],
-                    ],
-                ],
-            ],
-        ];
+        $definitions = $this->loadCoreConfigDefinitions();
+        try {
+            $this->configs->deactivateDefinition('core', 'ptadmin', 'appearance');
+        } catch (ConfigException $exception) {
+            if ($exception->errorCode !== 'config_not_found') {
+                throw $exception;
+            }
+        }
         foreach ($definitions as $definition) {
             $this->configs->syncDefinition($definition + ['owner_type' => 'core', 'owner_code' => 'ptadmin']);
         }
 
         return count($definitions);
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function loadCoreConfigDefinitions(): array
+    {
+        $paths = glob(__DIR__.'/../../../resources/config.*.json') ?: [];
+        sort($paths, SORT_STRING);
+        $definitions = [];
+        foreach ($paths as $path) {
+            try {
+                $decoded = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+            } catch (\JsonException $exception) {
+                throw new RuntimeException('Core configuration resource JSON is invalid: '.$path, 0, $exception);
+            }
+            if (!is_array($decoded) || array_is_list($decoded)) {
+                throw new RuntimeException('Core configuration resource must be a JSON object: '.$path);
+            }
+            if (!isset($decoded['schema']) || !is_array($decoded['schema'])) {
+                throw new RuntimeException('Core configuration resource requires a schema object: '.$path);
+            }
+            $definitions[] = $this->applyCoreConfigDefaults($decoded);
+        }
+
+        return $definitions;
+    }
+
+    /** @param array<string, mixed> $definition
+     *  @return array<string, mixed>
+     */
+    private function applyCoreConfigDefaults(array $definition): array
+    {
+        $configKey = (string) ($definition['config_key'] ?? '');
+        $runtimeDefaults = match ($configKey) {
+            'site' => [
+                'site_name' => (string) config('app.name', 'PTAdmin'),
+                'site_url' => (string) config('app.url', 'http://localhost'),
+            ],
+            'mail' => [
+                'mailer' => (string) config('mail.default', 'log'),
+                'host' => (string) config('mail.mailers.smtp.host', '127.0.0.1'),
+                'port' => (int) config('mail.mailers.smtp.port', 2525),
+                'encryption' => (string) (config('mail.mailers.smtp.encryption') ?? ''),
+                'username' => (string) (config('mail.mailers.smtp.username') ?? ''),
+                'password' => (string) (config('mail.mailers.smtp.password') ?? ''),
+                'from_address' => (string) config('mail.from.address', 'hello@example.com'),
+                'from_name' => (string) config('mail.from.name', 'PTAdmin'),
+            ],
+            'upload' => [
+                'public_disk' => (string) config('ptadmin.storage.public_disk', 'public'),
+                'private_disk' => (string) config('ptadmin.storage.private_disk', 'local'),
+                'public_directory' => (string) config('ptadmin.storage.public_directory', 'assets'),
+                'private_directory' => (string) config('ptadmin.storage.private_directory', 'private'),
+                'max_upload_kilobytes' => (int) config('ptadmin.storage.max_upload_kilobytes', 10240),
+            ],
+            default => [],
+        };
+        $fields = (array) ($definition['schema']['fields'] ?? []);
+        foreach ($fields as &$field) {
+            $name = (string) ($field['name'] ?? '');
+            if (array_key_exists($name, $runtimeDefaults)) {
+                $field['default'] = $runtimeDefaults[$name];
+            }
+        }
+        unset($field);
+        $definition['schema']['fields'] = $fields;
+
+        return $definition;
     }
 
     /** 在数据库迁移后幂等同步 Core 内置字典声明。 */

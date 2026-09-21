@@ -11,12 +11,10 @@ return [
     'api_protocol' => (int) env('PTADMIN_API_PROTOCOL', 1),
     'schema_protocol' => (int) env('PTADMIN_SCHEMA_PROTOCOL', 1),
     'config_groups' => [
-        'general' => '常规',
+        'system' => '系统配置',
         'security' => '安全',
         'auth' => '认证',
-        'appearance' => '外观',
-        'frontend' => '前端',
-        'addon' => '插件',
+        'addon' => '插件配置',
     ],
     'frontend' => [
         'bundled_path' => __DIR__.'/../resources/admin-frontend',

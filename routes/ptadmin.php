@@ -148,6 +148,13 @@ Route::middleware($authenticatedMiddleware)
         Route::get('definitions', [ConfigController::class, 'definitions'])
             ->middleware('ptadmin.permission:admin.config,view')
             ->name('definitions');
+        Route::post('definitions', [ConfigController::class, 'store'])
+            ->middleware('ptadmin.permission:admin.config,design')
+            ->name('definitions.store');
+        Route::delete('definitions/{config_key}', [ConfigController::class, 'destroy'])
+            ->where('config_key', '[a-z][a-z0-9_.-]{0,190}')
+            ->middleware('ptadmin.permission:admin.config,design')
+            ->name('definitions.destroy');
         Route::get('{owner_type}/{owner_code}/{config_key}', [ConfigController::class, 'show'])
             ->where(['owner_type' => '[a-z]+', 'owner_code' => '[^/]+', 'config_key' => '[^/]+'])
             ->middleware('ptadmin.permission:admin.config,view')
@@ -162,6 +169,18 @@ Route::middleware($authenticatedMiddleware)
     ->prefix($apiPrefix.'/addons')
     ->as('ptadmin.addons.')
     ->group(static function (): void {
+        Route::get('{code}/configuration', [ConfigController::class, 'addonDefinitions'])
+            ->middleware('ptadmin.permission:addon.manage,view')
+            ->where('code', '[A-Za-z][A-Za-z0-9._-]{1,63}')
+            ->name('configuration.index');
+        Route::get('{code}/configuration/{config_key}', [ConfigController::class, 'addonShow'])
+            ->middleware('ptadmin.permission:addon.manage,view')
+            ->where(['code' => '[A-Za-z][A-Za-z0-9._-]{1,63}', 'config_key' => '[a-z][a-z0-9_.-]{0,190}'])
+            ->name('configuration.show');
+        Route::patch('{code}/configuration/{config_key}', [ConfigController::class, 'addonUpdate'])
+            ->middleware('ptadmin.permission:addon.manage,update')
+            ->where(['code' => '[A-Za-z][A-Za-z0-9._-]{1,63}', 'config_key' => '[a-z][a-z0-9_.-]{0,190}'])
+            ->name('configuration.update');
         Route::get('/', [AddonController::class, 'index'])
             ->middleware('ptadmin.permission:addon.manage,view')
             ->name('index');

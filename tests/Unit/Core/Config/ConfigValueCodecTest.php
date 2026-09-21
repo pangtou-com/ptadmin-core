@@ -41,4 +41,59 @@ final class ConfigValueCodecTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $codec->encode($this->schema(), ['mode' => 'unsafe']);
     }
+
+    public function testEncodeOverridesDoesNotPersistDefaults(): void
+    {
+        $codec = new ConfigValueCodec();
+
+        self::assertSame(
+            ['mode' => 'safe'],
+            $codec->encodeOverrides($this->schema(), ['enabled' => true, 'mode' => 'safe']),
+        );
+        self::assertSame(
+            ['mode' => 'safe'],
+            $codec->encodeOverrides($this->schema(), ['enabled' => true, 'mode' => 'safe'], ['enabled' => false, 'mode' => 'safe']),
+        );
+    }
+
+    public function testStringValuesAcceptScalarValuesFromFormControls(): void
+    {
+        $codec = new ConfigValueCodec();
+        $schema = [
+            'name' => 'scalar_values',
+            'title' => 'Scalar values',
+            'fields' => [
+                ['name' => 'number', 'type' => 'string', 'label' => 'Number'],
+                ['name' => 'flag', 'type' => 'string', 'label' => 'Flag'],
+                ['name' => 'empty', 'type' => 'string', 'label' => 'Empty'],
+            ],
+        ];
+
+        self::assertSame(
+            ['number' => '12', 'flag' => 'false', 'empty' => ''],
+            $codec->encode($schema, ['number' => 12, 'flag' => false, 'empty' => null]),
+        );
+    }
+
+    public function testStringValuesStillRejectObjectsAndArrays(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        (new ConfigValueCodec())->encode([
+            'name' => 'invalid_string',
+            'title' => 'Invalid string',
+            'fields' => [['name' => 'value', 'type' => 'string', 'label' => 'Value']],
+        ], ['value' => ['not' => 'a string']]);
+    }
+
+    public function testStringDefaultsAreNormalizedBeforeTheyAreApplied(): void
+    {
+        $schema = [
+            'name' => 'default_string',
+            'title' => 'Default string',
+            'fields' => [['name' => 'value', 'type' => 'string', 'label' => 'Value', 'default' => false]],
+        ];
+
+        self::assertSame(['value' => 'false'], (new ConfigValueCodec())->encode($schema, []));
+    }
 }

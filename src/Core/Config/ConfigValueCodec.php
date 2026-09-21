@@ -97,6 +97,42 @@ final class ConfigValueCodec
         return $result;
     }
 
+    /**
+     * Normalize a submitted object into the persisted override object.
+     * Defaults are intentionally omitted so definition changes can flow into
+     * fields that the administrator has not explicitly overridden.
+     *
+     * @param array<string, mixed> $schemaData
+     * @param array<string, mixed> $input
+     * @param array<string, mixed> $existing
+     * @return array<string, mixed>
+     */
+    public function encodeOverrides(array $schemaData, array $input, array $existing = []): array
+    {
+        $encoded = $this->encode($schemaData, $input, $existing);
+        $schema = new Schema($schemaData);
+        $fields = [];
+        foreach ((array) $schema->fields as $field) {
+            $fields[(string) $field['name']] = (array) $field;
+        }
+
+        $overrides = $existing;
+        foreach ($input as $name => $_value) {
+            if (!array_key_exists($name, $encoded)) {
+                unset($overrides[$name]);
+                continue;
+            }
+            $field = $fields[$name] ?? [];
+            if (array_key_exists('default', $field) && $encoded[$name] === $field['default']) {
+                unset($overrides[$name]);
+                continue;
+            }
+            $overrides[$name] = $encoded[$name];
+        }
+
+        return $overrides;
+    }
+
     /** @param array<string, mixed> $field */
     private function cast(mixed $value, array $field): mixed
     {
@@ -117,8 +153,26 @@ final class ConfigValueCodec
             'number' => is_int($value) || is_float($value) || is_numeric($value) ? (float) $value : throw new InvalidArgumentException('Configuration number value is invalid.'),
             'boolean' => is_bool($value) ? $value : throw new InvalidArgumentException('Configuration boolean value is invalid.'),
             'json' => is_array($value) ? $value : throw new InvalidArgumentException('Configuration JSON value is invalid.'),
-            default => is_string($value) ? $value : throw new InvalidArgumentException('Configuration string value is invalid.'),
+            default => $this->castString($value),
         };
+    }
+
+    private function castString(mixed $value): string
+    {
+        if (is_string($value)) {
+            return $value;
+        }
+        if ($value === null) {
+            return '';
+        }
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+        if (is_int($value) || is_float($value)) {
+            return (string) $value;
+        }
+
+        throw new InvalidArgumentException('Configuration string value is invalid.');
     }
 
     /** @param array<string, mixed> $field */

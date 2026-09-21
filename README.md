@@ -67,6 +67,8 @@ php artisan ptadmin:admin:sync
 
 `ptadmin:menu:sync` 负责读取 Core 和已安装插件的 `Resources/menu.json` 并幂等同步 `admin_resources`。安装流程和插件生命周期直接调用相同的同步服务，不在进程内嵌套调用 Artisan 命令。`ptadmin:admin:sync` 负责 Admin 内置 Schema、权限关联、配置定义和 Core 字典；应用与插件代码型 Schema 仍由 `schema:sync` 或插件安装流程维护。
 
+Core 内置配置定义位于 `resources/config.site.json`、`resources/config.mail.json` 和 `resources/config.upload.json`，与插件的 `Resources/config.*.json` 使用相同的配置协议。配置同步以 JSON 文件为定义来源，并在同步时注入当前 Laravel 配置中的运行时默认值。
+
 后台 Admin 资源和导航统一存储在 `admin_resources`。Core 资源声明位于 `resources/menu.json`，宿主插件资源声明位于 `addons/{Code}/Resources/menu.json`；两个文件使用相同的严格 JSON 数组格式，声明完整资源集合，不再使用 `Admin/resources.json`。资源类型为 `group`、`schema`、`page`、`external`、`action`，其中 `action` 只参与授权，其他类型通过 `is_menu` 决定是否进入 Session 菜单。安装、`ptadmin:admin:sync` 和插件生命周期共用幂等资源同步逻辑。
 
 授权的数据范围位于 `admin_grants.scope_type` 和 `admin_grants.scope_value_json`，角色本身不保存全局范围。`all` 表示不附加记录条件；`self` 要求活动 Schema 在 `extensions.authorization.owner_field` 中显式指定持久化所有者字段。未知范围、非法范围参数、缺少活动 Schema 或缺少所有者声明时，Scope Resolver 返回空记录约束。多个同优先级允许授权以 OR 合并；同优先级拒绝授权仍优先。业务模块注册的范围处理器只能返回结构化 `ServerConstraint`，客户端筛选不能覆盖该约束。

@@ -1,0 +1,49 @@
+{
+    "group_code": "system",
+    "config_key": "mail",
+    "title": "邮件配置",
+    "description": "系统邮件发送通道和发件人信息。",
+    "schema": {
+        "name": "mail",
+        "title": "邮件配置",
+        "fields": [
+            {
+                "name": "mailer",
+                "type": "string",
+                "label": "发送驱动",
+                "required": true,
+                "default": "log",
+                "options": {
+                    "mode": "static",
+                    "value_policy": "closed",
+                    "items": [
+                        {"value": "log", "label": "日志"},
+                        {"value": "smtp", "label": "SMTP"},
+                        {"value": "sendmail", "label": "Sendmail"}
+                    ]
+                }
+            },
+            {"name": "host", "type": "string", "label": "SMTP 主机", "default": "127.0.0.1"},
+            {"name": "port", "type": "integer", "label": "SMTP 端口", "default": 2525},
+            {
+                "name": "encryption",
+                "type": "string",
+                "label": "加密方式",
+                "default": "",
+                "options": {
+                    "mode": "static",
+                    "value_policy": "closed",
+                    "items": [
+                        {"value": "", "label": "不加密"},
+                        {"value": "tls", "label": "TLS"},
+                        {"value": "ssl", "label": "SSL"}
+                    ]
+                }
+            },
+            {"name": "username", "type": "string", "label": "SMTP 用户名", "default": ""},
+            {"name": "password", "type": "string", "label": "SMTP 密码", "default": "", "extensions": {"secret": {"readable": true}}},
+            {"name": "from_address", "type": "string", "label": "发件地址", "required": true, "default": "hello@example.com"},
+            {"name": "from_name", "type": "string", "label": "发件人名称", "default": "PTAdmin"}
+        ]
+    }
+}

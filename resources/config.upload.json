@@ -1,0 +1,17 @@
+{
+    "group_code": "system",
+    "config_key": "upload",
+    "title": "上传策略",
+    "description": "公共和私有文件上传的存储位置及大小限制。",
+    "schema": {
+        "name": "upload",
+        "title": "上传策略",
+        "fields": [
+            {"name": "public_disk", "type": "string", "label": "公共存储盘", "required": true, "default": "public"},
+            {"name": "private_disk", "type": "string", "label": "私有存储盘", "required": true, "default": "local"},
+            {"name": "public_directory", "type": "string", "label": "公共目录", "required": true, "default": "assets"},
+            {"name": "private_directory", "type": "string", "label": "私有目录", "required": true, "default": "private"},
+            {"name": "max_upload_kilobytes", "type": "integer", "label": "单文件大小上限（KB）", "required": true, "default": 10240}
+        ]
+    }
+}

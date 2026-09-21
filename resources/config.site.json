@@ -1,0 +1,16 @@
+{
+    "group_code": "system",
+    "config_key": "site",
+    "title": "站点信息",
+    "description": "当前应用对外展示的名称、地址和站点描述。",
+    "schema": {
+        "name": "site",
+        "title": "站点信息",
+        "fields": [
+            {"name": "site_name", "type": "string", "label": "站点名称", "required": true, "default": "PTAdmin"},
+            {"name": "site_url", "type": "string", "label": "站点地址", "required": true, "default": "http://localhost"},
+            {"name": "site_description", "type": "string", "label": "站点描述", "default": ""},
+            {"name": "site_logo", "type": "string", "label": "站点 Logo 地址", "default": ""}
+        ]
+    }
+}

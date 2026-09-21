@@ -14,6 +14,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $config_key
  * @property string $owner_type
  * @property string $owner_code
+ * @property string $exposure
+ * @property string $activation_mode
  * @property array<string, mixed> $schema_json
  * @property string $checksum
  */

@@ -15,12 +15,10 @@ final class ConfigGroups
     public static function all(): array
     {
         return [
-            'general' => '常规',
+            'system' => '系统配置',
             'security' => '安全',
             'auth' => '认证',
-            'appearance' => '外观',
-            'frontend' => '前端',
-            'addon' => '插件',
+            'addon' => '插件配置',
         ];
     }
 
