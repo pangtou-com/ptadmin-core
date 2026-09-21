@@ -28,7 +28,7 @@ final class SessionController extends Controller
 
     public function show(Request $request): JsonResponse
     {
-        /** @var array{id:string, subject_type:string, subject_id:string, guard_name:string, metadata:array<string,mixed>} $session */
+        /** @var array{id:string, subject_type:string, subject_id:string, guard_name:string, metadata:array<string,mixed>, expires_at:string, absolute_expires_at:string} $session */
         $session = $request->attributes->get('ptadmin.session');
         $admin = Admin::query()->find($session['subject_id']);
         if (null === $admin || 'admin' !== $session['guard_name']) {
@@ -47,6 +47,10 @@ final class SessionController extends Controller
             'theme' => (array) config('ptadmin.theme', []),
             'layout' => (array) config('ptadmin.layout', []),
             'plugins' => $plugins['plugins'],
+            'session' => [
+                'expires_at' => (string) ($session['expires_at'] ?? ''),
+                'absolute_expires_at' => (string) ($session['absolute_expires_at'] ?? ''),
+            ],
             'generation' => hash('sha256', (string) $session['id']),
             'features' => [
                 'task_center' => true,

@@ -84,7 +84,12 @@ final class SessionManager
             throw new InvalidSessionException('登录会话已过期或被撤销，请重新登录。');
         }
 
+        $idleExpiresAt = $now->modify(sprintf('+%d seconds', $this->idleSeconds));
+        $absoluteExpiresAt = $this->parse((string) $row->absolute_expires_at);
+        $expiresAt = $idleExpiresAt < $absoluteExpiresAt ? $idleExpiresAt : $absoluteExpiresAt;
+
         $this->database->table($this->table)->where('id', $row->id)->update([
+            'expires_at' => $this->format($expiresAt),
             'last_used_at' => $this->format($now),
             'updated_at' => $this->format($now),
         ]);
@@ -95,7 +100,7 @@ final class SessionManager
             'subject_id' => (string) $row->subject_id,
             'guard_name' => (string) $row->guard_name,
             'metadata' => $this->decodeMetadata($row->metadata),
-            'expires_at' => (string) $row->expires_at,
+            'expires_at' => $this->format($expiresAt),
             'absolute_expires_at' => (string) $row->absolute_expires_at,
         ];
     }
