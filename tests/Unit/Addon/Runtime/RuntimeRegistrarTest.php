@@ -71,16 +71,9 @@ final class RuntimeHook implements HookInterface
 PHP);
         file_put_contents($this->root.'/runtime-addon/manifest.json', json_encode([
             'code' => 'runtime-addon', 'version' => '1.0.0',
-            'bootstrap' => ['file' => 'Bootstrap.php', 'class' => 'RuntimeAddon\\Bootstrap'],
+            'namespace' => 'RuntimeAddon',
             'routes' => ['Routes/admin.php'],
             'hooks' => [['file' => 'Hooks/RuntimeHook.php', 'class' => 'RuntimeAddon\\RuntimeHook']],
-            'files' => [
-                'Bootstrap.php',
-                'Hooks/RuntimeHook.php',
-                'Routes/admin.php',
-                'Routes/.keep',
-                'database/migrations/2026_09_17_000001_demo.php',
-            ],
         ], JSON_THROW_ON_ERROR));
         file_put_contents($this->root.'/runtime-addon/Routes/.keep', '');
         file_put_contents($this->root.'/runtime-addon/database/migrations/2026_09_17_000001_demo.php', '<?php return null;');
@@ -93,7 +86,7 @@ PHP);
     }
 
     /** @runInSeparateProcess */
-    public function testOnlyExplicitBootstrapAndRoutesAreRegistered(): void
+    public function testDefaultBootstrapAndRoutesAreRegistered(): void
     {
         $app = new Application($this->root);
         $events = new Dispatcher($app);
@@ -140,7 +133,7 @@ PHP);
         mkdir($this->root.'/runtime-addon/Runtime', 0700, true);
         file_put_contents($this->root.'/runtime-addon/Runtime/Registrar.php', <<<'PHP'
 <?php
-namespace RuntimeAddon;
+namespace RuntimeAddon\Runtime;
 
 use PTAdmin\Addon\Runtime\Contracts\RuntimeRegistrarInterface;
 use PTAdmin\Schema\Runtime\RuntimeContributor;
@@ -158,7 +151,7 @@ final class Handler
     public function before(): void {}
 }
 PHP);
-        $this->writeRuntimeManifest(['file' => 'Runtime/Registrar.php', 'class' => 'RuntimeAddon\\Registrar']);
+        $this->writeRuntimeManifest();
         $app = new Application($this->root);
         $registry = new RuntimeRegistry();
         $app->instance(RuntimeRegistry::class, $registry);
@@ -182,7 +175,7 @@ PHP);
         mkdir($this->root.'/RuntimeAddon/Runtime', 0700, true);
         file_put_contents($this->root.'/RuntimeAddon/Runtime/Registrar.php', <<<'PHP'
 <?php
-namespace RuntimeAddon;
+namespace RuntimeAddon\Runtime;
 use PTAdmin\Addon\Runtime\Contracts\RuntimeRegistrarInterface;
 use PTAdmin\Schema\Runtime\RuntimeContributor;
 final class Registrar implements RuntimeRegistrarInterface
@@ -196,8 +189,6 @@ final class Handler { public function before(): void {} }
 PHP);
         $manifestPath = $this->root.'/RuntimeAddon/manifest.json';
         $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
-        $manifest['runtime'] = ['file' => 'Runtime/Registrar.php', 'class' => 'RuntimeAddon\\Registrar'];
-        $manifest['files'][] = 'Runtime/Registrar.php';
         file_put_contents($manifestPath, json_encode($manifest, JSON_THROW_ON_ERROR));
         $registry = new RuntimeRegistry();
         $app = new Application($this->root);
@@ -221,7 +212,7 @@ PHP);
         mkdir($this->root.'/runtime-addon/Runtime', 0700, true);
         file_put_contents($this->root.'/runtime-addon/Runtime/Registrar.php', <<<'PHP'
 <?php
-namespace RuntimeAddon;
+namespace RuntimeAddon\Runtime;
 use PTAdmin\Addon\Runtime\Contracts\RuntimeRegistrarInterface;
 use PTAdmin\Schema\Runtime\RuntimeContributor;
 final class Registrar implements RuntimeRegistrarInterface
@@ -232,7 +223,7 @@ final class Registrar implements RuntimeRegistrarInterface
     }
 }
 PHP);
-        $this->writeRuntimeManifest(['file' => 'Runtime/Registrar.php', 'class' => 'RuntimeAddon\\Registrar']);
+        $this->writeRuntimeManifest();
         $lifecycle = new LifecycleStore($this->lifecycle);
         (new AddonCatalog($this->root, new ManifestVerifier(), $lifecycle, false))->scan();
         $lifecycle->transition('runtime-addon', 'inactive', ['disabled_by_user' => true]);
@@ -248,7 +239,7 @@ PHP);
 
         self::assertSame([], $registrar->register()['loaded']);
         self::assertSame([], $registry->build()->toArray()['resources']);
-        self::assertFalse(class_exists('RuntimeAddon\\Registrar', false));
+        self::assertFalse(class_exists('RuntimeAddon\\Runtime\\Registrar', false));
     }
 
     /** @runInSeparateProcess */
@@ -257,7 +248,7 @@ PHP);
         mkdir($this->root.'/runtime-addon/Runtime', 0700, true);
         file_put_contents($this->root.'/runtime-addon/Runtime/Registrar.php', <<<'PHP'
 <?php
-namespace RuntimeAddon;
+namespace RuntimeAddon\Runtime;
 use PTAdmin\Addon\Runtime\Contracts\RuntimeRegistrarInterface;
 use PTAdmin\Schema\Runtime\RuntimeContributor;
 final class Registrar implements RuntimeRegistrarInterface
@@ -268,7 +259,7 @@ final class Registrar implements RuntimeRegistrarInterface
     }
 }
 PHP);
-        $this->writeRuntimeManifest(['file' => 'Runtime/Registrar.php', 'class' => 'RuntimeAddon\\Registrar']);
+        $this->writeRuntimeManifest();
         $lifecycle = new LifecycleStore($this->lifecycle);
         $app = new Application($this->root);
         $registrar = new RuntimeRegistrar(
@@ -295,7 +286,7 @@ PHP);
         mkdir($this->root.'/runtime-addon/Runtime', 0700, true);
         file_put_contents($this->root.'/runtime-addon/Runtime/Registrar.php', <<<'PHP'
 <?php
-namespace RuntimeAddon;
+namespace RuntimeAddon\Runtime;
 use PTAdmin\Addon\Runtime\Contracts\RuntimeRegistrarInterface;
 use PTAdmin\Schema\Runtime\RuntimeContributor;
 final class Registrar implements RuntimeRegistrarInterface
@@ -303,7 +294,7 @@ final class Registrar implements RuntimeRegistrarInterface
     public function registerRuntime(RuntimeContributor $runtime, array $manifest): void {}
 }
 PHP);
-        $this->writeRuntimeManifest(['file' => 'Runtime/Registrar.php', 'class' => 'RuntimeAddon\\Registrar']);
+        $this->writeRuntimeManifest();
         $lifecycle = new LifecycleStore($this->lifecycle);
         $registrar = new RuntimeRegistrar(
             new Application($this->root),
@@ -323,8 +314,7 @@ PHP);
     public function testInvalidBootstrapMakesAddonInactiveWithoutBlockingScan(): void
     {
         file_put_contents($this->root.'/runtime-addon/manifest.json', json_encode([
-            'code' => 'runtime-addon', 'version' => '1.0.0',
-            'bootstrap' => ['file' => 'Bootstrap.php', 'class' => 'Missing\\Bootstrap'],
+            'code' => 'runtime-addon', 'version' => '1.0.0', 'namespace' => 'Missing',
         ], JSON_THROW_ON_ERROR));
         $app = new Application($this->root);
         $registrar = new RuntimeRegistrar($app, new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle), false), new LifecycleStore($this->lifecycle), $this->root);
@@ -446,6 +436,31 @@ PHP);
     }
 
     /** @runInSeparateProcess */
+    public function testNamespaceDoesNotRequireAnImplicitProviderFile(): void
+    {
+        $this->remove($this->root.'/runtime-addon');
+        $directory = $this->root.'/demo';
+        mkdir($directory, 0700, true);
+        file_put_contents($directory.'/manifest.json', json_encode([
+            'code' => 'demo',
+            'version' => '1.0.0',
+            'namespace' => 'DemoAddon',
+        ], JSON_THROW_ON_ERROR));
+
+        $app = new Application($this->root);
+        $registrar = new RuntimeRegistrar(
+            $app,
+            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle), false),
+            new LifecycleStore($this->lifecycle),
+            $this->root,
+        );
+
+        $result = $registrar->register();
+        self::assertSame(['demo'], $result['loaded']);
+        self::assertSame([], $result['errors']);
+    }
+
+    /** @runInSeparateProcess */
     public function testTemplateDirectiveWithoutTemplateDirectiveProviderInterfaceIsRejected(): void
     {
         $this->remove($this->root.'/runtime-addon');
@@ -562,12 +577,10 @@ PHP);
         @rmdir($path);
     }
 
-    /** @param array{file:string,class:string} $runtime */
-    private function writeRuntimeManifest(array $runtime): void
+    private function writeRuntimeManifest(): void
     {
         $manifest = json_decode((string) file_get_contents($this->root.'/runtime-addon/manifest.json'), true, 512, JSON_THROW_ON_ERROR);
-        $manifest['runtime'] = $runtime;
-        $manifest['files'][] = 'Runtime/Registrar.php';
+        unset($manifest['runtime'], $manifest['files']);
         file_put_contents($this->root.'/runtime-addon/manifest.json', json_encode($manifest, JSON_THROW_ON_ERROR));
     }
 }

@@ -68,7 +68,7 @@ final class RuntimeRegistrar
                 $this->registerHooks($directory, $verifiedCode, $manifest);
                 $registry = $this->runtimeRegistry
                     ?? ($this->app->bound(RuntimeRegistry::class) ? $this->app->make(RuntimeRegistry::class) : null);
-                if (($manifest['runtime'] ?? null) !== null) {
+                if ($this->runtimeDeclaration($directory, $verifiedCode, $manifest) !== null) {
                     if (!$registry instanceof RuntimeRegistry) {
                         throw new AddonException('Runtime registry is unavailable.', 'runtime_registry_unavailable');
                     }
@@ -106,16 +106,12 @@ final class RuntimeRegistrar
      */
     public function contributeRuntime(string $directory, string $code, array $manifest, RuntimeRegistry $registry): void
     {
-        $declaration = $manifest['runtime'] ?? null;
-        if ($declaration === null) {
+        $runtime = $this->runtimeDeclaration($directory, $code, $manifest);
+        if ($runtime === null) {
             return;
         }
-        $runtime = is_string($declaration) ? ['file' => $declaration] : (is_array($declaration) ? $declaration : []);
-        $file = $this->safeRelative((string) ($runtime['file'] ?? ''));
-        $class = trim((string) ($runtime['class'] ?? ''));
-        if ($file === '' || $class === '') {
-            throw new AddonException('Addon runtime declaration is invalid.', 'invalid_runtime');
-        }
+        $file = $runtime['file'];
+        $class = $runtime['class'];
         $path = $directory.'/'.$file;
         if (!is_file($path)) {
             throw new AddonException('Addon runtime file is unavailable.', 'runtime_unavailable');
@@ -182,19 +178,11 @@ final class RuntimeRegistrar
     /** @param array<string,mixed> $manifest */
     private function registerBootstrap(string $directory, string $code, array $manifest): void
     {
-        $bootstrapValue = $manifest['bootstrap'] ?? null;
-        $bootstrap = is_string($bootstrapValue) ? ['file' => $bootstrapValue] : (is_array($bootstrapValue) ? $bootstrapValue : []);
-        $file = $this->safeRelative((string) ($bootstrap['file'] ?? 'Bootstrap.php'));
-        if (!is_file($directory.'/'.$file) && !array_key_exists('bootstrap', $manifest)) {
+        $file = 'Bootstrap.php';
+        if (!is_file($directory.'/'.$file)) {
             return;
         }
-        $class = trim((string) ($bootstrap['class'] ?? ''));
-        if ($class === '' && isset($manifest['namespace'])) {
-            $class = trim((string) $manifest['namespace'], "\\").'\\Bootstrap';
-        }
-        if ($class === '' || $file === '') {
-            throw new AddonException('Addon bootstrap declaration is invalid.', 'invalid_bootstrap');
-        }
+        $class = $this->addonNamespace($manifest, $code).'\\Bootstrap';
         $path = $directory.'/'.$file;
         if (!is_file($path)) {
             throw new AddonException('Addon bootstrap file is unavailable.', 'bootstrap_unavailable');
@@ -255,6 +243,9 @@ final class RuntimeRegistrar
     private function registerProvider(string $directory, string $code, array $manifest): void
     {
         $providerValue = $manifest['provider'] ?? ($manifest['providers'] ?? null);
+        if ($providerValue === null && !is_file($directory.'/Providers/ServiceProvider.php')) {
+            return;
+        }
         if (is_array($providerValue) && array_is_list($providerValue)) {
             foreach ($providerValue as $entry) {
                 $this->registerProviderDeclaration($directory, $code, $manifest, $entry);
@@ -271,13 +262,10 @@ final class RuntimeRegistrar
         $provider = is_string($declaration) ? ['file' => $declaration] : (is_array($declaration) ? $declaration : []);
         $file = $this->safeRelative((string) ($provider['file'] ?? 'Providers/ServiceProvider.php'));
         $class = trim((string) ($provider['class'] ?? ''));
-        if ($class === '' && isset($manifest['namespace'])) {
-            $class = trim((string) $manifest['namespace'], "\\").'\\Providers\\ServiceProvider';
+        if ($class === '') {
+            $class = $this->addonNamespace($manifest, $code).'\\Providers\\ServiceProvider';
         }
-        if ($class === '' && !is_file($directory.'/'.$file)) {
-            return;
-        }
-        if ($class === '' || $file === '') {
+        if ($file === '') {
             throw new AddonException('Addon provider declaration is invalid.', 'invalid_provider');
         }
         $path = $directory.'/'.$file;
@@ -387,5 +375,35 @@ final class RuntimeRegistrar
             return '';
         }
         return $path;
+    }
+
+    /** @return array{file:string,class:string}|null */
+    private function runtimeDeclaration(string $directory, string $code, array $manifest): ?array
+    {
+        $file = 'Runtime/Registrar.php';
+        if (!is_file($directory.'/'.$file)) {
+            return null;
+        }
+
+        return [
+            'file' => $file,
+            'class' => $this->addonNamespace($manifest, $code).'\\Runtime\\Registrar',
+        ];
+    }
+
+    private function addonNamespace(array $manifest, string $code): string
+    {
+        $namespace = trim((string) ($manifest['namespace'] ?? ''), "\\");
+        if ($namespace !== '') {
+            return $namespace;
+        }
+
+        $parts = preg_split('/[^A-Za-z0-9]+/', $code, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $studly = implode('', array_map(
+            static fn (string $part): string => ucfirst(strtolower($part)),
+            $parts,
+        ));
+
+        return 'PTAdmin\\Addons\\'.$studly;
     }
 }

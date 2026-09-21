@@ -35,6 +35,7 @@ final class AddonCatalogTest extends TestCase
         $result = (new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecyclePath), false))->scan();
         self::assertCount(1, $result['addons']);
         self::assertSame('valid-addon', $result['addons'][0]['code']);
+        self::assertArrayNotHasKey('verified_files', $result['addons'][0]['manifest']);
         self::assertSame([], $result['errors']);
         $again = (new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecyclePath), false))->scan();
         self::assertCount(1, $again['addons']);

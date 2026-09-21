@@ -12,10 +12,9 @@ use RecursiveIteratorIterator;
 use FilesystemIterator;
 
 /**
- * 插件 manifest、兼容约束、文件清单和包签名的统一验证入口。
+ * 插件 manifest、兼容约束和正式包签名的验证入口。
  *
- * 验证成功后会把规范化的 verified_files 附加到返回值，安装、前端 Registry 和信任摘要必须复用该结果，
- * 不能重新依据未验证的 manifest 原文判断包内容。
+ * 运行时应使用 verifyRuntime()，它只读取并校验 manifest 元数据，不扫描插件文件。
  */
 final class ManifestVerifier
 {
@@ -34,6 +33,38 @@ final class ManifestVerifier
      */
     public function verify(string $directory, bool $requireSignature = true): array
     {
+        $loaded = $this->loadManifest($directory);
+        $root = $loaded['root'];
+        $manifest = $loaded['manifest'];
+        $this->assertHeader($manifest);
+        $files = $this->buildFileList($root, $manifest);
+        if ($requireSignature) {
+            $this->verifySignature($manifest, $files);
+            $this->trustPolicy?->assertTrusted($manifest);
+        }
+        $manifest['verified_files'] = $files;
+        return $manifest;
+    }
+
+    /**
+     * 读取运行时 manifest 元数据。
+     *
+     * 运行时加载允许本地插件二次开发，因此这里只校验 manifest 结构和兼容性，不处理签名、文件清单或文件摘要。
+     * 正式包签名由未来的 artifact 安装流程负责。
+     *
+     * @return array<string, mixed>
+     */
+    public function verifyRuntime(string $directory): array
+    {
+        $manifest = $this->loadManifest($directory)['manifest'];
+        $this->assertHeader($manifest);
+
+        return $manifest;
+    }
+
+    /** @return array{root:string,manifest:array<string,mixed>} */
+    private function loadManifest(string $directory): array
+    {
         $root = realpath($directory);
         if (false === $root || !is_dir($root)) {
             throw new AddonException('The addon package directory is unavailable.', 'package_unavailable');
@@ -48,17 +79,11 @@ final class ManifestVerifier
         } catch (JsonException $exception) {
             throw new AddonException('The addon manifest is invalid.', 'invalid_addon_manifest');
         }
-        if (!is_array($manifest)) {
+        if (!is_array($manifest) || array_is_list($manifest)) {
             throw new AddonException('The addon manifest must be an object.');
         }
-        $this->assertHeader($manifest);
-        $files = $this->buildFileList($root, $manifest);
-        if ($requireSignature) {
-            $this->verifySignature($manifest, $files);
-            $this->trustPolicy?->assertTrusted($manifest);
-        }
-        $manifest['verified_files'] = $files;
-        return $manifest;
+
+        return ['root' => $root, 'manifest' => $manifest];
     }
 
     /**
@@ -89,6 +114,8 @@ final class ManifestVerifier
             unset($manifest['signature']['value']);
         }
         unset($manifest['verified_files']);
+        // files is a legacy author-maintained list. File integrity is derived from disk.
+        unset($manifest['files']);
 
         return json_encode(
             $this->canonicalize(['manifest' => $manifest, 'files' => $files]),
@@ -121,20 +148,14 @@ final class ManifestVerifier
     }
 
     /**
-     * 核对声明清单与磁盘实际文件完全一致，并为每个文件记录大小和 SHA-256。
-     *
-     * manifest.json 由签名载荷中的 manifest 部分覆盖，因此不重复进入 files 清单。
+     * 根据磁盘实际内容生成文件摘要，并为每个文件记录大小和 SHA-256。
+     * 文件摘要属于验证结果，不要求插件开发者维护 manifest.files 清单。
      *
      * @param array<string, mixed> $manifest
      * @return array<int, array<string, mixed>>
      */
     private function buildFileList(string $root, array $manifest): array
     {
-        $declared = $manifest['files'] ?? null;
-        if (null !== $declared && !is_array($declared)) {
-            throw new AddonException('The addon files declaration is invalid.');
-        }
-        $paths = [];
         $actual = [];
         $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
         foreach ($iterator as $file) {
@@ -150,23 +171,7 @@ final class ManifestVerifier
             }
         }
         sort($actual, SORT_STRING);
-        if (is_array($declared)) {
-            $seen = [];
-            foreach ($declared as $entry) {
-                if (!is_string($entry) || !$this->safePath($entry) || 'manifest.json' === $entry || isset($seen[$entry])) {
-                    throw new AddonException('The addon file path is invalid.', 'unsafe_path');
-                }
-                $seen[$entry] = true;
-                $paths[] = $entry;
-            }
-            $declaredSorted = $paths;
-            sort($declaredSorted, SORT_STRING);
-            if ($declaredSorted !== $actual) {
-                throw new AddonException('The addon file list does not match package contents.', 'file_list_mismatch');
-            }
-        } else {
-            $paths = $actual;
-        }
+        $paths = $actual;
         $paths = array_values(array_unique($paths));
         sort($paths, SORT_STRING);
         $result = [];

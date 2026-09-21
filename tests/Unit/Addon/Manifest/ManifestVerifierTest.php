@@ -49,7 +49,20 @@ final class ManifestVerifierTest extends TestCase
         (new ManifestVerifier())->verify($this->directory);
     }
 
-    public function testDeclaredFilesMustMatchPackageContents(): void
+    public function testRuntimeVerificationOnlyReadsManifestMetadata(): void
+    {
+        file_put_contents($this->directory.'/manifest.json', json_encode([
+            'code' => 'demo-addon', 'version' => '1.0.0',
+        ], JSON_THROW_ON_ERROR));
+        file_put_contents($this->directory.'/unexpected.txt', 'development change');
+
+        $manifest = (new ManifestVerifier())->verifyRuntime($this->directory);
+
+        self::assertSame('demo-addon', $manifest['code']);
+        self::assertArrayNotHasKey('verified_files', $manifest);
+    }
+
+    public function testActualPackageFilesAreDiscoveredWithoutManifestFileList(): void
     {
         file_put_contents($this->directory.'/manifest.json', json_encode([
             'code' => 'demo-addon', 'version' => '1.0.0', 'files' => ['code.php'],
@@ -57,12 +70,9 @@ final class ManifestVerifierTest extends TestCase
         file_put_contents($this->directory.'/code.php', '<?php return 1;');
         file_put_contents($this->directory.'/unexpected.txt', 'unexpected');
 
-        try {
-            (new ManifestVerifier())->verify($this->directory, false);
-            self::fail('Undeclared package files must be rejected.');
-        } catch (AddonException $exception) {
-            self::assertSame('file_list_mismatch', $exception->errorCode);
-        }
+        $manifest = (new ManifestVerifier())->verify($this->directory, false);
+
+        self::assertSame(['code.php', 'unexpected.txt'], array_column($manifest['verified_files'], 'path'));
     }
 
     public function testSignatureCoversManifestMetadataAndCanonicalFileList(): void
@@ -78,7 +88,6 @@ final class ManifestVerifierTest extends TestCase
             'version' => '1.0.0',
             'schema_protocol' => 1,
             'compatibility' => ['ptadmin/core' => '>=0.1.0 <1.0.0'],
-            'files' => ['code.php'],
             'signature' => ['algorithm' => 'RSA-SHA256', 'key_id' => 'test', 'public_key' => $details['key']],
         ];
         $files = [['path' => 'code.php', 'size' => filesize($this->directory.'/code.php'), 'sha256' => hash_file('sha256', $this->directory.'/code.php')]];

@@ -34,7 +34,7 @@ final class FrontendRegistryTest extends TestCase
         $this->remove($this->root);
     }
 
-    public function testRegistryBuildsRelativeHashedEntriesAndFiltersBySessionAccess(): void
+    public function testRegistryBuildsRelativeVersionedEntriesAndFiltersBySessionAccess(): void
     {
         $this->writeAddon('iframe', 'index.html');
         $registry = $this->registry(new TrustPolicy());
@@ -51,7 +51,7 @@ final class FrontendRegistryTest extends TestCase
         self::assertSame('/ptadmin/demo-addon', $plugin['api_base']);
         self::assertSame(['schema.runtime'], $plugin['entries'][0]['capabilities']);
         self::assertSame(
-            './modules/demo-addon/index.html?v=sha256:'.hash_file('sha256', $this->publicPath.'/admintest/modules/demo-addon/index.html'),
+            './modules/demo-addon/index.html?v=1.0.0',
             $plugin['entries'][0]['entry'],
         );
 
@@ -76,11 +76,11 @@ final class FrontendRegistryTest extends TestCase
         $entry = $allowed['plugins'][0]['entries'][0];
         self::assertSame('trusted', $entry['sandbox']);
         self::assertSame('admin-v1', $entry['runtime_profile']);
-        self::assertTrue($entry['trust']['verified']);
-        self::assertStringStartsWith('sha256:', $entry['trust']['manifest_sha256']);
+        self::assertFalse($entry['trust']['verified']);
+        self::assertSame('local', $entry['trust']['mode']);
     }
 
-    public function testRegistryRejectsTamperedPublishedEntry(): void
+    public function testRegistryDoesNotPerformPackageIntegrityChecksAtRuntime(): void
     {
         $this->writeAddon('iframe', 'index.html');
         file_put_contents($this->publicPath.'/admintest/modules/demo-addon/index.html', 'tampered');
@@ -89,8 +89,8 @@ final class FrontendRegistryTest extends TestCase
             [['key' => 'demo-addon.page']],
         );
 
-        self::assertSame([], $resolved['plugins']);
-        self::assertSame('frontend_entry_digest_mismatch', $resolved['errors'][0]['error_code']);
+        self::assertCount(1, $resolved['plugins']);
+        self::assertSame([], $resolved['errors']);
     }
 
     public function testDevelopmentDescriptorOverridesOnlyTheCodeSource(): void

@@ -15,7 +15,7 @@ use RuntimeException;
 /**
  * 为当前管理员解析可加载的插件前端入口。
  *
- * Registry 同时校验插件 active 状态、菜单可见性、Host API、sandbox、发布文件摘要和 trusted 策略，
+ * Registry 同时校验插件 active 状态、菜单可见性、Host API、sandbox、发布入口和 trusted 策略，
  * 最终只向 Session 暴露满足全部条件的最小前端描述，不返回磁盘路径或原始 manifest。
  */
 final class FrontendRegistry
@@ -182,19 +182,6 @@ final class FrontendRegistry
                 || !is_file($realPublishedPath)) {
                 throw new AddonException('The addon frontend entry is not published.', 'frontend_entry_unavailable', ['entry' => $entryPath]);
             }
-            $digest = hash_file('sha256', $realPublishedPath);
-            if (!is_string($digest)) {
-                throw new AddonException('The addon frontend entry cannot be hashed.', 'frontend_entry_hash_failed');
-            }
-            $expectedDigest = $this->verifiedFileDigest($manifest, 'Frontend/dist/'.$entryPath);
-            if (null === $expectedDigest || !hash_equals($expectedDigest, $digest)) {
-                throw new AddonException(
-                    'The published addon frontend entry does not match the verified package.',
-                    'frontend_entry_digest_mismatch',
-                    ['entry' => $entryPath]
-                );
-            }
-
             $capabilities = $this->stringList($declaredEntry['capabilities'] ?? [], 'frontend_capabilities_invalid');
             foreach ($capabilities as $capability) {
                 if (!in_array($capability, $this->supportedCapabilities, true)) {
@@ -205,7 +192,7 @@ final class FrontendRegistry
             $entry = [
                 'key' => $key,
                 'title' => $title,
-                'entry' => './modules/'.rawurlencode($code).'/'.$entryPath.'?v=sha256:'.$digest,
+                'entry' => './modules/'.rawurlencode($code).'/'.$entryPath.'?v='.rawurlencode((string) ($manifest['version'] ?? 'dev')),
                 'sandbox' => $sandbox,
                 'host_api' => $hostApi,
             ];
@@ -400,22 +387,6 @@ final class FrontendRegistry
         }
     }
 
-    /** @param array<string, mixed> $manifest */
-    private function verifiedFileDigest(array $manifest, string $path): ?string
-    {
-        $files = $manifest['verified_files'] ?? null;
-        if (!is_array($files)) {
-            return null;
-        }
-        foreach ($files as $file) {
-            if (is_array($file) && ($file['path'] ?? null) === $path && is_string($file['sha256'] ?? null)) {
-                return strtolower($file['sha256']);
-            }
-        }
-
-        return null;
-    }
-
     /** @param mixed $value @return array<int, string> */
     private function stringList(mixed $value, string $errorCode): array
     {
@@ -455,8 +426,8 @@ final class FrontendRegistry
     private function trust(string $code, array $manifest): array
     {
         $trust = [
-            'verified' => true,
-            'manifest_sha256' => $this->verifier->manifestSha256($manifest),
+            'verified' => false,
+            'mode' => 'local',
         ];
         $keyId = $manifest['signature']['key_id'] ?? null;
         if (is_string($keyId) && $keyId !== '') {

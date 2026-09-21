@@ -20,6 +20,7 @@ final class AddonCatalog
         private string $addonsPath,
         private ManifestVerifier $verifier,
         private LifecycleStore $lifecycle,
+        /** @deprecated Runtime discovery no longer performs package signature verification. */
         private bool $requireSignature = true,
     ) {
         $this->addonsPath = rtrim($addonsPath, '/');
@@ -53,7 +54,7 @@ final class AddonCatalog
                     $this->lifecycle->transition($code, 'validating');
                 } elseif (in_array($current['state'] ?? null, ['ready', 'active', 'inactive', 'discovered'], true)) {
                     if (($current['state'] ?? null) === 'inactive' && ($current['disabled_by_user'] ?? false) === true) {
-                        $manifest = $this->verifier->verify($directory, $this->requireSignature);
+                        $manifest = $this->verifier->verifyRuntime($directory);
                         $addons[] = [
                             'code' => $code,
                             'version' => $manifest['version'],
@@ -65,7 +66,7 @@ final class AddonCatalog
                         continue;
                     }
                     if (($current['state'] ?? null) === 'inactive' && !$forRuntime) {
-                        $manifest = $this->verifier->verify($directory, $this->requireSignature);
+                        $manifest = $this->verifier->verifyRuntime($directory);
                         $addons[] = [
                             'code' => $code,
                             'version' => $manifest['version'],
@@ -78,7 +79,7 @@ final class AddonCatalog
                     }
                     $this->lifecycle->transition($code, 'validating');
                 }
-                $manifest = $this->verifier->verify($directory, $this->requireSignature);
+                $manifest = $this->verifier->verifyRuntime($directory);
                 $this->lifecycle->transition($code, 'loading');
                 $this->lifecycle->transition($code, 'ready', [
                     'manifest' => $manifest,
