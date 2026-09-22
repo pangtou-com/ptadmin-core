@@ -99,6 +99,16 @@ final class TaskManagerTest extends TestCase
         }
     }
 
+    public function testRetiredThemeActivationTaskCannotBeCreated(): void
+    {
+        try {
+            $this->tasks->create(TaskManager::SITE_THEME_ACTIVATE, ['code' => 'classic', 'version' => '1.0.0']);
+            self::fail('Theme activation must not create a task.');
+        } catch (TaskException $exception) {
+            self::assertSame('unsupported_task_type', $exception->errorCode);
+        }
+    }
+
     private function remove(string $path): void
     {
         if (!is_dir($path)) {

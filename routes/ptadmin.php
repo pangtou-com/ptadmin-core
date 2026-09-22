@@ -17,6 +17,7 @@ use PTAdmin\Core\Http\Controllers\BootstrapController;
 use PTAdmin\Core\Http\Controllers\ConfigController;
 use PTAdmin\Core\Http\Controllers\SessionController;
 use PTAdmin\Core\Http\Controllers\TaskController;
+use PTAdmin\Core\Http\Controllers\ThemeController;
 use PTAdmin\Schema\Http\Controllers\PublishController;
 use PTAdmin\Schema\Http\Controllers\ResourceController;
 use PTAdmin\Schema\Http\Controllers\RuntimeController;
@@ -32,6 +33,11 @@ Route::middleware('ptadmin.request-id')
     ->get($apiPrefix.'/public/dictionaries/{code}', [PublicDictionaryController::class, 'show'])
     ->where('code', '[a-z][a-z0-9._-]{0,189}')
     ->name('ptadmin.public.dictionaries.show');
+
+Route::middleware('ptadmin.request-id')
+    ->get($apiPrefix.'/public/site/themes/{code}/{version}/cover', [ThemeController::class, 'cover'])
+    ->where(['code' => '[A-Za-z][A-Za-z0-9._-]{1,63}', 'version' => '\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?'])
+    ->name('ptadmin.public.site.themes.cover');
 
 Route::middleware('ptadmin.request-id')
     ->post($apiPrefix.'/login', LoginController::class)
@@ -211,6 +217,30 @@ Route::middleware($authenticatedMiddleware)
             ->middleware('ptadmin.permission:addon.disable,update')
             ->where('code', '[A-Za-z][A-Za-z0-9._-]{1,63}')
             ->name('disable');
+    });
+
+Route::middleware($authenticatedMiddleware)
+    ->prefix($apiPrefix.'/site/themes')
+    ->as('ptadmin.site.themes.')
+    ->group(static function (): void {
+        Route::get('/', [ThemeController::class, 'index'])
+            ->middleware('ptadmin.permission:site.theme,read')
+            ->name('index');
+        Route::post('/install', [ThemeController::class, 'install'])
+            ->middleware('ptadmin.permission:site.theme,install')
+            ->name('install');
+        Route::get('/{code}/{version}', [ThemeController::class, 'show'])
+            ->middleware('ptadmin.permission:site.theme,read')
+            ->where(['code' => '[A-Za-z][A-Za-z0-9._-]{1,63}', 'version' => '\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?'])
+            ->name('show');
+        Route::post('/{code}/{version}/activate', [ThemeController::class, 'activate'])
+            ->middleware('ptadmin.permission:site.theme,activate')
+            ->where(['code' => '[A-Za-z][A-Za-z0-9._-]{1,63}', 'version' => '\\d+\\.\\d+\\.\d+(?:[-+][0-9A-Za-z.-]+)?'])
+            ->name('activate');
+        Route::delete('/{code}/{version}', [ThemeController::class, 'remove'])
+            ->middleware('ptadmin.permission:site.theme,remove')
+            ->where(['code' => '[A-Za-z][A-Za-z0-9._-]{1,63}', 'version' => '\\d+\\.\\d+\\.\d+(?:[-+][0-9A-Za-z.-]+)?'])
+            ->name('remove');
     });
 
 Route::middleware($authenticatedMiddleware)

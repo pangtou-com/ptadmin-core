@@ -742,7 +742,7 @@ final class AdminRuntimeHook
     private function isCoreResource(string $resourceKey): bool
     {
         return in_array($resourceKey, [
-            'dashboard', 'assets', 'themes', 'admin.users', 'admin.roles', 'admin.menus', 'admin.logs',
+            'dashboard', 'assets', 'site', 'themes', 'admin.users', 'admin.roles', 'admin.menus', 'admin.logs',
             'admin.dictionaries',
             'admin.notifications', 'admin.notification_templates',
             'admin.admin_users', 'admin.admin_roles', 'admin.admin_resources',

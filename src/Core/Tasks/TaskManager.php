@@ -20,6 +20,9 @@ final class TaskManager
     public const ADDON_FRONTEND_SYNC = 'addon.frontend_sync';
     public const ADDON_ENABLE = 'addon.enable';
     public const ADDON_DISABLE = 'addon.disable';
+    public const SITE_THEME_INSTALL = 'site_theme.install';
+    public const SITE_THEME_ACTIVATE = 'site_theme.activate';
+    public const SITE_THEME_REMOVE = 'site_theme.remove';
 
     /** @var array<string, string> */
     private const TASK_PERMISSIONS = [
@@ -32,6 +35,14 @@ final class TaskManager
         self::ADDON_FRONTEND_SYNC => 'addon.frontend',
         self::ADDON_ENABLE => 'addon.enable',
         self::ADDON_DISABLE => 'addon.disable',
+        self::SITE_THEME_INSTALL => 'site.theme.install',
+        self::SITE_THEME_ACTIVATE => 'site.theme.activate',
+        self::SITE_THEME_REMOVE => 'site.theme.remove',
+    ];
+
+    /** @var list<string> */
+    private const RETIRED_TASK_TYPES = [
+        self::SITE_THEME_ACTIVATE,
     ];
 
     /** @var array<string, array<int, string>> */
@@ -50,6 +61,7 @@ final class TaskManager
         'migrate',
         'installing',
         'publishing',
+        'importing_data',
         'publish',
         'replacing',
         'replace',
@@ -69,7 +81,7 @@ final class TaskManager
     /** @param array<string, mixed> $payload */
     public function create(string $type, array $payload = [], ?string $requestId = null, int $maxAttempts = 1, ?string $idempotencyKey = null): array
     {
-        if (!isset(self::TASK_PERMISSIONS[$type])) {
+        if (!isset(self::TASK_PERMISSIONS[$type]) || in_array($type, self::RETIRED_TASK_TYPES, true)) {
             throw new TaskException('The task type is unsupported.', 'unsupported_task_type', ['type' => $type]);
         }
         return $this->store->withCreationLock(function () use ($type, $payload, $requestId, $maxAttempts, $idempotencyKey): array {

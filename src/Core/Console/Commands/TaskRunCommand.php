@@ -9,6 +9,7 @@ use PTAdmin\Core\Tasks\TaskException;
 use PTAdmin\Core\Tasks\TaskExecutorRegistry;
 use PTAdmin\Core\Tasks\TaskManager;
 use PTAdmin\Addon\Exception\AddonException;
+use PTAdmin\Core\Theme\ThemeException;
 
 final class TaskRunCommand extends Command
 {
@@ -48,7 +49,7 @@ final class TaskRunCommand extends Command
             return self::FAILURE;
         } catch (\Throwable $exception) {
             try {
-                $code = $exception instanceof AddonException ? $exception->errorCode : 'executor_failed';
+                $code = $exception instanceof AddonException || $exception instanceof ThemeException ? $exception->errorCode : 'executor_failed';
                 $tasks->fail($taskId, ['code' => $code, 'message' => $exception->getMessage()]);
             } catch (TaskException) {
             }

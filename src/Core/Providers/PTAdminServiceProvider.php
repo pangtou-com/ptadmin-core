@@ -45,6 +45,20 @@ use PTAdmin\Core\Tasks\TaskStore;
 use PTAdmin\Core\Tasks\TaskExecutorRegistry;
 use PTAdmin\Core\Tasks\Executors\AdminFrontendUpdateExecutor;
 use PTAdmin\Core\Tasks\Executors\AddonTaskExecutor;
+use PTAdmin\Core\Tasks\Executors\ThemeTaskExecutor;
+use PTAdmin\Core\Theme\ActiveThemeResolver;
+use PTAdmin\Core\Theme\ThemeCatalog;
+use PTAdmin\Core\Theme\ThemeManifestValidator;
+use PTAdmin\Core\Theme\ThemeAssetResolver;
+use PTAdmin\Core\Theme\ThemeDirectiveProvider;
+use PTAdmin\Core\Theme\ThemeStateStore;
+use PTAdmin\Core\Theme\ThemePackageExtractor;
+use PTAdmin\Core\Theme\ThemePublisher;
+use PTAdmin\Core\Theme\ThemeInstaller;
+use PTAdmin\Core\Theme\ThemeLifecycle;
+use PTAdmin\Core\Theme\ThemeDataPackRegistry;
+use PTAdmin\Core\Theme\ThemeDataPackImporter;
+use PTAdmin\Core\Theme\ThemeViewLoader;
 use PTAdmin\Core\Console\Commands\TaskRunCommand;
 use PTAdmin\Core\Console\Commands\TaskRecoverCommand;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
@@ -133,9 +147,15 @@ final class PTAdminServiceProvider extends ServiceProvider
             $registry->register('addon.frontend_sync', $addonExecutor);
             $registry->register('addon.enable', $addonExecutor);
             $registry->register('addon.disable', $addonExecutor);
+            $registry->register(TaskManager::SITE_THEME_INSTALL, $app->make(ThemeTaskExecutor::class));
+            $registry->register(TaskManager::SITE_THEME_ACTIVATE, $app->make(ThemeTaskExecutor::class));
+            $registry->register(TaskManager::SITE_THEME_REMOVE, $app->make(ThemeTaskExecutor::class));
             return $registry;
         });
         $this->registerTemplateServices();
+        $this->registerThemeServices();
+        $this->app->singleton(ThemeDataPackRegistry::class);
+        $this->app->singleton(ThemeDataPackImporter::class);
         $this->registerAddonManifestServices();
         $this->registerAddonFrontendServices();
         $this->registerAddonRuntimeServices();
@@ -200,16 +220,74 @@ final class PTAdminServiceProvider extends ServiceProvider
 
     private function registerTemplateServices(): void
     {
-        $this->app->singleton(DirectiveRegistry::class, static function (): DirectiveRegistry {
+        $this->app->singleton(DirectiveRegistry::class, function (): DirectiveRegistry {
             $registry = new DirectiveRegistry();
             $registration = $registry->forNamespace('core');
             (new BuiltinDirectiveProvider())->register($registration);
+            (new ThemeDirectiveProvider($this->app->make(ThemeAssetResolver::class)))->register($registration);
             $registration->commit();
 
             return $registry;
         });
         $this->app->singleton(DirectiveArgumentParser::class);
         $this->app->singleton(TemplateRenderer::class);
+    }
+
+    private function registerThemeServices(): void
+    {
+        $this->app->singleton(ThemeManifestValidator::class, static function ($app): ThemeManifestValidator {
+            return new ThemeManifestValidator((string) $app['config']->get('ptadmin.backend_version', '0.1.0'));
+        });
+        $this->app->singleton(ThemeCatalog::class, static function ($app): ThemeCatalog {
+            return new ThemeCatalog(
+                (string) $app['config']->get('ptadmin.site_theme.directory', base_path('templates')),
+                $app->make(ThemeManifestValidator::class),
+            );
+        });
+        $this->app->singleton(ActiveThemeResolver::class, static function ($app): ActiveThemeResolver {
+            $default = (array) $app['config']->get('ptadmin.site_theme.default', []);
+
+            return new ActiveThemeResolver(
+                $app->make(ThemeCatalog::class),
+                (string) $app['config']->get('ptadmin.site_theme.state_file', storage_path('theme.json')),
+                (string) ($default['code'] ?? 'default'),
+                (string) ($default['version'] ?? '1.0.0'),
+            );
+        });
+        $this->app->singleton(ThemeAssetResolver::class);
+        $this->app->singleton(ThemeViewLoader::class, static function ($app): ThemeViewLoader {
+            return new ThemeViewLoader($app['view']->getFinder());
+        });
+        $this->app->singleton(ThemeStateStore::class, static function ($app): ThemeStateStore {
+            return new ThemeStateStore((string) $app['config']->get('ptadmin.site_theme.state_file', storage_path('theme.json')));
+        });
+        $this->app->singleton(ThemePackageExtractor::class);
+        $this->app->singleton(ThemePublisher::class, static function ($app): ThemePublisher {
+            return new ThemePublisher((string) $app['config']->get('ptadmin.site_theme.public_directory', public_path('themes')));
+        });
+        $this->app->singleton(ThemeInstaller::class, static function ($app): ThemeInstaller {
+            return new ThemeInstaller(
+                $app->make(ThemePackageExtractor::class),
+                $app->make(ThemeManifestValidator::class),
+                (string) $app['config']->get('ptadmin.site_theme.directory', base_path('templates')),
+                (string) $app['config']->get('ptadmin.site_theme.staging_directory', storage_path('app/ptadmin/themes/staging')),
+            );
+        });
+        $this->app->singleton(ThemeTaskExecutor::class);
+        $this->app->singleton(ThemeLifecycle::class, static function ($app): ThemeLifecycle {
+            $default = (array) $app['config']->get('ptadmin.site_theme.default', []);
+
+            return new ThemeLifecycle(
+                $app->make(ThemeCatalog::class),
+                $app->make(ActiveThemeResolver::class),
+                $app->make(ThemeStateStore::class),
+                $app->make(ThemePublisher::class),
+                (string) $app['config']->get('ptadmin.site_theme.directory', base_path('templates')),
+                (string) ($default['code'] ?? 'default'),
+                (string) ($default['version'] ?? '1.0.0'),
+                $app->make(ThemeViewLoader::class),
+            );
+        });
     }
 
     private function registerAddonManifestServices(): void
@@ -353,6 +431,10 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
         // 安装时也要同步内置 Schema；这里只注册描述符，不解析数据库连接。
         $this->registerAdminRuntimeBindings();
+        // 主题加载失败不阻止 Core 启动；没有主题时不注册未命名空间的视图路径。
+        $this->app->make(ThemeViewLoader::class)->load(
+            $this->app->make(ActiveThemeResolver::class)->resolve(),
+        );
 
         if (!$isInstalled) {
             $this->app->make(HttpKernel::class)->prependMiddlewareToGroup('web', InstallStateMiddleware::class);

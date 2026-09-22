@@ -20,6 +20,15 @@
         "icon": "settings"
     },
     {
+        "resource_key": "site",
+        "title": "站点管理",
+        "type": "group",
+        "is_menu": true,
+        "status": true,
+        "sort": 30,
+        "icon": "globe"
+    },
+    {
         "resource_key": "admin.users",
         "title": "管理员",
         "type": "schema",
@@ -119,12 +128,12 @@
         "resource_key": "schema.resources",
         "title": "Schema 资源",
         "type": "page",
-        "parent_key": "admin",
         "page_key": "schema.design",
         "path": "/schema/resources",
+        "parent_key": "site",
         "is_menu": true,
         "status": true,
-        "sort": 90,
+        "sort": 20,
         "icon": "blocks"
     },
     {
@@ -143,12 +152,12 @@
         "resource_key": "themes",
         "title": "主题管理",
         "type": "page",
-        "parent_key": "admin",
+        "parent_key": "site",
         "page_key": "theme.center",
         "path": "/themes",
         "is_menu": true,
         "status": true,
-        "sort": 40,
+        "sort": 10,
         "icon": "palette"
     },
     {
