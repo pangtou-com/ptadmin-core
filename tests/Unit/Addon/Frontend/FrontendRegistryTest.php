@@ -59,6 +59,32 @@ final class FrontendRegistryTest extends TestCase
         self::assertCount(1, $registry->resolve([['key' => 'demo-addon.page']])['plugins']);
     }
 
+    public function testRegistryUsesManifestCodeWhenAddonDirectoryUsesDifferentCase(): void
+    {
+        $this->writeAddon('iframe', 'index.html');
+        rename($this->addonsPath.'/demo-addon', $this->addonsPath.'/Cms');
+        rename($this->publicPath.'/admintest/modules/demo-addon', $this->publicPath.'/admintest/modules/Cms');
+
+        $manifestPath = $this->addonsPath.'/Cms/manifest.json';
+        $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+        $manifest['code'] = 'cms';
+        file_put_contents($manifestPath, json_encode($manifest, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+        $descriptorPath = $this->addonsPath.'/Cms/Frontend/frontend.json';
+        $descriptor = json_decode((string) file_get_contents($descriptorPath), true, 512, JSON_THROW_ON_ERROR);
+        $descriptor['entries'][0]['key'] = 'cms.page';
+        file_put_contents($descriptorPath, json_encode($descriptor, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+
+        $plugin = $this->registry(new TrustPolicy())->resolve([[
+            'key' => 'cms.page',
+            'type' => 'plugin',
+            'plugin_code' => 'cms',
+        ]])['plugins'][0];
+
+        self::assertSame('cms', $plugin['code']);
+        self::assertSame('/ptadmin/cms', $plugin['api_base']);
+        self::assertSame('./modules/Cms/index.html?v=1.0.0', $plugin['entries'][0]['entry']);
+    }
+
     public function testTrustedLocalEntryNeedsExplicitPolicyAndIsNeverDowngraded(): void
     {
         $this->writeAddon('trusted', 'frontend.mjs', true);

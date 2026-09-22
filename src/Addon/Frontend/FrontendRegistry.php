@@ -62,13 +62,14 @@ final class FrontendRegistry
             if (($addon['state'] ?? null) !== 'active') {
                 continue;
             }
-            $code = (string) ($addon['code'] ?? '');
+            $directoryCode = (string) ($addon['code'] ?? '');
             $manifest = is_array($addon['manifest'] ?? null) ? $addon['manifest'] : [];
+            $pluginCode = strtolower((string) ($manifest['code'] ?? $directoryCode));
             try {
                 $frontend = $this->resolveAddonFrontend(
-                    $code,
+                    $directoryCode,
                     $manifest,
-                    isset($referencedAddonCodes[strtolower($code)]),
+                    isset($referencedAddonCodes[$pluginCode]),
                     $registeredKeys,
                 );
                 $entries = $frontend['entries'];
@@ -79,10 +80,10 @@ final class FrontendRegistry
                     $registeredKeys[] = $entry['key'];
                 }
                 $plugin = [
-                    'code' => $code,
+                    'code' => $pluginCode,
                     'version' => (string) ($addon['version'] ?? ''),
                     'enabled' => true,
-                    'api_base' => '/'.$this->apiPrefix.'/'.rawurlencode($code),
+                    'api_base' => '/'.$this->apiPrefix.'/'.rawurlencode($pluginCode),
                     'entries' => $entries,
                 ];
                 if ($frontend['design_flows'] !== []) {
@@ -91,7 +92,7 @@ final class FrontendRegistry
                 $plugins[] = $plugin;
             } catch (AddonException $exception) {
                 $errors[] = [
-                    'code' => $code,
+                    'code' => $pluginCode,
                     'error_code' => $exception->errorCode,
                     'message' => $exception->getMessage(),
                 ];
