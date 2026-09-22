@@ -66,7 +66,7 @@ use PTAdmin\Addon\Lifecycle\LifecycleStore;
 use PTAdmin\Addon\Frontend\FrontendPublisher;
 use PTAdmin\Addon\Frontend\FrontendRegistry;
 use PTAdmin\Addon\Frontend\FrontendDevelopmentStore;
-use PTAdmin\Addon\Console\Commands\FrontendDevCommand;
+use PTAdmin\Addon\Console\Commands\AddonSetupCommand;
 use PTAdmin\Addon\Manifest\TrustPolicy;
 use PTAdmin\Addon\Package\PackageExtractor;
 use PTAdmin\Addon\Package\PackageDownloader;
@@ -315,10 +315,8 @@ final class PTAdminServiceProvider extends ServiceProvider
     {
         $this->app->singleton(FrontendDevelopmentStore::class, static function ($app): FrontendDevelopmentStore {
             return new FrontendDevelopmentStore(
-                (string) $app['config']->get('ptadmin.frontend.development.path', storage_path('app/ptadmin/dev/frontend')),
                 (string) $app->environment(),
                 (array) $app['config']->get('ptadmin.frontend.development.allowed_origins', []),
-                (int) $app['config']->get('ptadmin.frontend.development.lease_seconds', 120),
             );
         });
         $this->app->singleton(FrontendPublisher::class, static function (): FrontendPublisher {
@@ -464,7 +462,7 @@ final class PTAdminServiceProvider extends ServiceProvider
             RuntimeValidateCommand::class,
             AdminSyncCommand::class,
             MenuSyncCommand::class,
-            FrontendDevCommand::class,
+            AddonSetupCommand::class,
         ]);
     }
 

@@ -275,6 +275,10 @@
                             "label": "内部页面"
                         },
                         {
+                            "value": "plugin",
+                            "label": "插件页面"
+                        },
+                        {
                             "value": "external",
                             "label": "外部链接"
                         },

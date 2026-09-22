@@ -153,6 +153,137 @@ final class Installer
     }
 
     /**
+     * 对已有本地插件目录执行幂等 Setup，不替换插件代码或重新执行应用安装。
+     *
+     * Setup 会重新同步插件声明的资源和前端产物；用户主动禁用的插件默认保持停用，只有显式传入
+     * $enable 才恢复 active。资源同步失败或 Runtime 校验失败时，生命周期和已同步资源会尽量恢复到操作前状态。
+     *
+     * @return array<string, mixed>
+     * @throws \Throwable
+     */
+    public function setup(string $code, string $webPrefix, bool $enable = false): array
+    {
+        if (preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1) {
+            throw new AddonException('The addon code is invalid.', 'invalid_addon_code');
+        }
+
+        $target = $this->resolveInstalledAddonDirectory($code);
+        if (null === $target) {
+            throw new AddonException('The addon is not installed.', 'addon_not_installed');
+        }
+
+        $previousLifecycle = null;
+        $resourcesChanged = false;
+        $lockHandle = null;
+        $frontendSource = $target.'/Frontend/dist';
+        try {
+            $manifest = $this->verifier->verifyRuntime($target);
+            $manifestCode = (string) ($manifest['code'] ?? '');
+            if (strcasecmp($manifestCode, $code) !== 0) {
+                throw new AddonException('The addon manifest code does not match the requested operation.', 'addon_code_mismatch');
+            }
+            $code = $manifestCode;
+            $lockHandle = $this->locks?->acquire($code);
+            $previousLifecycle = $this->lifecycle->read($code);
+            $previousState = (string) ($previousLifecycle['state'] ?? 'discovered');
+            $disabledByUser = $previousState === 'inactive'
+                && ($previousLifecycle['disabled_by_user'] ?? false) === true;
+            $activate = $enable || !$disabledByUser;
+
+            $this->runtimeCache?->clear();
+            $synced = $this->resourceSynchronizer?->sync($target, $code)
+                ?? ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'admin_resources' => 0];
+            $resourcesChanged = true;
+
+            if (!$activate) {
+                $this->resourceSynchronizer?->deactivate($code);
+                $this->frontend->remove($webPrefix, $code);
+                $state = $this->lifecycle->transition($code, 'inactive', [
+                    'disabled_by_user' => true,
+                    'runtime_error' => null,
+                    'version' => $manifest['version'],
+                    'manifest' => $manifest,
+                ]);
+                $this->runtimeValidator?->assertDeactivated($code);
+
+                return [
+                    'code' => $code,
+                    'version' => $manifest['version'],
+                    'state' => $state['state'],
+                    'enabled' => false,
+                    'frontend' => false,
+                    'resources' => $synced,
+                ];
+            }
+
+            if ($previousState !== 'active') {
+                $this->transitionToReady($code, $previousState, $manifest);
+                $event = $previousLifecycle === null || in_array($previousState, ['discovered', 'validating', 'loading'], true)
+                    ? 'install'
+                    : 'enable';
+                $this->lifecycleRegistrar?->invoke($event, $target, $code, $manifest);
+            }
+
+            $state = $this->lifecycle->transition($code, 'active', [
+                'disabled_by_user' => false,
+                'runtime_error' => null,
+                'version' => $manifest['version'],
+                'manifest' => $manifest,
+            ]);
+            $this->runtimeValidator?->assertActivated($target, $code, $manifest);
+
+            $frontend = false;
+            if (is_dir($frontendSource)) {
+                $this->validateFrontendSource($target, $frontendSource);
+                $this->frontend->publish($webPrefix, $code, $frontendSource);
+                $frontend = true;
+            } else {
+                $this->frontend->remove($webPrefix, $code);
+            }
+
+            return [
+                'code' => $code,
+                'version' => $manifest['version'],
+                'state' => $state['state'],
+                'enabled' => true,
+                'frontend' => $frontend,
+                'resources' => $synced,
+            ];
+        } catch (\Throwable $exception) {
+            if ($resourcesChanged) {
+                try {
+                    if (($previousLifecycle['state'] ?? null) === 'active') {
+                        $this->resourceSynchronizer?->sync($target, $code);
+                    } else {
+                        $this->resourceSynchronizer?->deactivate($code);
+                    }
+                } catch (\Throwable) {
+                    // 资源补偿失败不能覆盖原始错误；下一次 Setup 会重新按插件声明同步。
+                }
+            }
+            try {
+                $this->lifecycle->restore($code, $previousLifecycle);
+            } catch (\Throwable) {
+                // 生命周期快照恢复失败不能覆盖触发回滚的原始错误。
+            }
+            try {
+                if (($previousLifecycle['state'] ?? null) === 'active' && is_dir($frontendSource)) {
+                    $this->frontend->publish($webPrefix, $code, $frontendSource);
+                } else {
+                    $this->frontend->remove($webPrefix, $code);
+                }
+            } catch (\Throwable) {
+                // 前端补偿失败不能覆盖触发回滚的原始错误；下一次 Setup 会重新发布。
+            }
+            throw $exception;
+        } finally {
+            if (is_resource($lockHandle)) {
+                $this->locks?->release($lockHandle);
+            }
+        }
+    }
+
+    /**
      * 卸载插件代码并停用资源；Schema 业务表、配置值和其他用户数据不会删除。
      *
      * @return array<string, mixed>
@@ -201,6 +332,41 @@ final class Installer
             if (isset($lockHandle) && is_resource($lockHandle)) {
                 $this->locks?->release($lockHandle);
             }
+        }
+    }
+
+    /** 把 Setup 的生命周期状态推进到可激活的 ready，保留状态图约束。 */
+    private function transitionToReady(string $code, string $state, array $manifest): void
+    {
+        if ($state === 'ready') {
+            return;
+        }
+        if ($state === 'disposed') {
+            $this->lifecycle->transition($code, 'discovered');
+            $state = 'discovered';
+        }
+        if ($state === 'inactive') {
+            $this->lifecycle->transition($code, 'validating');
+            $state = 'validating';
+        }
+        if ($state === 'discovered') {
+            $this->lifecycle->transition($code, 'validating');
+            $state = 'validating';
+        }
+        if ($state === 'validating') {
+            $this->lifecycle->transition($code, 'loading');
+            $state = 'loading';
+        }
+        if ($state === 'loading') {
+            $this->lifecycle->transition($code, 'ready', [
+                'version' => $manifest['version'],
+                'manifest' => $manifest,
+            ]);
+            return;
+        }
+
+        if ($state !== 'ready') {
+            throw new AddonException('The addon lifecycle state cannot be prepared for Setup.', 'invalid_lifecycle_state', ['state' => $state]);
         }
     }
 
@@ -306,5 +472,32 @@ final class Installer
             $item->isDir() && !$item->isLink() ? @rmdir($item->getPathname()) : @unlink($item->getPathname());
         }
         @rmdir($directory);
+    }
+
+    /**
+     * Resolve the installed directory using its real filesystem spelling.
+     * This keeps require_once and lifecycle operations stable on case-insensitive filesystems.
+     */
+    private function resolveInstalledAddonDirectory(string $code): ?string
+    {
+        if (is_dir($this->addonsPath)) {
+            foreach (glob($this->addonsPath.'/*', GLOB_ONLYDIR) ?: [] as $directory) {
+                $name = basename($directory);
+                if (strcasecmp($name, $code) !== 0) {
+                    continue;
+                }
+                $resolved = realpath($directory);
+                if (is_string($resolved) && is_dir($resolved)) {
+                    return $resolved;
+                }
+            }
+        }
+
+        $direct = realpath($this->addonsPath.'/'.$code);
+        if (is_string($direct) && is_dir($direct)) {
+            return $direct;
+        }
+
+        return null;
     }
 }

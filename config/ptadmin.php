@@ -21,9 +21,7 @@ return [
         'host_apis' => ['v1'],
         'runtime_profiles' => ['admin-v1'],
         'development' => [
-            'path' => env('PTADMIN_FRONTEND_DEV_PATH', storage_path('app/ptadmin/dev/frontend')),
             'allowed_origins' => [],
-            'lease_seconds' => (int) env('PTADMIN_FRONTEND_DEV_LEASE_SECONDS', 120),
         ],
         'capabilities' => [
             'context',

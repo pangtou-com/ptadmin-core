@@ -15,7 +15,7 @@ use RuntimeException;
 /**
  * 为当前管理员解析可加载的插件前端入口。
  *
- * Registry 同时校验插件 active 状态、菜单可见性、Host API、sandbox、发布入口和 trusted 策略，
+ * Registry 同时校验插件 active 状态、插件菜单引用、Host API、sandbox、发布入口和 trusted 策略，
  * 最终只向 Session 暴露满足全部条件的最小前端描述，不返回磁盘路径或原始 manifest。
  */
 final class FrontendRegistry
@@ -55,7 +55,7 @@ final class FrontendRegistry
         $result = $this->discovery->scan();
         $plugins = [];
         $errors = $result['errors'];
-        $visibleMenuKeys = $this->menuKeys($menus);
+        $referencedAddonCodes = $this->addonCodes($menus);
         $registeredKeys = [];
 
         foreach ($result['addons'] as $addon) {
@@ -68,7 +68,7 @@ final class FrontendRegistry
                 $frontend = $this->resolveAddonFrontend(
                     $code,
                     $manifest,
-                    $visibleMenuKeys,
+                    isset($referencedAddonCodes[strtolower($code)]),
                     $registeredKeys,
                 );
                 $entries = $frontend['entries'];
@@ -105,16 +105,19 @@ final class FrontendRegistry
      * 解析一个插件的 frontend.json，并确保入口身份、权限和发布产物均属于该插件。
      *
      * @param array<string, mixed> $manifest
-     * @param array<int, string> $visibleMenuKeys
+     * @param bool $referencedByMenu
      * @param array<int, string> $registeredKeys
      * @return array{entries:array<int,array<string,mixed>>,design_flows:array<int,array<string,mixed>>}
      */
     private function resolveAddonFrontend(
         string $code,
         array $manifest,
-        array $visibleMenuKeys,
+        bool $referencedByMenu,
         array $registeredKeys,
     ): array {
+        if (!$referencedByMenu) {
+            return ['entries' => [], 'design_flows' => []];
+        }
         $descriptor = $this->descriptor($code);
         if (null === $descriptor) {
             return ['entries' => [], 'design_flows' => []];
@@ -134,11 +137,11 @@ final class FrontendRegistry
 
         $resolved = [];
         try {
-            $development = $this->development->resolve($code);
+            $development = $this->development->resolveInline($code, $descriptor['development'] ?? null);
         } catch (RuntimeException $exception) {
             throw new AddonException(
                 $exception->getMessage(),
-                'frontend_development_registration_invalid',
+                'frontend_development_invalid',
                 ['code' => $code]
             );
         }
@@ -163,10 +166,6 @@ final class FrontendRegistry
                 throw new AddonException('The addon frontend entry key is duplicated.', 'frontend_entry_key_conflict', ['key' => $key]);
             }
             $localKeys[] = $key;
-
-            if (!in_array($key, $visibleMenuKeys, true)) {
-                continue;
-            }
 
             $sandbox = (string) ($declaredEntry['sandbox'] ?? '');
             if (!in_array($sandbox, ['trusted', 'iframe'], true)) {
@@ -404,22 +403,26 @@ final class FrontendRegistry
         return array_values(array_unique($strings));
     }
 
-    /** @param array<int, array<string, mixed>> $menus @return array<int, string> */
-    private function menuKeys(array $menus): array
+    /** @param array<int, array<string, mixed>> $menus @return array<string, bool> */
+    private function addonCodes(array $menus): array
     {
-        $keys = [];
+        $codes = [];
         foreach ($menus as $menu) {
-            $key = $menu['key'] ?? null;
-            if (is_string($key) && $key !== '') {
-                $keys[] = $key;
+            $type = (string) ($menu['type'] ?? '');
+            $code = $menu['plugin_code'] ?? null;
+            if ($type === 'plugin' && is_string($code) && $code !== '') {
+                $codes[strtolower($code)] = true;
+            } elseif ($type === '' && is_string($menu['key'] ?? null) && str_contains((string) $menu['key'], '.')) {
+                // 兼容尚未完成菜单重同步的旧 Session fixture；正式插件菜单必须使用 type=plugin 和 owner code。
+                $codes[strtolower((string) strstr((string) $menu['key'], '.', true))] = true;
             }
             $children = $menu['children'] ?? null;
             if (is_array($children)) {
-                $keys = array_merge($keys, $this->menuKeys($children));
+                $codes += $this->addonCodes($children);
             }
         }
 
-        return array_values(array_unique($keys));
+        return $codes;
     }
 
     /** @param array<string, mixed> $manifest @return array<string, mixed> */

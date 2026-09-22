@@ -24,7 +24,7 @@ final class RuntimeController extends Controller
 
     public function list(string $resource, Request $request, RuntimeEngineInterface $runtime): JsonResponse
     {
-        return $this->respond(fn (): array => $runtime->list(array_merge($request->query(), ['resource' => $resource])));
+        return $this->respond(fn (): array => $runtime->list(array_merge($this->query($request), ['resource' => $resource])));
     }
 
     public function detail(string $resource, int $id, RuntimeEngineInterface $runtime): JsonResponse
@@ -67,11 +67,24 @@ final class RuntimeController extends Controller
 
     public function relationCandidates(string $resource, Request $request, RuntimeEngineInterface $runtime): JsonResponse
     {
-        return $this->respond(fn (): array => $runtime->relationCandidates(array_merge($request->query(), ['resource' => $resource])));
+        return $this->respond(fn (): array => $runtime->relationCandidates(array_merge($this->query($request), ['resource' => $resource])));
     }
 
     public function schema(string $resource, RuntimeEngineInterface $runtime): JsonResponse
     {
         return $this->respond(fn (): array => $runtime->schemaSnapshot(['resource' => $resource]));
+    }
+
+    /** @return array<string, mixed> */
+    private function query(Request $request): array
+    {
+        $query = $request->query();
+        foreach (['page', 'limit'] as $field) {
+            if ($request->query->has($field)) {
+                $query[$field] = $request->integer($field);
+            }
+        }
+
+        return $query;
     }
 }

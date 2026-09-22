@@ -13,6 +13,26 @@
             "allow_recycle": true
         },
         "views": {
+            "tables": {
+                "default": {
+                    "operate": {
+                        "minWidth": 224,
+                        "actions": [
+                            {
+                                "action": "update"
+                            },
+                            {
+                                "action": "sync_permissions",
+                                "title": "权限设置",
+                                "icon": "shield-check"
+                            },
+                            {
+                                "action": "delete"
+                            }
+                        ]
+                    }
+                }
+            },
             "forms": {
                 "default": {
                     "span": 12,
@@ -46,19 +66,6 @@
                                 {
                                     "type": "field",
                                     "field": "sort"
-                                }
-                            ]
-                        },
-                        {
-                            "type": "section",
-                            "title": "资源授权",
-                            "span": 24,
-                            "children": [
-                                {
-                                    "type": "field",
-                                    "field": "permissions",
-                                    "component": "permission-grant-editor",
-                                    "span": 24
                                 }
                             ]
                         }
@@ -158,16 +165,16 @@
                 "type": "json",
                 "label": "资源授权",
                 "persisted": false,
-                "formable": true,
-                "listable": false,
-                "extensions": {
-                    "component": "permission-grant-editor"
-                }
+                "readonly": true,
+                "formable": false,
+                "listable": false
             }
         ],
         "actions": {
             "sync_permissions": {
-                "label": "设置权限"
+                "title": "权限设置",
+                "kind": "custom",
+                "scope": "record"
             }
         }
     }

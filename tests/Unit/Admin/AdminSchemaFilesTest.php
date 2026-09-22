@@ -78,4 +78,55 @@ final class AdminSchemaFilesTest extends TestCase
         self::assertSame('dialog', $form['wrapper']['type']);
         self::assertArrayNotHasKey('menu.select', $definition['actions']);
     }
+
+    public function testRolePermissionsUseASeparateRecordAction(): void
+    {
+        $directory = dirname(__DIR__, 3).'/database/schemas/admin';
+        $roles = (new Loader())->resourceFromFile($directory.'/admin.admin_roles.schema.json')['schema']->toArray();
+        $users = (new Loader())->resourceFromFile($directory.'/admin.admin_users.schema.json')['schema']->toArray();
+
+        self::assertSame(
+            ['update', 'sync_permissions', 'delete'],
+            array_column($roles['views']['tables']['default']['operate']['actions'], 'action'),
+        );
+        self::assertSame('record', $roles['actions']['sync_permissions']['scope']);
+        self::assertSame('custom', $roles['actions']['sync_permissions']['kind']);
+        self::assertNotContains('permissions', $this->formFields($roles['views']['forms']['default']['children']));
+        self::assertNotContains('permissions', $this->formFields($users['views']['forms']['default']['children']));
+
+        $rolePermissions = $this->field($roles['fields'], 'permissions');
+        $userPermissions = $this->field($users['fields'], 'permissions');
+        self::assertFalse($rolePermissions['formable']);
+        self::assertFalse($userPermissions['formable']);
+        self::assertArrayNotHasKey('component', (array) $rolePermissions['extensions']);
+        self::assertArrayNotHasKey('component', (array) $userPermissions['extensions']);
+    }
+
+    /** @param list<array<string, mixed>> $nodes @return list<string> */
+    private function formFields(array $nodes): array
+    {
+        $fields = [];
+        foreach ($nodes as $node) {
+            if (isset($node['field'])) {
+                $fields[] = (string) $node['field'];
+            }
+            if (isset($node['children']) && is_array($node['children'])) {
+                $fields = array_merge($fields, $this->formFields($node['children']));
+            }
+        }
+
+        return $fields;
+    }
+
+    /** @param list<array<string, mixed>> $fields @return array<string, mixed> */
+    private function field(array $fields, string $name): array
+    {
+        foreach ($fields as $field) {
+            if (($field['name'] ?? null) === $name) {
+                return $field;
+            }
+        }
+
+        self::fail('Schema field not found: '.$name);
+    }
 }

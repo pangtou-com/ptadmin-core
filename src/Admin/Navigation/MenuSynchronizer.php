@@ -11,7 +11,7 @@ use RuntimeException;
 final class MenuSynchronizer
 {
     /** @var list<string> */
-    private const TYPES = ['group', 'schema', 'page', 'external', 'action'];
+    private const TYPES = ['group', 'schema', 'page', 'plugin', 'external', 'action'];
 
     public function __construct(
         private DatabaseManager $database,
@@ -183,12 +183,14 @@ final class MenuSynchronizer
             throw new RuntimeException(sprintf('菜单资源 %s 的类型无效：%s', $key, $type));
         }
 
+        $rawPath = (string) ($item['path'] ?? '');
+
         return [
             'resource_key' => $key,
             'title' => (string) ($item['title'] ?? $key),
             'type' => $type,
             'parent_key' => trim((string) ($item['parent_key'] ?? '')),
-            'path' => (string) ($item['path'] ?? ''),
+            'path' => $this->normalizePath($rawPath, $type, $ownerType, $ownerCode, $key),
             'page_key' => (string) ($item['page_key'] ?? ''),
             'target_resource_key' => (string) ($item['target_resource_key'] ?? ''),
             'external_url' => (string) ($item['external_url'] ?? ''),
@@ -196,6 +198,7 @@ final class MenuSynchronizer
             'is_menu' => (bool) ($item['is_menu'] ?? false),
             'status' => (bool) ($item['status'] ?? true),
             'sort' => (int) ($item['sort'] ?? 0),
+            'abilities' => $this->abilityList($item['abilities'] ?? [], $key),
             'meta' => is_array($item['meta'] ?? null) ? $this->sortKeys($item['meta']) : [],
             'owner_type' => $ownerType,
             'owner_code' => $ownerCode,
@@ -222,6 +225,17 @@ final class MenuSynchronizer
             if ($type === 'group' && ($definition['page_key'] !== '' || $definition['target_resource_key'] !== '' || $definition['external_url'] !== '')) {
                 throw new RuntimeException(sprintf('分组资源不能配置页面绑定：%s', $key));
             }
+            if ($type === 'plugin') {
+                if ($ownerType !== 'addon') {
+                    throw new RuntimeException(sprintf('Core 资源不能声明 plugin 页面：%s', $key));
+                }
+                if ($definition['page_key'] !== '' || $definition['target_resource_key'] !== '' || $definition['external_url'] !== '') {
+                    throw new RuntimeException(sprintf('插件页面不能配置 page_key、target_resource_key 或 external_url：%s', $key));
+                }
+            }
+            if ($ownerType === 'addon' && $type === 'page') {
+                throw new RuntimeException(sprintf('插件页面必须使用 type=plugin：%s', $key));
+            }
             if ($type === 'schema' && $definition['target_resource_key'] === '') {
                 throw new RuntimeException(sprintf('Schema 资源必须配置 target_resource_key：%s', $key));
             }
@@ -234,7 +248,7 @@ final class MenuSynchronizer
             if ($type === 'action' && ($definition['path'] !== '' || $definition['page_key'] !== '' || $definition['target_resource_key'] !== '' || $definition['external_url'] !== '')) {
                 throw new RuntimeException(sprintf('资源 %s 的页面字段与 type 不匹配。', $key));
             }
-            if ($definition['is_menu'] && $definition['path'] === '' && $type !== 'group') {
+            if ($definition['is_menu'] && $definition['path'] === '' && !in_array($type, ['group'], true)) {
                 throw new RuntimeException(sprintf('菜单资源必须配置 path：%s', $key));
             }
             if ($definition['is_menu'] && $definition['path'] !== '' && !preg_match('!^/(?:[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*)?$!', $definition['path'])) {
@@ -307,6 +321,9 @@ final class MenuSynchronizer
         if ($definition['external_url'] !== '') {
             $meta['external_url'] = $definition['external_url'];
         }
+        if ($definition['abilities'] !== []) {
+            $meta['abilities'] = $definition['abilities'];
+        }
         ksort($meta);
 
         return [
@@ -324,6 +341,44 @@ final class MenuSynchronizer
             'icon' => $definition['icon'] !== '' ? $definition['icon'] : null,
             'addon_code' => $ownerType === 'addon' ? $ownerCode : null,
         ];
+    }
+
+    /** @return list<string> */
+    private function abilityList(mixed $value, string $resourceKey): array
+    {
+        if (!is_array($value) || !array_is_list($value)) {
+            throw new RuntimeException(sprintf('资源 %s 的 abilities 必须是字符串数组。', $resourceKey));
+        }
+        $abilities = [];
+        foreach ($value as $ability) {
+            if (!is_string($ability) || preg_match('/^[a-z][a-z0-9_.-]{0,99}$/', $ability) !== 1) {
+                throw new RuntimeException(sprintf('资源 %s 包含无效的权限动作。', $resourceKey));
+            }
+            $abilities[] = $ability;
+        }
+
+        return array_values(array_unique($abilities));
+    }
+
+    private function normalizePath(string $path, string $type, string $ownerType, string $ownerCode, string $resourceKey): string
+    {
+        if ($path === '') {
+            return '';
+        }
+
+        if ($ownerType === 'addon' && in_array($type, ['group', 'schema', 'plugin'], true)) {
+            if (str_starts_with($path, '/') || preg_match('!^[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$!', $path) !== 1) {
+                throw new RuntimeException(sprintf('插件资源 path 必须是相对路由片段：%s', $resourceKey));
+            }
+
+            return '/plugins/'.rawurlencode($ownerCode).'/'.$path;
+        }
+
+        if (preg_match('!^/(?:[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*)?$!', $path) !== 1) {
+            throw new RuntimeException(sprintf('菜单资源 path 无效：%s', $resourceKey));
+        }
+
+        return $path;
     }
 
     /** @param object|null $existing */

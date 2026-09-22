@@ -32,37 +32,39 @@ final class AuthorizationService
             return new AuthorizationDecision(true, 'founder');
         }
 
-        $resource = $this->database->table('admin_resources')
-            ->whereNull('deleted_at')
-            ->where('resource_key', $resourceKey)
-            ->first();
-        if (null === $resource || (int) $resource->status !== 1) {
+        $resources = $this->authorizationResources($resourceKey);
+        if ($resources === []) {
             return new AuthorizationDecision(false, 'resource_unavailable');
         }
 
-        $direct = $this->grantsForSubject(
-            'admin',
-            (string) $admin->getKey(),
-            (int) $resource->id,
-            $ability,
-            $admin,
-            $context,
-        );
+        $direct = [];
+        foreach ($resources as $resource) {
+            $direct = array_merge($direct, $this->grantsForSubject(
+                'admin',
+                (string) $admin->getKey(),
+                (int) $resource->id,
+                $ability,
+                $admin,
+                $context,
+            ));
+        }
         if ($direct !== []) {
             return $this->resolveGrants($direct, 'direct_grant');
         }
 
         $roleGrants = [];
         foreach ($this->roleAssignments((int) $admin->getKey()) as $roleId) {
-            foreach ($this->grantsForSubject(
-                'role',
-                (string) $roleId,
-                (int) $resource->id,
-                $ability,
-                $admin,
-                $context,
-            ) as $grant) {
-                $roleGrants[] = $grant;
+            foreach ($resources as $resource) {
+                foreach ($this->grantsForSubject(
+                    'role',
+                    (string) $roleId,
+                    (int) $resource->id,
+                    $ability,
+                    $admin,
+                    $context,
+                ) as $grant) {
+                    $roleGrants[] = $grant;
+                }
             }
         }
 
@@ -126,23 +128,17 @@ final class AuthorizationService
             ->orderBy('sort')
             ->orderBy('id')
             ->get();
-        $menus = [];
+        $available = [];
+        $allowed = [];
         foreach ($resources as $resource) {
-            if (!$this->allows($admin, 'view', (string) $resource->resource_key)) {
-                continue;
-            }
-
             $meta = $this->decode((string) ($resource->meta_json ?? ''));
             $type = (string) ($resource->type ?? '');
-            if (!in_array($type, ['group', 'schema', 'page', 'external'], true)) {
+            if (!in_array($type, ['group', 'schema', 'page', 'plugin', 'external'], true)) {
                 continue;
             }
 
             $pageType = $this->legacyPageType($resource, $meta);
             $path = (string) ($resource->path ?? '');
-            if ($type === 'group' && $path === '') {
-                $path = '/__group/'.rawurlencode((string) $resource->resource_key);
-            }
 
             $menu = [
                 'key' => (string) $resource->resource_key,
@@ -161,6 +157,9 @@ final class AuthorizationService
             if ((string) ($resource->page_key ?? '') !== '') {
                 $menu['page_key'] = (string) $resource->page_key;
             }
+            if ($resource->addon_code !== null && (string) $resource->addon_code !== '') {
+                $menu['plugin_code'] = strtolower((string) $resource->addon_code);
+            }
             if ($icon !== '') {
                 $menu['icon'] = $icon;
             }
@@ -168,13 +167,50 @@ final class AuthorizationService
             if ($externalUrl !== '') {
                 $menu['external_url'] = $externalUrl;
             }
-            $menus[] = [
+            $available[(string) $resource->resource_key] = [
                 'node' => $menu,
                 'parent_key' => (string) ($resource->parent_key ?? ''),
             ];
+            if ($this->allows($admin, 'view', (string) $resource->resource_key)) {
+                $allowed[(string) $resource->resource_key] = true;
+            }
         }
 
+        $included = $allowed;
+        foreach (array_keys($allowed) as $key) {
+            $parentKey = (string) ($available[$key]['parent_key'] ?? '');
+            $seen = [$key => true];
+            while ($parentKey !== '' && isset($available[$parentKey]) && !isset($seen[$parentKey])) {
+                $included[$parentKey] = true;
+                $seen[$parentKey] = true;
+                $parentKey = (string) $available[$parentKey]['parent_key'];
+            }
+        }
+        $menus = array_values(array_intersect_key($available, $included));
+
         return $this->menuTree($menus);
+    }
+
+    /** @return list<object> */
+    private function authorizationResources(string $resourceKey): array
+    {
+        $resources = $this->database->table('admin_resources')
+            ->whereNull('deleted_at')
+            ->where('status', 1)
+            ->orderBy('sort')
+            ->orderBy('id')
+            ->get();
+        $matches = [];
+        foreach ($resources as $resource) {
+            $meta = $this->decode((string) ($resource->meta_json ?? ''));
+            if ((string) $resource->resource_key === $resourceKey
+                || (string) ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '') === $resourceKey
+            ) {
+                $matches[(int) $resource->id] = $resource;
+            }
+        }
+
+        return array_values($matches);
     }
 
     /**
@@ -432,7 +468,7 @@ final class AuthorizationService
     {
         $path = trim($path);
 
-        return $path === '' || $path === '/' ? '/' : '/'.ltrim($path, '/');
+        return $path === '' ? '' : '/'.ltrim($path, '/');
     }
 
     /** @param object $resource @param array<string,mixed> $meta */
@@ -446,6 +482,7 @@ final class AuthorizationService
         return match ((string) ($resource->type ?? '')) {
             'group' => 'navigation.group',
             'schema' => 'schema.resource',
+            'plugin' => 'plugin.page',
             'external' => 'external.link',
             default => (string) ($resource->page_key ?? 'page'),
         };

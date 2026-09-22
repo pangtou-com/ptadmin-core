@@ -4,114 +4,63 @@ declare(strict_types=1);
 
 namespace PTAdmin\Addon\Frontend;
 
-use DateTimeImmutable;
-use JsonException;
 use RuntimeException;
 
-/** 本地开发入口独立于插件签名包和正式发布目录，生产环境始终忽略。 */
+/**
+ * 校验 frontend.json 中声明的本地开发入口；生产环境始终忽略。
+ *
+ * 开发服务器由插件开发者自行启动，不维护宿主侧注册文件或进程租约。
+ */
 final class FrontendDevelopmentStore
 {
     /** @param array<int, string> $allowedOrigins */
     public function __construct(
-        private string $path,
         private string $environment,
         private array $allowedOrigins = [],
-        private int $leaseSeconds = 120,
     ) {
-        $this->path = rtrim($path, '/');
     }
 
-    /** @return array<string, mixed>|null */
-    public function resolve(string $code): ?array
+    /**
+     * 读取插件 frontend.json 内联的开发入口。
+     *
+     * 内联入口只在 local/testing 环境生效，不参与正式发布包的入口替换。
+     * @param mixed $declaration
+     * @return array<string, mixed>|null
+     */
+    public function resolveInline(string $code, mixed $declaration): ?array
     {
-        if (!$this->enabled()) {
+        if (!$this->enabled() || null === $declaration) {
             return null;
         }
         $this->assertCode($code);
-        $path = $this->registrationPath($code);
-        if (!is_file($path)) {
-            return null;
+        if (!is_array($declaration) || array_is_list($declaration)) {
+            throw new RuntimeException(sprintf('插件 %s 的前端开发声明无效。', $code));
         }
-        try {
-            $registration = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
-        } catch (JsonException) {
-            throw new RuntimeException(sprintf('插件 %s 的前端开发注册文件不是有效 JSON。', $code));
-        }
-        if (!is_array($registration) || array_is_list($registration) || ($registration['code'] ?? null) !== $code) {
-            throw new RuntimeException(sprintf('插件 %s 的前端开发注册身份无效。', $code));
-        }
-        $expiresAt = DateTimeImmutable::createFromFormat(DATE_ATOM, (string) ($registration['expires_at'] ?? ''));
-        $this->assertUrl((string) ($registration['entry_url'] ?? ''), (string) ($registration['allowed_origin'] ?? ''));
-        $registration['status'] = $expiresAt && $expiresAt > new DateTimeImmutable() ? 'available' : 'expired';
 
-        return $registration;
-    }
-
-    /** @return array<string, mixed> */
-    public function register(string $code, string $entryUrl, string $sandbox, ?string $revision = null, ?int $processId = null): array
-    {
-        if (!$this->enabled()) {
-            throw new RuntimeException('插件前端开发注册只允许在 local/testing 环境使用。');
-        }
-        if (preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1) {
-            throw new RuntimeException('插件编码格式无效。');
-        }
+        $entryUrl = (string) ($declaration['entry_url'] ?? '');
+        $sandbox = (string) ($declaration['sandbox'] ?? '');
         if (!in_array($sandbox, ['trusted', 'iframe'], true)) {
-            throw new RuntimeException('插件前端开发 sandbox 只能是 trusted 或 iframe。');
+            throw new RuntimeException(sprintf('插件 %s 的前端开发 sandbox 无效。', $code));
         }
         $origin = $this->origin($entryUrl);
-        $this->assertUrl($entryUrl, $origin);
-        $now = new DateTimeImmutable();
-        $registration = [
+        $allowedOrigin = (string) ($declaration['allowed_origin'] ?? $origin);
+        $this->assertUrl($entryUrl, $allowedOrigin);
+
+        return [
             'code' => $code,
             'entry_url' => $entryUrl,
-            'allowed_origin' => $origin,
+            'allowed_origin' => $allowedOrigin,
             'sandbox' => $sandbox,
-            'dev_revision' => $revision ?: $now->format('YmdHis.u'),
-            'hmr' => true,
-            'source_maps' => true,
+            'dev_revision' => (string) ($declaration['dev_revision'] ?? 'inline'),
+            'hmr' => (bool) ($declaration['hmr'] ?? true),
+            'source_maps' => (bool) ($declaration['source_maps'] ?? true),
             'status' => 'available',
-            'process_id' => $processId,
-            'updated_at' => $now->format(DATE_ATOM),
-            'expires_at' => $now->modify(sprintf('+%d seconds', $this->leaseSeconds))->format(DATE_ATOM),
         ];
-        if (!is_dir($this->path) && !mkdir($this->path, 0700, true) && !is_dir($this->path)) {
-            throw new RuntimeException('无法创建插件前端开发注册目录。');
-        }
-        $temporary = tempnam($this->path, '.frontend-dev-');
-        if (!is_string($temporary)) {
-            throw new RuntimeException('无法创建插件前端开发注册临时文件。');
-        }
-        file_put_contents($temporary, json_encode($registration, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-        chmod($temporary, 0600);
-        if (!rename($temporary, $this->registrationPath($code))) {
-            @unlink($temporary);
-            throw new RuntimeException('无法写入插件前端开发注册文件。');
-        }
-
-        return $registration;
-    }
-
-    public function unregister(string $code): bool
-    {
-        $this->assertCode($code);
-        $path = $this->registrationPath($code);
-        return !is_file($path) || unlink($path);
-    }
-
-    public function heartbeatSeconds(): int
-    {
-        return max(1, intdiv($this->leaseSeconds, 3));
     }
 
     private function enabled(): bool
     {
         return in_array($this->environment, ['local', 'testing'], true);
-    }
-
-    private function registrationPath(string $code): string
-    {
-        return $this->path.'/'.$code.'.json';
     }
 
     private function assertCode(string $code): void

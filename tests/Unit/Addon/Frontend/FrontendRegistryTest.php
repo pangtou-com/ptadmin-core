@@ -95,9 +95,8 @@ final class FrontendRegistryTest extends TestCase
 
     public function testDevelopmentDescriptorOverridesOnlyTheCodeSource(): void
     {
-        $this->writeAddon('iframe', 'index.html');
-        $development = new FrontendDevelopmentStore($this->root.'/dev', 'testing');
-        $development->register('demo-addon', 'http://127.0.0.1:5174/index.html', 'iframe', 'dev-4');
+        $this->writeAddon('iframe', 'index.html', false, false, true);
+        $development = new FrontendDevelopmentStore('testing');
 
         $plugin = $this->registry(new TrustPolicy(), $development)
             ->resolve([['key' => 'demo-addon.page']])['plugins'][0];
@@ -105,9 +104,50 @@ final class FrontendRegistryTest extends TestCase
         self::assertSame('/ptadmin/demo-addon', $plugin['api_base']);
         self::assertSame(['schema.runtime'], $plugin['entries'][0]['capabilities']);
         self::assertSame('development', $plugin['entries'][0]['development']['load_mode']);
-        self::assertSame('http://127.0.0.1:5174', $plugin['entries'][0]['development']['allowed_origin']);
-        self::assertSame('dev-4', $plugin['entries'][0]['development']['dev_revision']);
+        self::assertSame('http://127.0.0.1:5173', $plugin['entries'][0]['development']['allowed_origin']);
+        self::assertSame('cms-local', $plugin['entries'][0]['development']['dev_revision']);
         self::assertSame('available', $plugin['entries'][0]['development']['status']);
+    }
+
+    public function testInlineDevelopmentDescriptorIsReturnedInLocalSessionWithoutRegistrationFile(): void
+    {
+        $this->writeAddon('trusted', 'frontend.mjs', true, false, true);
+        $plugin = $this->registry(
+            new TrustPolicy([], [], true, 'testing'),
+            new FrontendDevelopmentStore('testing'),
+        )->resolve([['key' => 'demo-addon.page']])['plugins'][0];
+
+        self::assertSame('http://127.0.0.1:5173/src/frontend.ts', $plugin['entries'][0]['development']['entry_url']);
+        self::assertSame('cms-local', $plugin['entries'][0]['development']['dev_revision']);
+        self::assertSame('available', $plugin['entries'][0]['development']['status']);
+    }
+
+    public function testInlineDevelopmentDescriptorIsIgnoredOutsideLocalEnvironments(): void
+    {
+        $this->writeAddon('trusted', 'frontend.mjs', true, false, true);
+        $plugin = $this->registry(
+            new TrustPolicy([], [], true, 'testing'),
+            new FrontendDevelopmentStore('production'),
+        )->resolve([['key' => 'demo-addon.page']])['plugins'][0];
+
+        self::assertArrayNotHasKey('development', $plugin['entries'][0]);
+    }
+
+    public function testInvalidInlineDevelopmentDescriptorIsReportedPerPlugin(): void
+    {
+        $this->writeAddon('iframe', 'index.html', false, false, true);
+        $path = $this->addonsPath.'/demo-addon/Frontend/frontend.json';
+        $descriptor = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+        $descriptor['development'] = 'invalid';
+        file_put_contents($path, json_encode($descriptor, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
+
+        $resolved = $this->registry(
+            new TrustPolicy(),
+            new FrontendDevelopmentStore('testing'),
+        )->resolve([['key' => 'demo-addon.page']]);
+
+        self::assertSame([], $resolved['plugins']);
+        self::assertSame('frontend_development_invalid', $resolved['errors'][0]['error_code']);
     }
 
     public function testRegistryExposesValidatedTrustedDesignFlows(): void
@@ -125,21 +165,6 @@ final class FrontendRegistryTest extends TestCase
         );
     }
 
-    public function testInvalidDevelopmentRegistrationIsReportedPerPlugin(): void
-    {
-        $this->writeAddon('iframe', 'index.html');
-        mkdir($this->root.'/dev', 0700, true);
-        file_put_contents($this->root.'/dev/demo-addon.json', '{invalid');
-
-        $resolved = $this->registry(
-            new TrustPolicy(),
-            new FrontendDevelopmentStore($this->root.'/dev', 'testing'),
-        )->resolve([['key' => 'demo-addon.page']]);
-
-        self::assertSame([], $resolved['plugins']);
-        self::assertSame('frontend_development_registration_invalid', $resolved['errors'][0]['error_code']);
-    }
-
     private function registry(TrustPolicy $trustPolicy, ?FrontendDevelopmentStore $development = null): FrontendRegistry
     {
         $lifecycle = new LifecycleStore($this->lifecyclePath);
@@ -150,7 +175,7 @@ final class FrontendRegistryTest extends TestCase
             $verifier,
             $trustPolicy,
             $lifecycle,
-            $development ?? new FrontendDevelopmentStore($this->root.'/dev', 'production'),
+            $development ?? new FrontendDevelopmentStore('production'),
             $this->addonsPath,
             $this->publicPath,
             'admintest',
@@ -166,6 +191,7 @@ final class FrontendRegistryTest extends TestCase
         string $entry,
         bool $localTrusted = false,
         bool $withDesignFlow = false,
+        bool $withDevelopment = false,
     ): void
     {
         $directory = $this->addonsPath.'/demo-addon';
@@ -181,6 +207,17 @@ final class FrontendRegistryTest extends TestCase
                 'capabilities' => ['schema.runtime'],
             ]],
         ];
+        if ($withDevelopment) {
+            $descriptor['development'] = [
+                'entry_url' => $sandbox === 'iframe'
+                    ? 'http://127.0.0.1:5173/index.html'
+                    : 'http://127.0.0.1:5173/src/frontend.ts',
+                'sandbox' => $sandbox,
+                'dev_revision' => 'cms-local',
+                'hmr' => true,
+                'source_maps' => true,
+            ];
+        }
         if ($withDesignFlow) {
             $descriptor['design_flows'] = [[
                 'id' => 'demo-addon.schema',

@@ -67,19 +67,6 @@
                                     "field": "role_ids"
                                 }
                             ]
-                        },
-                        {
-                            "type": "section",
-                            "title": "直接授权",
-                            "span": 24,
-                            "children": [
-                                {
-                                    "type": "field",
-                                    "field": "permissions",
-                                    "component": "permission-grant-editor",
-                                    "span": 24
-                                }
-                            ]
                         }
                     ]
                 }
@@ -278,11 +265,9 @@
                 "type": "json",
                 "label": "直接授权",
                 "persisted": false,
-                "formable": true,
-                "listable": false,
-                "extensions": {
-                    "component": "permission-grant-editor"
-                }
+                "readonly": true,
+                "formable": false,
+                "listable": false
             }
         ],
         "actions": {

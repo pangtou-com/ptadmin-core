@@ -6,6 +6,7 @@ namespace PTAdmin\Admin\Schema;
 
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Facades\Hash;
+use PTAdmin\Admin\Auth\AuthorizationResourceCatalog;
 use PTAdmin\Admin\Models\Admin;
 use PTAdmin\Admin\Models\AdminRole;
 use PTAdmin\Admin\Models\AdminResource;
@@ -24,6 +25,7 @@ final class AdminRuntimeHook
         private ConnectionInterface $database,
         private SessionManager $sessions,
         private DataScopeRegistry $scopes,
+        private AuthorizationResourceCatalog $authorizationResources,
     ) {
     }
 
@@ -75,8 +77,6 @@ final class AdminRuntimeHook
         [$resourceKey, $input, $schema, $id] = $this->contextValues($context, true);
         if ($resourceKey === 'admin.admin_users') {
             $this->syncUserRelations($id, $input);
-        } elseif ($resourceKey === 'admin.admin_roles') {
-            $this->syncRolePermissions($id, $input['permissions'] ?? []);
         }
     }
 
@@ -140,8 +140,6 @@ final class AdminRuntimeHook
             if (array_key_exists('status', $input) && !(bool) $input['status']) {
                 $this->sessions->revokeSubject(Admin::class, $id, 'admin');
             }
-        } elseif ($resourceKey === 'admin.admin_roles' && array_key_exists('permissions', $input)) {
-            $this->syncRolePermissions($id, $input['permissions']);
         }
     }
 
@@ -189,6 +187,7 @@ final class AdminRuntimeHook
             $row['permissions'] = $this->permissionPayload('role', (string) ($row['id'] ?? 0));
         } elseif ($resourceKey === 'admin.admin_resources') {
             $meta = $this->decodeMeta($row['meta_json'] ?? null);
+            $capabilities = $this->authorizationResources->capabilities($row);
             unset($row['meta_json']);
             $row['target_resource_key'] = (string) ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '');
             $row['icon'] = (string) ($row['icon'] ?? $meta['icon'] ?? '');
@@ -197,6 +196,8 @@ final class AdminRuntimeHook
             $row['owner_type'] = (string) ($meta['owner_type'] ?? ($this->isCoreResource((string) ($row['resource_key'] ?? '')) ? 'core' : 'custom'));
             $row['owner_code'] = (string) ($meta['owner_code'] ?? '');
             $row['is_core'] = $this->isCoreResource((string) ($row['resource_key'] ?? ''));
+            $row['abilities'] = $capabilities['abilities'];
+            $row['scopes'] = $capabilities['scopes'];
         }
 
         return $row;
@@ -207,6 +208,7 @@ final class AdminRuntimeHook
         return match ($type) {
             'group' => 'navigation.group',
             'schema' => 'schema.resource',
+            'plugin' => 'plugin.page',
             'external' => 'external.link',
             default => $pageKey,
         };
@@ -534,8 +536,8 @@ final class AdminRuntimeHook
         $status = (bool) ($resource['status'] ?? false);
         $meta = $this->decodeMeta($resource['meta_json'] ?? null);
 
-        if (!in_array($type, ['group', 'schema', 'page', 'external', 'action'], true)) {
-            throw $this->error('invalid_menu_resource', '资源类型只能是分组、Schema、页面、外链或操作权限。', ['field' => 'type']);
+        if (!in_array($type, ['group', 'schema', 'page', 'plugin', 'external', 'action'], true)) {
+            throw $this->error('invalid_menu_resource', '资源类型只能是分组、Schema、插件页面、宿主页面、外链或操作权限。', ['field' => 'type']);
         }
         $this->assertParentResource($resourceKey, $parentKey);
 
@@ -548,6 +550,12 @@ final class AdminRuntimeHook
         if ($type === 'group' && (($resource['page_key'] ?? '') !== '' || ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '') !== '' || ($meta['external_url'] ?? '') !== '')) {
             throw $this->error('invalid_resource_page_fields', '导航分组不能配置页面绑定。', ['field' => 'type']);
         }
+        if ($type === 'plugin' && (($resource['page_key'] ?? '') !== '' || ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '') !== '' || ($meta['external_url'] ?? '') !== '')) {
+            throw $this->error('invalid_resource_page_fields', '插件页面不能配置 page_key、target_resource_key 或 external_url。', ['field' => 'type']);
+        }
+        if ($type === 'plugin' && (string) ($resource['addon_code'] ?? '') === '') {
+            throw $this->error('invalid_plugin_resource', '插件页面必须归属于已安装插件。', ['field' => 'addon_code']);
+        }
         if ($type === 'schema' && (string) ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '') === '') {
             throw $this->error('invalid_schema_resource', 'Schema 资源必须绑定目标资源。', ['field' => 'target_resource_key']);
         }
@@ -558,10 +566,10 @@ final class AdminRuntimeHook
             throw $this->error('invalid_external_url', '外链必须配置 external_url。', ['field' => 'external_url']);
         }
         if ($isMenu) {
-            if ($path === '' || !preg_match('!^/(?:[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*)?$!', $path)) {
+            if ($type !== 'group' && ($path === '' || !preg_match('!^/(?:[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*)?$!', $path))) {
                 throw $this->error('invalid_resource_path', '菜单路径必须是以 / 开头且不包含查询参数的后台相对路径。', ['field' => 'path']);
             }
-            $pathQuery = AdminResource::query()->where('is_menu', true)->where('path', $path);
+            $pathQuery = AdminResource::query()->where('is_menu', true)->where('path', $path)->where('path', '<>', '');
             if ($currentId > 0) {
                 $pathQuery->whereKeyNot($currentId);
             }
@@ -572,7 +580,7 @@ final class AdminRuntimeHook
 
         if ($isMenu && $parentKey !== '') {
             $parent = AdminResource::query()->where('resource_key', $parentKey)->first();
-            if (!$parent || !$parent->is_menu || !in_array($parent->type, ['group', 'schema', 'page'], true)) {
+            if (!$parent || !$parent->is_menu || !in_array($parent->type, ['group', 'schema', 'page', 'plugin'], true)) {
                 throw $this->error('invalid_parent_resource', '菜单父级必须是未删除的页面菜单。', ['parent_key' => $parentKey]);
             }
             if ($status && !$parent->status) {

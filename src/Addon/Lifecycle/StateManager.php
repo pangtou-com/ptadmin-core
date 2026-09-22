@@ -73,8 +73,8 @@ final class StateManager
         if (preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1) {
             throw new AddonException('The addon code is invalid.', 'invalid_addon_code');
         }
-        $directory = $this->addonsPath.'/'.$code;
-        if (!is_dir($directory)) {
+        $directory = $this->resolveInstalledAddonDirectory($code);
+        if (null === $directory) {
             throw new AddonException('The addon is not installed.', 'addon_not_installed');
         }
         $lock = $this->locks->acquire($code);
@@ -167,5 +167,25 @@ final class StateManager
         } finally {
             $this->locks->release($lock);
         }
+    }
+
+    /** Resolve the directory's actual spelling before loading plugin PHP files. */
+    private function resolveInstalledAddonDirectory(string $code): ?string
+    {
+        if (is_dir($this->addonsPath)) {
+            foreach (glob($this->addonsPath.'/*', GLOB_ONLYDIR) ?: [] as $directory) {
+                if (strcasecmp(basename($directory), $code) !== 0) {
+                    continue;
+                }
+                $resolved = realpath($directory);
+                if (is_string($resolved) && is_dir($resolved)) {
+                    return $resolved;
+                }
+            }
+        }
+
+        $direct = realpath($this->addonsPath.'/'.$code);
+
+        return is_string($direct) && is_dir($direct) ? $direct : null;
     }
 }
