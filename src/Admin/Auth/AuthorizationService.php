@@ -9,6 +9,10 @@ use PTAdmin\Admin\Models\Admin;
 
 final class AuthorizationService
 {
+    private const ACCESS_ABILITY = 'access';
+
+    private const LEGACY_MENU_ACCESS_ABILITY = 'view';
+
     public function __construct(private ConnectionInterface $database)
     {
     }
@@ -89,7 +93,11 @@ final class AuthorizationService
         $abilities = $this->declaredAbilities($admin);
         $permissions = [];
         foreach ($resources as $resource) {
-            foreach ($abilities[(int) $resource->id] ?? [] as $ability) {
+            $candidates = array_values(array_unique(array_merge(
+                $abilities[(int) $resource->id] ?? [],
+                $this->resourceAbilities($resource),
+            )));
+            foreach ($candidates as $ability) {
                 if ($this->allows($admin, $ability, (string) $resource->resource_key)) {
                     $permissions[] = (string) $resource->resource_key.'.'.$ability;
                 }
@@ -171,7 +179,7 @@ final class AuthorizationService
                 'node' => $menu,
                 'parent_key' => (string) ($resource->parent_key ?? ''),
             ];
-            if ($this->allows($admin, 'view', (string) $resource->resource_key)) {
+            if ($this->allows($admin, self::ACCESS_ABILITY, (string) $resource->resource_key)) {
                 $allowed[(string) $resource->resource_key] = true;
             }
         }
@@ -236,7 +244,8 @@ final class AuthorizationService
         $grants = [];
         foreach ($rows as $row) {
             $abilities = $this->decodeList((string) $row->abilities_json);
-            if (!in_array($ability, $abilities, true) && !in_array('*', $abilities, true)) {
+            $effect = (string) $row->effect === 'allow' ? 'allow' : 'deny';
+            if (!$this->grantMatchesAbility($abilities, $ability, $effect)) {
                 continue;
             }
 
@@ -251,7 +260,7 @@ final class AuthorizationService
                 (int) $row->id,
                 $subjectType,
                 $subjectId,
-                (string) $row->effect === 'allow' ? 'allow' : 'deny',
+                $effect,
                 $abilities,
                 (int) $row->priority,
                 $scopeType,
@@ -261,6 +270,21 @@ final class AuthorizationService
         }
 
         return $grants;
+    }
+
+    /** @param list<string> $abilities */
+    private function grantMatchesAbility(array $abilities, string $ability, string $effect): bool
+    {
+        if (in_array($ability, $abilities, true) || in_array('*', $abilities, true)) {
+            return true;
+        }
+        if ($ability === self::ACCESS_ABILITY && in_array(self::LEGACY_MENU_ACCESS_ABILITY, $abilities, true)) {
+            return true;
+        }
+
+        return $effect === 'allow'
+            && $ability !== self::ACCESS_ABILITY
+            && array_values(array_unique($abilities)) === [self::ACCESS_ABILITY];
     }
 
     /** @param list<AuthorizationGrant> $grants */
@@ -503,6 +527,17 @@ final class AuthorizationService
             array_map('strval', $this->decode($value)),
             static fn (string $ability): bool => $ability !== '',
         ));
+    }
+
+    /** @return list<string> */
+    private function resourceAbilities(object $resource): array
+    {
+        $meta = $this->decode((string) ($resource->meta_json ?? ''));
+
+        return array_values(array_unique(array_filter(
+            array_map('strval', (array) ($meta['abilities'] ?? [])),
+            static fn (string $ability): bool => $ability !== '',
+        )));
     }
 
     /** @return array<string, mixed>|list<mixed>|null */
