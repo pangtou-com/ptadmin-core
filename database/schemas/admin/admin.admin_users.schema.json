@@ -13,6 +13,25 @@
             "allow_recycle": true
         },
         "views": {
+            "tables": {
+                "default": {
+                    "operate": {
+                        "actions": [
+                            {
+                                "action": "update"
+                            },
+                            {
+                                "action": "delete",
+                                "show_when": {
+                                    "field": "is_founder",
+                                    "op": "neq",
+                                    "value": true
+                                }
+                            }
+                        ]
+                    }
+                }
+            },
             "forms": {
                 "default": {
                     "span": 12,
@@ -64,7 +83,12 @@
                             "children": [
                                 {
                                     "type": "field",
-                                    "field": "role_ids"
+                                    "field": "role_ids",
+                                    "disabled_when": {
+                                        "field": "is_founder",
+                                        "op": "eq",
+                                        "value": true
+                                    }
                                 }
                             ]
                         }

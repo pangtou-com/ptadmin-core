@@ -151,12 +151,6 @@ parameters:
 			path: src/Admin/Schema/AdminRuntimeHook.php
 
 		-
-			message: '#^Cannot access property \$is_founder on array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model\.$#'
-			identifier: property.nonObject
-			count: 3
-			path: src/Admin/Schema/AdminRuntimeHook.php
-
-		-
 			message: '#^Cannot access property \$is_system on array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model\.$#'
 			identifier: property.nonObject
 			count: 3

@@ -91,10 +91,10 @@ final class AdminRuntimeHook
         ], true) ? time() : now();
         if ($resourceKey === 'admin.admin_users') {
             $admin = Admin::query()->findOrFail($id);
-            if ($admin->is_founder && array_key_exists('status', $input) && !(bool) $input['status']) {
+            if ((bool) $admin->getAttribute('is_founder') && array_key_exists('status', $input) && !(bool) $input['status']) {
                 throw $this->error('founder_protected', '创始人账号不能被禁用。', ['id' => $id]);
             }
-            if (array_key_exists('is_founder', $input) && (bool) $input['is_founder'] !== (bool) $admin->is_founder
+            if (array_key_exists('is_founder', $input) && (bool) $input['is_founder'] !== (bool) $admin->getAttribute('is_founder')
                 || array_key_exists('username', $input) && (string) $input['username'] !== (string) $admin->username) {
                 throw $this->error('founder_protected', '管理员用户名和创始人标记不能通过普通编辑修改。', ['id' => $id]);
             }
@@ -148,18 +148,24 @@ final class AdminRuntimeHook
         [$resourceKey, , $schema, $id] = $this->contextValues($context, true);
         $this->assertWritable($resourceKey);
         if ($resourceKey === 'admin.admin_users') {
-            $admin = Admin::query()->findOrFail($id);
-            if ($admin->is_founder) {
+            $admin = $context->stage === 'purge.before'
+                ? Admin::withTrashed()->findOrFail($id)
+                : Admin::query()->findOrFail($id);
+            if ((bool) $admin->getAttribute('is_founder')) {
                 throw $this->error('founder_protected', '创始人账号不能删除。', ['id' => $id]);
             }
             $this->sessions->revokeSubject(Admin::class, $id, 'admin');
         } elseif ($resourceKey === 'admin.admin_roles') {
-            $role = AdminRole::query()->findOrFail($id);
+            $role = $context->stage === 'purge.before'
+                ? AdminRole::withTrashed()->findOrFail($id)
+                : AdminRole::query()->findOrFail($id);
             if ($role->is_system) {
                 throw $this->error('system_role_protected', '系统角色不能删除。', ['id' => $id]);
             }
         } elseif ($resourceKey === 'admin.admin_resources') {
-            $resource = AdminResource::query()->findOrFail($id);
+            $resource = $context->stage === 'purge.before'
+                ? AdminResource::withTrashed()->findOrFail($id)
+                : AdminResource::query()->findOrFail($id);
             $this->assertResourceCanBeRemoved($resource);
         }
     }
@@ -273,6 +279,20 @@ final class AdminRuntimeHook
             sort($validRoleIds);
             if ($roleIds !== $validRoleIds) {
                 throw $this->error('invalid_role_selection', '角色选择包含不存在或已停用的角色。', ['role_ids' => $roleIds]);
+            }
+
+            $admin = $this->admin($adminId);
+            if ((bool) $admin->getAttribute('is_founder')) {
+                $currentRoleIds = $this->database->table('admin_user_roles')
+                    ->where('admin_id', $adminId)
+                    ->pluck('role_id')
+                    ->map(static fn ($id): int => (int) $id)
+                    ->values()
+                    ->all();
+                sort($currentRoleIds);
+                if ($roleIds !== $currentRoleIds) {
+                    throw $this->error('founder_protected', '创始人账号不能设置角色。', ['id' => $adminId]);
+                }
             }
 
             $this->database->transaction(function () use ($adminId, $roleIds): void {

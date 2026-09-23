@@ -94,6 +94,19 @@ final class AdminSchemaFilesTest extends TestCase
         self::assertNotContains('permissions', $this->formFields($roles['views']['forms']['default']['children']));
         self::assertNotContains('permissions', $this->formFields($users['views']['forms']['default']['children']));
 
+        self::assertSame(['update', 'delete'], array_column($users['views']['tables']['default']['operate']['actions'], 'action'));
+        self::assertSame(
+            ['field' => 'is_founder', 'op' => 'neq', 'value' => true],
+            $users['views']['tables']['default']['operate']['actions'][1]['show_when'],
+        );
+        $roleField = $this->formField($users['views']['forms']['default']['children'], 'role_ids');
+        self::assertNotSame([], $roleField);
+        self::assertTrue($this->field($users['fields'], 'role_ids')['multiple']);
+        self::assertSame(
+            ['field' => 'is_founder', 'op' => 'eq', 'value' => true],
+            $roleField['disabled_when'],
+        );
+
         $rolePermissions = $this->field($roles['fields'], 'permissions');
         $userPermissions = $this->field($users['fields'], 'permissions');
         self::assertFalse($rolePermissions['formable']);
@@ -128,5 +141,23 @@ final class AdminSchemaFilesTest extends TestCase
         }
 
         self::fail('Schema field not found: '.$name);
+    }
+
+    /** @param list<array<string, mixed>> $nodes @return array<string, mixed> */
+    private function formField(array $nodes, string $name): array
+    {
+        foreach ($nodes as $node) {
+            if (($node['field'] ?? null) === $name) {
+                return $node;
+            }
+            if (isset($node['children']) && is_array($node['children'])) {
+                $found = $this->formField($node['children'], $name);
+                if ($found !== []) {
+                    return $found;
+                }
+            }
+        }
+
+        return [];
     }
 }

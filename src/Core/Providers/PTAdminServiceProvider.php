@@ -495,6 +495,8 @@ final class PTAdminServiceProvider extends ServiceProvider
                 ->hook('update.after', AdminRuntimeHook::class, 'updated')
                 ->hook('delete.before', AdminRuntimeHook::class, 'deleting')
                 ->hook('delete.after', AdminRuntimeHook::class, 'deleted')
+                ->hook('purge.before', AdminRuntimeHook::class, 'deleting')
+                ->hook('purge.after', AdminRuntimeHook::class, 'deleted')
                 ->hook('output.transform', AdminRuntimeHook::class, 'output');
             foreach ($actions as $actionKey) {
                 $resource->action($actionKey, AdminRuntimeHook::class, 'executeAction');
