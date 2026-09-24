@@ -12,6 +12,8 @@ use PTAdmin\Admin\Models\AdminRole;
 use PTAdmin\Admin\Models\AdminResource;
 use PTAdmin\Core\Auth\DataScopeRegistry;
 use PTAdmin\Core\Auth\Session\SessionManager;
+use PTAdmin\Notice\NoticeTemplateException;
+use PTAdmin\Notice\NoticeTemplateValidator;
 use PTAdmin\Schema\Contract\SchemaError;
 use PTAdmin\Schema\Definition\Schema;
 use PTAdmin\Schema\Runtime\RuntimeHookContext;
@@ -26,6 +28,7 @@ final class AdminRuntimeHook
         private SessionManager $sessions,
         private DataScopeRegistry $scopes,
         private AuthorizationResourceCatalog $authorizationResources,
+        private NoticeTemplateValidator $noticeTemplates,
     ) {
     }
 
@@ -35,7 +38,6 @@ final class AdminRuntimeHook
         $this->assertWritable($resourceKey);
         $timestamp = in_array($resourceKey, [
             'admin.dashboard_widgets',
-            'admin.notification_scenes',
             'admin.notification_templates',
         ], true) ? time() : now();
         $prepared['created_at'] = $timestamp;
@@ -63,10 +65,8 @@ final class AdminRuntimeHook
             }
             $prepared = $this->prepareAdminResource($input, $prepared);
         }
-        if ($resourceKey === 'admin.notification_templates'
-            && ! $this->database->table('notification_scenes')->where('id', (int) ($prepared['scene_id'] ?? 0))->exists()
-        ) {
-            throw $this->error('invalid_input', '通知模板所属场景不存在。', ['field' => 'scene_id']);
+        if ($resourceKey === 'admin.notification_templates') {
+            $prepared = $this->validateNoticeTemplate($prepared);
         }
 
         return $prepared;
@@ -86,7 +86,6 @@ final class AdminRuntimeHook
         $this->assertWritable($resourceKey);
         $prepared['updated_at'] = in_array($resourceKey, [
             'admin.dashboard_widgets',
-            'admin.notification_scenes',
             'admin.notification_templates',
         ], true) ? time() : now();
         if ($resourceKey === 'admin.admin_users') {
@@ -122,11 +121,8 @@ final class AdminRuntimeHook
                 throw $this->error('resource_key_immutable', '权限资源编码创建后不能修改。', ['id' => $id]);
             }
             $prepared = $this->prepareAdminResource($input, $prepared, $resource);
-        } elseif ($resourceKey === 'admin.notification_templates'
-            && array_key_exists('scene_id', $input)
-            && ! $this->database->table('notification_scenes')->where('id', (int) ($prepared['scene_id'] ?? 0))->exists()
-        ) {
-            throw $this->error('invalid_input', '通知模板所属场景不存在。', ['field' => 'scene_id']);
+        } elseif ($resourceKey === 'admin.notification_templates') {
+            $prepared = $this->validateNoticeTemplate($prepared, $id);
         }
 
         return $prepared;
@@ -749,6 +745,16 @@ final class AdminRuntimeHook
         return $value === null || trim((string) $value) === '' ? null : trim((string) $value);
     }
 
+    /** @param array<string, mixed> $prepared @return array<string, mixed> */
+    private function validateNoticeTemplate(array $prepared, ?int $recordId = null): array
+    {
+        try {
+            return $this->noticeTemplates->validate($prepared, $recordId);
+        } catch (NoticeTemplateException $exception) {
+            throw $this->error('invalid_input', $exception->getMessage(), $exception->details);
+        }
+    }
+
     private function error(string $code, string $message, array $details = []): SchemaError
     {
         return new SchemaError($code, $message, $details);
@@ -775,7 +781,7 @@ final class AdminRuntimeHook
             'admin.notifications', 'admin.notification_templates',
             'admin.admin_users', 'admin.admin_roles', 'admin.admin_resources',
             'admin.dashboard_widgets', 'admin.notification_scenes', 'admin.notification_messages',
-            'admin.notification_receipts', 'admin.notification_deliveries',
+            'admin.notification_deliveries', 'admin.notice_channels',
             'schema.resources', 'admin.config', 'tasks', 'core.tasks', 'core.update',
             'admin.frontend', 'addon.manage', 'addon.download', 'addon.install',
             'addon.update', 'addon.uninstall', 'addon.frontend', 'addon.enable', 'addon.disable',
@@ -785,13 +791,14 @@ final class AdminRuntimeHook
     private function assertWritable(string $resourceKey): void
     {
         if (in_array($resourceKey, [
+            'admin.notification_scenes',
+            'admin.notice_channels',
             'admin.login_logs',
             'admin.operation_records',
             'admin.notification_messages',
-            'admin.notification_receipts',
             'admin.notification_deliveries',
         ], true)) {
-            throw $this->error('read_only_resource', '审计资源只允许查询。', ['resource_key' => $resourceKey]);
+            throw $this->error('read_only_resource', '该资源由系统维护，只允许查询。', ['resource_key' => $resourceKey]);
         }
     }
 

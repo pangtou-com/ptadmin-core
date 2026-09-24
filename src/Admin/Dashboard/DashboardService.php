@@ -232,7 +232,7 @@ final class DashboardService
     {
         $roleCount = $this->database->table('admin_user_roles')->where('admin_id', $admin->getKey())->count();
         $resourceCount = $this->database->table('admin_resources')->where('status', true)->whereNull('deleted_at')->count();
-        $unreadCount = $this->database->table('notification_receipts')
+        $unreadCount = $this->database->table('notice_messages')
             ->where('receiver_type', 'admin')
             ->where('receiver_id', (int) $admin->getKey())
             ->whereNull('deleted_at')

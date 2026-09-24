@@ -12,6 +12,7 @@ use PTAdmin\Admin\Navigation\MenuSynchronizer;
 use PTAdmin\Core\Config\ConfigService;
 use PTAdmin\Core\Config\ConfigException;
 use PTAdmin\Core\Dictionary\DictionarySynchronizer;
+use PTAdmin\Notice\NoticeSynchronizer;
 use PTAdmin\Core\Http\AdminFrontendRouteRegistrar;
 use PTAdmin\Core\Install\Exceptions\InvalidInstallStateException;
 use PTAdmin\Schema\SchemaFile\SchemaFileSynchronizer;
@@ -38,6 +39,7 @@ final class InstallService
         private SchemaFileSynchronizer $schemaSynchronizer,
         private MenuSynchronizer $menus,
         private RuntimeCacheStore $runtimeCache,
+        private ?NoticeSynchronizer $notices = null,
     ) {
     }
 
@@ -91,6 +93,7 @@ final class InstallService
                     $blocked['risk']
                 ));
             }
+            $this->notices?->syncCore();
             $state = $this->stateStore->writeState(array_merge($state, [
                 'stage' => 'schema_ready',
                 'core_schema_resources' => array_column($coreSchemaResults, 'resource'),

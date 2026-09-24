@@ -1,9 +1,9 @@
 {
     "resource": "admin.notification_templates",
-    "table_name": "notification_templates",
+    "table_name": "notice_templates",
     "migration_owner": "domain",
     "schema": {
-        "name": "notification_templates",
+        "name": "notice_templates",
         "title": "通知模板",
         "description": "管理通知场景的渠道模板和语言版本。",
         "features": {
@@ -38,7 +38,12 @@
                 "normalize": {
                     "trim": true
                 },
-                "validation": []
+                "validation": [],
+                "reference": {
+                    "resource": "admin.notice_channels",
+                    "value_field": "code",
+                    "label_field": "title"
+                }
             },
             {
                 "name": "locale",
@@ -47,6 +52,7 @@
                 "persisted": true,
                 "required": true,
                 "formable": true,
+                "default": "zh-CN",
                 "listable": true,
                 "searchable": true,
                 "sortable": true,
@@ -61,7 +67,8 @@
                 "label": "内容模式",
                 "persisted": true,
                 "required": true,
-                "formable": true,
+                "formable": false,
+                "default": "content",
                 "listable": true,
                 "searchable": true,
                 "sortable": true,

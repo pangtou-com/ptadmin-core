@@ -148,7 +148,7 @@
         "status": true,
         "sort": 80,
         "icon": "bell",
-        "abilities": ["list", "view", "create", "update", "delete"]
+        "abilities": ["list", "view"]
     },
     {
         "resource_key": "admin.notification_templates",

@@ -8,6 +8,7 @@ use PTAdmin\Admin\Http\Controllers\AssetController;
 use PTAdmin\Admin\Http\Controllers\DashboardController;
 use PTAdmin\Admin\Http\Controllers\DictionaryController;
 use PTAdmin\Admin\Http\Controllers\LoginController;
+use PTAdmin\Admin\Http\Controllers\NoticeTemplateController;
 use PTAdmin\Admin\Http\Controllers\ProfileController;
 use PTAdmin\Admin\Http\Controllers\PublicDictionaryController;
 use PTAdmin\Core\Http\Controllers\AddonController;
@@ -117,6 +118,11 @@ Route::middleware($authenticatedMiddleware)
             ->middleware('ptadmin.permission:assets,restore')
             ->name('restore');
     });
+
+Route::middleware($authenticatedMiddleware)
+    ->get($apiPrefix.'/notice-templates/options', [NoticeTemplateController::class, 'options'])
+    ->middleware('ptadmin.permission:admin.notification_templates,view')
+    ->name('ptadmin.notice-templates.options');
 
 Route::middleware($authenticatedMiddleware)
     ->prefix($apiPrefix.'/dictionaries')

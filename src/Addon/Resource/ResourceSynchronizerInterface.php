@@ -14,7 +14,7 @@ interface ResourceSynchronizerInterface
     /**
      * 同步插件当前声明，并停用同一插件先前存在但本次已移除的定义。
      *
-     * @return array{schemas:int,configs:int,dicts:int,admin_resources:int}
+     * @return array{schemas:int,configs:int,dicts:int,notices:int,admin_resources:int}
      */
     public function sync(string $directory, string $code): array;
 

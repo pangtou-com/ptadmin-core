@@ -16,11 +16,11 @@ final class AdminSchemaFilesTest extends TestCase
         'admin.admin_resources' => ['table' => 'admin_resources', 'name' => 'admin_resources'],
         'admin.admin_roles' => ['table' => 'admin_roles', 'name' => 'admin_roles'],
         'admin.admin_users' => ['table' => 'admins', 'name' => 'admin_users'],
-        'admin.notification_deliveries' => ['table' => 'notification_deliveries', 'name' => 'notification_deliveries'],
-        'admin.notification_messages' => ['table' => 'notification_messages', 'name' => 'notification_messages'],
-        'admin.notification_receipts' => ['table' => 'notification_receipts', 'name' => 'notification_receipts'],
-        'admin.notification_scenes' => ['table' => 'notification_scenes', 'name' => 'notification_scenes'],
-        'admin.notification_templates' => ['table' => 'notification_templates', 'name' => 'notification_templates'],
+        'admin.notification_deliveries' => ['table' => 'notice_deliveries', 'name' => 'notice_deliveries'],
+        'admin.notification_messages' => ['table' => 'notice_messages', 'name' => 'notice_messages'],
+        'admin.notification_scenes' => ['table' => 'notice_scenes', 'name' => 'notice_scenes'],
+        'admin.notification_templates' => ['table' => 'notice_templates', 'name' => 'notice_templates'],
+        'admin.notice_channels' => ['table' => 'notice_channels', 'name' => 'notice_channels'],
         'admin.operation_records' => ['table' => 'admin_operation_records', 'name' => 'operation_records'],
     ];
 

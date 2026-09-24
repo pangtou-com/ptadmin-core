@@ -108,7 +108,7 @@ final class CoreMenuDefinitionTest extends TestCase
             $resources['admin.menus']['abilities'],
         );
         self::assertSame(
-            ['list', 'view', 'create', 'update', 'delete'],
+            ['list', 'view'],
             $resources['admin.notifications']['abilities'],
         );
         self::assertSame(

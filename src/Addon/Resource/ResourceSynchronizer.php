@@ -10,6 +10,7 @@ use PTAdmin\Addon\Exception\AddonException;
 use PTAdmin\Core\Config\ConfigService;
 use PTAdmin\Core\Config\Models\ConfigDefinition;
 use PTAdmin\Core\Dictionary\DictionarySynchronizer;
+use PTAdmin\Notice\NoticeSynchronizer;
 use PTAdmin\Schema\Contracts\ResourceServiceInterface;
 use PTAdmin\Schema\Meta\Models\Resource;
 use PTAdmin\Schema\SchemaFile\SchemaFileSynchronizer;
@@ -30,18 +31,19 @@ final class ResourceSynchronizer implements ResourceSynchronizerInterface
         private SchemaFileSynchronizer $schemaSynchronizer,
         private MenuSynchronizer $menus,
         private DictionarySynchronizer $dictionaries,
+        private NoticeSynchronizer $notices,
     ) {
     }
 
     /**
      * 以插件 code 作为稳定 Owner 同步全部资源，并拒绝需要显式危险发布确认的 Schema 变更。
      *
-     * @return array{schemas:int,configs:int,dicts:int,admin_resources:int}
+     * @return array{schemas:int,configs:int,dicts:int,notices:int,admin_resources:int}
      */
     public function sync(string $directory, string $code): array
     {
         return $this->database->transaction(function () use ($directory, $code): array {
-            $counts = ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'admin_resources' => 0];
+            $counts = ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'notices' => 0, 'admin_resources' => 0];
             $ownerCode = strtolower($code);
             $schemaKeys = [];
             $configKeys = [];
@@ -80,6 +82,7 @@ final class ResourceSynchronizer implements ResourceSynchronizerInterface
             $menuResult = $this->menus->syncAddon($directory, $code);
             $counts['admin_resources'] = count($menuResult['resource_keys']);
             $counts['dicts'] = $this->dictionaries->syncAddon($directory, $ownerCode);
+            $counts['notices'] = $this->notices->syncAddon($directory, $ownerCode);
             $schemaQuery = Resource::query()->where(['owner_type' => 'addon', 'owner_code' => $ownerCode]);
             if ($schemaKeys !== []) {
                 $schemaQuery->whereNotIn('resource_key', $schemaKeys);
@@ -108,6 +111,7 @@ final class ResourceSynchronizer implements ResourceSynchronizerInterface
             }
             $this->menus->deactivateAddon($ownerCode);
             $this->dictionaries->deactivate('plugin', $ownerCode);
+            $this->notices->deactivate('addon', $ownerCode);
         });
     }
 

@@ -1,0 +1,88 @@
+{
+    "resource": "admin.notice_channels",
+    "table_name": "notice_channels",
+    "migration_owner": "domain",
+    "schema": {
+        "name": "notice_channels",
+        "title": "发送渠道",
+        "description": "查询 Core 和插件通过代码注册的发送渠道。",
+        "features": {
+            "layout": "single",
+            "read_only": true
+        },
+        "actions": {
+            "create": { "enabled": false },
+            "update": { "enabled": false },
+            "delete": { "enabled": false }
+        },
+        "fields": [
+            {
+                "name": "source_type",
+                "type": "string",
+                "label": "来源类型",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "source_code",
+                "type": "string",
+                "label": "来源编码",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "code",
+                "type": "string",
+                "label": "渠道编码",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true
+            },
+            {
+                "name": "type",
+                "type": "string",
+                "label": "渠道类型",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true
+            },
+            {
+                "name": "title",
+                "type": "string",
+                "label": "渠道名称",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true
+            },
+            {
+                "name": "editor",
+                "type": "string",
+                "label": "模板编辑器",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "enabled",
+                "type": "boolean",
+                "label": "是否启用",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true,
+                "sortable": true
+            }
+        ]
+    }
+}

@@ -39,6 +39,13 @@ use PTAdmin\Core\Config\ConfigValueCodec;
 use PTAdmin\Core\Dictionary\DictionaryResolver;
 use PTAdmin\Core\Dictionary\DictionaryService;
 use PTAdmin\Core\Dictionary\DictionarySynchronizer;
+use PTAdmin\Notice\NoticeRegistry;
+use PTAdmin\Notice\NoticeSynchronizer;
+use PTAdmin\Notice\NoticeChannelAdapterRegistry;
+use PTAdmin\Notice\NoticeChannelRouter;
+use PTAdmin\Notice\NoticeManager;
+use PTAdmin\Notice\NoticeTemplateResolver;
+use PTAdmin\Notice\NoticeTemplateValidator;
 use PTAdmin\Core\Tasks\TaskEventLog;
 use PTAdmin\Core\Tasks\TaskManager;
 use PTAdmin\Core\Tasks\TaskStore;
@@ -129,6 +136,13 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app->singleton(ConfigService::class);
         $this->app->singleton(DictionaryService::class);
         $this->app->singleton(DictionarySynchronizer::class);
+        $this->app->singleton(NoticeRegistry::class);
+        $this->app->singleton(NoticeSynchronizer::class);
+        $this->app->singleton(NoticeChannelAdapterRegistry::class);
+        $this->app->singleton(NoticeChannelRouter::class);
+        $this->app->singleton(NoticeManager::class);
+        $this->app->singleton(NoticeTemplateResolver::class);
+        $this->app->singleton(NoticeTemplateValidator::class);
         $this->app->singleton(DictionaryResolver::class);
         $this->app->alias(DictionaryResolver::class, DictionaryResolverInterface::class);
         $this->app->singleton(TaskStore::class, static function (): TaskStore {
