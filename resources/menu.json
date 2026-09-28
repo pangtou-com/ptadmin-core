@@ -108,11 +108,11 @@
         "abilities": ["view", "design", "update"]
     },
     {
-        "resource_key": "admin.notifications",
+        "resource_key": "admin.notification_templates",
         "title": "通知场景",
         "type": "schema",
         "parent_key": "admin",
-        "target_resource_key": "admin.notification_scenes",
+        "target_resource_key": "admin.notification_templates",
         "path": "/admin/notifications/templates",
         "is_menu": true,
         "status": true,
