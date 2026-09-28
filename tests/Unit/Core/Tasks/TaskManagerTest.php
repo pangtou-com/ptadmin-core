@@ -34,10 +34,6 @@ final class TaskManagerTest extends TestCase
         self::assertSame(['version' => '1.2.0'], $task['payload']);
         self::assertTrue($task['can_cancel']);
 
-        $secretTask = $this->tasks->create(TaskManager::CORE_UPDATE, ['token' => 'private-value', 'message' => 'secret=private-value']);
-        self::assertSame('[redacted]', $secretTask['payload']['token']);
-        self::assertSame('secret=[redacted]', $secretTask['payload']['message']);
-
         $this->tasks->start($task['task_id'], 'download');
         $this->tasks->heartbeat($task['task_id'], 'verify', 45, 'token=private-value', ['token' => 'private-value']);
         self::assertSame('token=[redacted]', $this->tasks->get($task['task_id'])['message']);
@@ -52,6 +48,10 @@ final class TaskManagerTest extends TestCase
         self::assertSame(2, $events['events'][2]['cursor']);
         self::assertStringContainsString('token=[redacted]', $events['events'][2]['message']);
         self::assertSame('[redacted]', $events['events'][2]['data']['token']);
+
+        $secretTask = $this->tasks->create(TaskManager::CORE_UPDATE, ['token' => 'private-value', 'message' => 'secret=private-value']);
+        self::assertSame('[redacted]', $secretTask['payload']['token']);
+        self::assertSame('secret=[redacted]', $secretTask['payload']['message']);
     }
 
     public function testInvalidTransitionsAndRetryLimitAreRejected(): void
@@ -135,6 +135,93 @@ final class TaskManagerTest extends TestCase
         }
         $this->expectException(TaskException::class);
         $this->tasks->registerType(TaskManager::CORE_UPDATE, 'cms.seo');
+    }
+
+    public function testAnotherManagerCannotCreateAnOperationUntilTheCurrentOneEnds(): void
+    {
+        $first = $this->tasks->create(TaskManager::ADDON_INSTALL);
+        $store = new TaskStore($this->directory);
+        $otherManager = new TaskManager($store, new TaskEventLog($store));
+        foreach (['pending', 'running'] as $state) {
+            if ($state === 'running') {
+                $this->tasks->start($first['task_id']);
+            }
+            try {
+                $otherManager->create(TaskManager::ADMIN_FRONTEND_UPDATE);
+                self::fail('Another operation must be rejected.');
+            } catch (TaskException $exception) {
+                self::assertSame('task_in_progress', $exception->errorCode);
+                self::assertSame($first['task_id'], $exception->details['task_id']);
+            }
+        }
+        $this->tasks->succeed($first['task_id']);
+        self::assertSame('pending', $otherManager->create(TaskManager::ADMIN_FRONTEND_UPDATE)['status']);
+    }
+
+    public function testChildrenRunSequentiallyWithinOneOperation(): void
+    {
+        $parent = $this->tasks->create(TaskManager::ADDON_INSTALL);
+        $first = $this->tasks->create(TaskManager::ADDON_DOWNLOAD, [], null, 1, null, $parent['task_id']);
+        $second = $this->tasks->create(TaskManager::ADDON_INSTALL, [], null, 1, null, $parent['task_id']);
+        $this->tasks->start($parent['task_id']);
+        $this->tasks->start($first['task_id']);
+        try {
+            $this->tasks->start($second['task_id']);
+            self::fail('Sibling steps must not run concurrently.');
+        } catch (TaskException $exception) {
+            self::assertSame('task_in_progress', $exception->errorCode);
+            self::assertSame($parent['task_id'], $exception->details['task_id']);
+        }
+        self::assertSame('pending', $this->tasks->get($second['task_id'])['status']);
+        $this->tasks->succeed($first['task_id']);
+        self::assertSame('running', $this->tasks->start($second['task_id'])['status']);
+    }
+
+    public function testRetryCannotOverlapAnotherOperationAndFailureKeepsItsStage(): void
+    {
+        $first = $this->tasks->create(TaskManager::ADDON_INSTALL, [], null, 2);
+        $this->tasks->start($first['task_id']);
+        $this->tasks->heartbeat($first['task_id'], 'verify', 45, 'Checking package');
+        $failed = $this->tasks->fail($first['task_id'], ['message' => 'Checksum mismatch']);
+        self::assertSame('verify', $failed['stage']);
+        self::assertSame(45, $failed['progress']);
+        $second = $this->tasks->create(TaskManager::ADMIN_FRONTEND_UPDATE);
+        try {
+            $this->tasks->retry($first['task_id']);
+            self::fail('Retry must respect the operation lock.');
+        } catch (TaskException $exception) {
+            self::assertSame('task_in_progress', $exception->errorCode);
+        }
+        self::assertSame('failed', $this->tasks->get($first['task_id'])['status']);
+        $this->tasks->cancel($second['task_id']);
+        self::assertSame('pending', $this->tasks->retry($first['task_id'])['status']);
+    }
+
+    public function testUnrelatedModuleTasksDoNotBlockInstallation(): void
+    {
+        $this->tasks->registerType('cms.seo.push', 'cms.seo');
+        $this->tasks->create('cms.seo.push');
+        self::assertSame('pending', $this->tasks->create(TaskManager::ADDON_INSTALL)['status']);
+    }
+
+    public function testCancellingAGroupCancelsQueuedChildrenButCannotInterruptRunningChildren(): void
+    {
+        $parent = $this->tasks->create(TaskManager::ADDON_INSTALL);
+        $child = $this->tasks->create(TaskManager::ADDON_DOWNLOAD, [], null, 1, null, $parent['task_id']);
+        $this->tasks->start($parent['task_id']);
+        $this->tasks->start($child['task_id']);
+        self::assertFalse($this->tasks->get($parent['task_id'])['can_cancel']);
+        try {
+            $this->tasks->cancel($parent['task_id']);
+            self::fail('The parent must not abandon a running child.');
+        } catch (TaskException $exception) {
+            self::assertSame('task_not_cancellable', $exception->errorCode);
+        }
+        $this->tasks->succeed($child['task_id']);
+        $queued = $this->tasks->create(TaskManager::ADDON_INSTALL, [], null, 1, null, $parent['task_id']);
+        $this->tasks->cancel($parent['task_id']);
+        self::assertSame('cancelled', $this->tasks->get($queued['task_id'])['status']);
+        self::assertSame('pending', $this->tasks->create(TaskManager::ADMIN_FRONTEND_UPDATE)['status']);
     }
 
     private function remove(string $path): void

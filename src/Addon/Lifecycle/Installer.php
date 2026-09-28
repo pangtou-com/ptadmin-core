@@ -49,6 +49,7 @@ final class Installer
      * @param bool $update true 表示目标插件必须已安装，false 表示不允许覆盖现有插件
      * @param string|null $expectedCode 任务请求指定的插件编码，用于阻止包身份与操作目标不一致
      * @param string|null $expectedSha256 下载阶段记录的 artifact 摘要，用于安装前再次确认包未被替换
+     * @param callable(string, int, string): void|null $onProgress 阶段变化回调，由任务执行器写入过程日志
      * @return array<string, mixed>
      * @throws \JsonException
      * @throws \Throwable
@@ -59,14 +60,24 @@ final class Installer
         bool $update = false,
         ?string $expectedCode = null,
         ?string $expectedSha256 = null,
+        ?callable $onProgress = null,
     ): array {
+        if ($onProgress !== null) {
+            $onProgress('verify', 10, '正在校验安装包摘要。');
+        }
         $this->verifyArtifactChecksum($source, $expectedSha256);
         $stage = $this->stagingPath.'/'.bin2hex(random_bytes(8));
         if (!is_dir($stage) && !mkdir($stage, 0700, true) && !is_dir($stage)) {
             throw new RuntimeException('Unable to create addon task staging directory.');
         }
         try {
+            if ($onProgress !== null) {
+                $onProgress('extracting', 20, '正在解压插件包。');
+            }
             $package = $this->extractor->extract($source, $stage.'/package');
+            if ($onProgress !== null) {
+                $onProgress('verifying', 30, '正在校验插件清单与签名。');
+            }
             $manifest = $this->verifier->verify($package, $this->requireSignature);
             $code = (string) $manifest['code'];
             if ($expectedCode !== null && strcasecmp($expectedCode, $code) !== 0) {
@@ -85,6 +96,9 @@ final class Installer
             }
             if (($previousLifecycle['state'] ?? null) === 'disposed') {
                 $this->lifecycle->transition($code, 'discovered');
+            }
+            if ($onProgress !== null) {
+                $onProgress('installing', 45, '正在安装插件文件。');
             }
             $this->lifecycle->transition($code, 'validating', ['version' => $manifest['version']]);
             $this->lifecycle->transition($code, 'loading');
@@ -106,11 +120,20 @@ final class Installer
             }
             $frontendSource = $target.'/Frontend/dist';
             // 数据库资源在事务内同步；文件与前端产物由外层 catch 使用目录备份执行补偿回滚。
-            $activate = function () use ($target, $code, $manifest, $frontendSource, $webPrefix, $update): array {
+            $activate = function () use ($target, $code, $manifest, $frontendSource, $webPrefix, $update, $onProgress): array {
+                if ($onProgress !== null) {
+                    $onProgress('sync_resources', 60, '正在同步插件资源。');
+                }
                 $synced = $this->resourceSynchronizer?->sync($target, $code) ?? ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'notices' => 0, 'admin_resources' => 0];
+                if ($onProgress !== null) {
+                    $onProgress('install_hooks', 75, '正在执行插件安装流程。');
+                }
                 $this->lifecycleRegistrar?->invoke('install', $target, $code, $manifest);
                 $this->lifecycle->transition($code, 'ready', ['version' => $manifest['version'], 'manifest' => $manifest]);
                 $this->lifecycle->transition($code, 'active');
+                if ($onProgress !== null) {
+                    $onProgress('publishing', 90, '正在发布插件前端资源。');
+                }
                 if (is_dir($frontendSource)) {
                     $this->frontend->publish($webPrefix, $code, $frontendSource);
                 } elseif ($update) {

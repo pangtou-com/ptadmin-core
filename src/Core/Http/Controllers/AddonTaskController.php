@@ -108,7 +108,8 @@ final class AddonTaskController extends Controller
             );
             return AdminResponse::success('', $result, 202);
         } catch (TaskException $exception) {
-            return AdminResponse::error(42200, $exception->getMessage(), ['error_code' => $exception->errorCode, 'details' => $exception->details], 422);
+            $status = $exception->errorCode === 'task_in_progress' ? 409 : 422;
+            return AdminResponse::error($status === 409 ? 40900 : 42200, $exception->getMessage(), ['error_code' => $exception->errorCode, 'details' => $exception->details], $status);
         }
     }
 

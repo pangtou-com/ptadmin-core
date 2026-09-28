@@ -119,6 +119,7 @@ final class TaskController extends Controller
     private function error(TaskException $exception): JsonResponse
     {
         $status = match ($exception->errorCode) {
+            'task_in_progress' => 409,
             'task_not_found' => 404,
             'unauthorized' => 401,
             'forbidden' => 403,
@@ -128,6 +129,7 @@ final class TaskController extends Controller
             401 => 40100,
             403 => 40300,
             404 => 40400,
+            409 => 40900,
             default => 42200,
         };
 

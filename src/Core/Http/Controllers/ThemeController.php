@@ -85,7 +85,7 @@ final class ThemeController extends Controller
 
             return AdminResponse::success('', $task, 202);
         } catch (TaskException $exception) {
-            $status = $exception->errorCode === 'idempotency_key_conflict' ? 409 : 422;
+            $status = in_array($exception->errorCode, ['idempotency_key_conflict', 'task_in_progress'], true) ? 409 : 422;
             return AdminResponse::error($status === 409 ? 40900 : 42200, $exception->getMessage(), ['error_code' => $exception->errorCode, 'details' => $exception->details], $status);
         }
     }
@@ -207,7 +207,7 @@ final class ThemeController extends Controller
 
             return AdminResponse::success('', $task, 202);
         } catch (TaskException $exception) {
-            $status = $exception->errorCode === 'idempotency_key_conflict' ? 409 : 422;
+            $status = in_array($exception->errorCode, ['idempotency_key_conflict', 'task_in_progress'], true) ? 409 : 422;
             return AdminResponse::error($status === 409 ? 40900 : 42200, $exception->getMessage(), ['error_code' => $exception->errorCode, 'details' => $exception->details], $status);
         }
     }

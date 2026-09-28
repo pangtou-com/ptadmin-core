@@ -67,6 +67,11 @@ final class TaskManager
         'replace',
         'activating',
         'activate',
+        'activated',
+        'published',
+        'sync_resources',
+        'install_hooks',
+        'removing',
     ];
 
     private TaskStore $store;
@@ -117,6 +122,7 @@ final class TaskManager
                     return $this->snapshot((string) $existing['task_id'], $existing);
                 }
             }
+            $this->assertOperationAvailable($type, $parentTaskId);
             $taskId = $this->uuid();
             $createdAt = $this->timestamp();
             $state = [
@@ -184,7 +190,11 @@ final class TaskManager
                 $snapshots[] = $this->snapshot($taskId, $state);
             }
         }
-        usort($snapshots, static fn (array $left, array $right): int => strcmp((string) ($right['created_at'] ?? ''), (string) ($left['created_at'] ?? '')));
+        usort($snapshots, static function (array $left, array $right): int {
+            $leftActive = in_array($left['status'], ['pending', 'running'], true) && ($left['parent_task_id'] ?? null) === null;
+            $rightActive = in_array($right['status'], ['pending', 'running'], true) && ($right['parent_task_id'] ?? null) === null;
+            return ($rightActive <=> $leftActive) ?: strcmp($right['created_at'], $left['created_at']);
+        });
         $total = count($snapshots);
         return ['total' => $total, 'results' => array_slice($snapshots, 0, max(1, min(200, $limit)))];
     }
@@ -192,9 +202,13 @@ final class TaskManager
     /** @return array<string, mixed> */
     public function start(string $taskId, string $stage = 'running', ?string $requestId = null): array
     {
-        return $this->transition($taskId, 'running', $stage, 0, 'Task started.', [], $requestId, static function (array $state): array {
-            $state['attempt'] = (int) ($state['attempt'] ?? 0) + 1;
-            return $state;
+        return $this->store->withCreationLock(function () use ($taskId, $stage, $requestId): array {
+            $state = $this->assertExists($taskId);
+            $this->assertOperationAvailable((string) $state['type'], $state['parent_task_id'] ?? null, $taskId, true);
+            return $this->transition($taskId, 'running', $stage, 0, 'Task started.', [], $requestId, static function (array $state): array {
+                $state['attempt'] = (int) ($state['attempt'] ?? 0) + 1;
+                return $state;
+            });
         });
     }
 
@@ -206,6 +220,9 @@ final class TaskManager
             throw new TaskException('Only running tasks can send a heartbeat.', 'invalid_task_status');
         }
         $updated = $this->store->updateState($taskId, function (array $current) use ($stage, $progress, $message): array {
+            if ($current['status'] !== 'running') {
+                throw new TaskException('Only running tasks can send a heartbeat.', 'invalid_task_status');
+            }
             $current['stage'] = $stage;
             $current['progress'] = max(0, min(100, $progress));
             if ($message !== '') {
@@ -230,7 +247,9 @@ final class TaskManager
     /** @param array<string, mixed> $error */
     public function fail(string $taskId, array $error, string $stage = 'failed', ?string $requestId = null): array
     {
-        $this->transition($taskId, 'failed', $stage, 0, (string) ($error['message'] ?? 'Task failed.'), $error, $requestId);
+        $state = $this->assertExists($taskId);
+        $stage = $stage === 'failed' ? (string) $state['stage'] : $stage;
+        $this->transition($taskId, 'failed', $stage, $state['progress'], (string) ($error['message'] ?? 'Task failed.'), $error, $requestId);
         $this->store->updateState($taskId, function (array $state) use ($error): array {
             $state['error_code'] = (string) ($error['code'] ?? 'task_failed');
             $state['error_message'] = TaskRedactor::message((string) ($error['message'] ?? 'Task failed.'));
@@ -243,7 +262,9 @@ final class TaskManager
     /** @param array<string, mixed> $reason */
     public function block(string $taskId, array $reason, string $stage = 'blocked', ?string $requestId = null): array
     {
-        $this->transition($taskId, 'blocked', $stage, 0, (string) ($reason['message'] ?? 'Task blocked.'), $reason, $requestId);
+        $state = $this->assertExists($taskId);
+        $stage = $stage === 'blocked' ? (string) $state['stage'] : $stage;
+        $this->transition($taskId, 'blocked', $stage, $state['progress'], (string) ($reason['message'] ?? 'Task blocked.'), $reason, $requestId);
         $this->store->updateState($taskId, function (array $state) use ($reason): array {
             $state['error_code'] = (string) ($reason['code'] ?? 'task_blocked');
             $state['error_message'] = TaskRedactor::message((string) ($reason['message'] ?? 'Task blocked.'));
@@ -256,11 +277,25 @@ final class TaskManager
     /** @return array<string, mixed> */
     public function cancel(string $taskId, string $message = 'Task cancelled.', ?string $requestId = null): array
     {
-        $state = $this->assertExists($taskId);
-        if (($state['status'] ?? null) === 'running' && in_array((string) ($state['stage'] ?? ''), self::IRREVERSIBLE_STAGES, true)) {
-            throw new TaskException('The task cannot be cancelled after its irreversible stage has started.', 'task_not_cancellable', ['stage' => $state['stage']]);
-        }
-        return $this->transition($taskId, 'cancelled', 'cancelled', 0, $message, [], $requestId);
+        return $this->store->withCreationLock(function () use ($taskId, $message, $requestId): array {
+            $state = $this->assertExists($taskId);
+            $children = $this->descendants($taskId);
+            foreach ($children as $child) {
+                if ($child['status'] === 'running') {
+                    throw new TaskException('当前子步骤正在执行，请等待步骤结束后再取消。', 'task_not_cancellable');
+                }
+            }
+            if (($state['status'] ?? null) === 'running' && in_array((string) ($state['stage'] ?? ''), self::IRREVERSIBLE_STAGES, true)) {
+                throw new TaskException('The task cannot be cancelled after its irreversible stage has started.', 'task_not_cancellable', ['stage' => $state['stage']]);
+            }
+            $this->transition($taskId, 'cancelled', 'cancelled', 0, $message, [], $requestId);
+            foreach ($children as $child) {
+                if ($child['status'] === 'pending') {
+                    $this->transition($child['task_id'], 'cancelled', 'cancelled', 0, '所属操作已取消。', [], $requestId);
+                }
+            }
+            return $this->get($taskId);
+        });
     }
 
     /** @return array<string, mixed> */
@@ -273,10 +308,14 @@ final class TaskManager
         if ((int) ($state['attempt'] ?? 0) >= (int) ($state['max_attempts'] ?? 1)) {
             throw new TaskException('The task has reached its retry limit.', 'retry_limit_reached');
         }
-        return $this->transition($taskId, 'pending', 'queued', 0, 'Task requeued.', [], $requestId, static function (array $current): array {
-            $current['error_code'] = null;
-            $current['error_message'] = null;
-            return $current;
+        return $this->store->withCreationLock(function () use ($taskId, $requestId): array {
+            $state = $this->assertExists($taskId);
+            $this->assertOperationAvailable((string) $state['type'], $state['parent_task_id'] ?? null, $taskId);
+            return $this->transition($taskId, 'pending', 'queued', 0, 'Task requeued.', [], $requestId, static function (array $current): array {
+                $current['error_code'] = null;
+                $current['error_message'] = null;
+                return $current;
+            });
         });
     }
 
@@ -330,6 +369,9 @@ final class TaskManager
             if (!in_array($status, self::TRANSITIONS[(string) ($current['status'] ?? '')] ?? [], true)) {
                 throw new TaskException('The task status transition is invalid.', 'invalid_task_transition');
             }
+            if ($status === 'cancelled' && $current['status'] === 'running' && in_array($current['stage'], self::IRREVERSIBLE_STAGES, true)) {
+                throw new TaskException('The task cannot be cancelled after its irreversible stage has started.', 'task_not_cancellable');
+            }
             $current['status'] = $status;
             $current['stage'] = $stage;
             $current['progress'] = max(0, min(100, $progress));
@@ -381,6 +423,14 @@ final class TaskManager
             }
             usort($children, static fn (array $left, array $right): int => strcmp((string) ($left['created_at'] ?? ''), (string) ($right['created_at'] ?? '')));
             $snapshot['children'] = $children;
+            if ($canCancel) {
+                foreach ($this->descendants($taskId) as $child) {
+                    if ($child['status'] === 'running') {
+                        $snapshot['can_cancel'] = false;
+                        break;
+                    }
+                }
+            }
         }
 
         return $snapshot;
@@ -394,6 +444,69 @@ final class TaskManager
             throw new TaskException('The task was not found.', 'task_not_found', ['task_id' => $taskId]);
         }
         return $state;
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function descendants(string $taskId): array
+    {
+        $states = [];
+        foreach (glob($this->store->root().'/*/state.json') ?: [] as $path) {
+            $state = $this->store->readState(basename(dirname($path)));
+            if (is_array($state)) {
+                $states[$state['task_id']] = $state;
+            }
+        }
+        $children = [];
+        foreach ($states as $state) {
+            $parentId = $state['parent_task_id'] ?? null;
+            while ($parentId !== null) {
+                if ($parentId === $taskId) {
+                    $children[] = $state;
+                    break;
+                }
+                $parentId = $states[$parentId]['parent_task_id'] ?? null;
+            }
+        }
+        return $children;
+    }
+
+    /** 安装与更新共用文件锁；同一次操作允许子步骤排队，但兄弟步骤不能并行执行。 */
+    private function assertOperationAvailable(string $type, ?string $parentTaskId, ?string $taskId = null, bool $starting = false): void
+    {
+        if (!isset(self::TASK_PERMISSIONS[$type])) {
+            return;
+        }
+        $ancestors = [];
+        $rootId = $taskId;
+        for ($parentId = $parentTaskId; $parentId !== null; $parentId = $parent['parent_task_id'] ?? null) {
+            $parent = $this->assertExists($parentId);
+            if (!in_array($parent['status'], ['pending', 'running'], true)) {
+                throw new TaskException('所属安装或更新已经结束，不能继续执行子步骤。', 'parent_task_finished');
+            }
+            $ancestors[] = $parentId;
+            $rootId = $parentId;
+        }
+        foreach (glob($this->store->root().'/*/state.json') ?: [] as $path) {
+            $other = $this->store->readState(basename(dirname($path)));
+            if (!is_array($other) || !isset(self::TASK_PERMISSIONS[$other['type']])
+                || !in_array($other['status'], ['pending', 'running'], true) || $other['task_id'] === $taskId) {
+                continue;
+            }
+            if ($starting && $other['status'] === 'pending') {
+                continue;
+            }
+            $otherRoot = $other;
+            while (($otherRoot['parent_task_id'] ?? null) !== null) {
+                $otherRoot = $this->assertExists($otherRoot['parent_task_id']);
+            }
+            $sameOperation = $rootId !== null && $otherRoot['task_id'] === $rootId;
+            if ($sameOperation && (!$starting || in_array($other['task_id'], $ancestors, true))) {
+                continue;
+            }
+            throw new TaskException('已有安装或更新正在进行，请先查看当前执行进度。', 'task_in_progress', [
+                'task_id' => $otherRoot['task_id'],
+            ]);
+        }
     }
 
     private function timestamp(): string

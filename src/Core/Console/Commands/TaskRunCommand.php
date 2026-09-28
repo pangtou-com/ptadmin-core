@@ -19,6 +19,7 @@ final class TaskRunCommand extends Command
     public function handle(TaskManager $tasks, TaskExecutorRegistry $executors): int
     {
         $taskId = (string) $this->argument('task_id');
+        $started = false;
         try {
             $task = $tasks->get($taskId);
             if (in_array($task['status'] ?? null, ['succeeded', 'cancelled'], true)) {
@@ -30,6 +31,7 @@ final class TaskRunCommand extends Command
                 return self::FAILURE;
             }
             $tasks->start($taskId, 'starting');
+            $started = true;
             if (!$executors->has((string) $task['type'])) {
                 $tasks->block($taskId, ['code' => 'executor_unavailable', 'message' => 'Task executor is not installed yet.']);
                 $this->error('No executor is registered for this task type.');
@@ -41,7 +43,9 @@ final class TaskRunCommand extends Command
             return self::SUCCESS;
         } catch (TaskException $exception) {
             try {
-                $tasks->fail($taskId, ['code' => $exception->errorCode, 'message' => $exception->getMessage()]);
+                if ($started) {
+                    $tasks->fail($taskId, ['code' => $exception->errorCode, 'message' => $exception->getMessage()]);
+                }
             } catch (TaskException) {
                 // A missing task cannot be transitioned; preserve the command error.
             }
