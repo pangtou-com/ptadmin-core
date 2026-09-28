@@ -94,18 +94,31 @@ final class AdminSchemaFilesTest extends TestCase
         self::assertNotContains('permissions', $this->formFields($roles['views']['forms']['default']['children']));
         self::assertNotContains('permissions', $this->formFields($users['views']['forms']['default']['children']));
 
-        self::assertSame(['update', 'delete'], array_column($users['views']['tables']['default']['operate']['actions'], 'action'));
+        self::assertSame(['update', 'sync_roles', 'reset_password', 'delete'], array_column($users['views']['tables']['default']['operate']['actions'], 'action'));
+        self::assertSame(
+            ['field' => 'is_founder', 'op' => 'neq', 'value' => true],
+            $users['views']['tables']['default']['operate']['actions'][3]['show_when'],
+        );
+        self::assertNotContains('role_ids', $this->formFields($users['views']['forms']['default']['children']));
+        self::assertFalse($this->field($users['fields'], 'role_ids')['formable']);
+        self::assertSame(['role_ids'], $this->formFields($users['views']['forms']['sync_roles']['children']));
+        self::assertSame(['password', 'password_confirmation'], $this->formFields($users['views']['forms']['reset_password']['children']));
+        self::assertSame('record', $users['actions']['sync_roles']['scope']);
+        self::assertSame('record', $users['actions']['reset_password']['scope']);
         self::assertSame(
             ['field' => 'is_founder', 'op' => 'neq', 'value' => true],
             $users['views']['tables']['default']['operate']['actions'][1]['show_when'],
         );
-        $roleField = $this->formField($users['views']['forms']['default']['children'], 'role_ids');
-        self::assertNotSame([], $roleField);
-        self::assertTrue($this->field($users['fields'], 'role_ids')['multiple']);
+        $avatarField = $this->formField($users['views']['forms']['default']['children'], 'avatar');
+        self::assertSame('image-upload', $avatarField['component']);
+        self::assertSame('url', $avatarField['props']['valueMode']);
         self::assertSame(
-            ['field' => 'is_founder', 'op' => 'eq', 'value' => true],
-            $roleField['disabled_when'],
+            ['username', 'nickname', 'password', 'email', 'mobile', 'avatar', 'status'],
+            $this->formFields($users['views']['forms']['default']['children']),
         );
+        self::assertArrayNotHasKey('title', $users['views']['forms']['default']['children'][0]);
+        self::assertSame('昵称', $this->field($users['fields'], 'nickname')['label']);
+        self::assertSame('用户名或昵称', $this->field($users['fields'], 'account_keyword')['label']);
 
         $rolePermissions = $this->field($roles['fields'], 'permissions');
         $userPermissions = $this->field($users['fields'], 'permissions');

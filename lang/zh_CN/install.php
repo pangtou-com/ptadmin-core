@@ -103,7 +103,7 @@ return [
         'username_required' => '请输入管理员登录账户。',
         'password_required' => '请输入管理员登录密码。',
         'password_min' => '管理员密码至少需要 6 个字符。',
-        'password_max' => '管理员密码不能超过 4096 个字符。',
+        'password_max' => '管理员密码不能超过 36 个字符。',
         'password_confirmed' => '两次输入的管理员密码不一致。',
         'nickname_required' => '请输入管理员显示名称。',
     ],

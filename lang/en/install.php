@@ -103,7 +103,7 @@ return [
         'username_required' => 'Please enter the administrator username.',
         'password_required' => 'Please enter the administrator password.',
         'password_min' => 'The administrator password must be at least 6 characters.',
-        'password_max' => 'The administrator password must not exceed 4096 characters.',
+        'password_max' => 'The administrator password must not exceed 36 characters.',
         'password_confirmed' => 'The administrator password confirmation does not match.',
         'nickname_required' => 'Please enter the administrator display name.',
     ],

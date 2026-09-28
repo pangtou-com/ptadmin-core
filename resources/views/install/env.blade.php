@@ -69,7 +69,7 @@
             <div class="install-form-grid">
                 <label class="install-field">
                     <span class="install-field-label"><span class="required">*</span> {{ __('ptadmin::install.fields.username') }}</span>
-                    <input type="text" name="username" placeholder="{{ __('ptadmin::install.placeholders.username') }}" autocomplete="username" class="install-input" minlength="3" maxlength="100" pattern="[A-Za-z0-9_.-]+" required>
+                    <input type="text" name="username" placeholder="{{ __('ptadmin::install.placeholders.username') }}" autocomplete="username" class="install-input" minlength="4" maxlength="36" pattern="[A-Za-z0-9_.-]+" required>
                 </label>
                 <label class="install-field">
                     <span class="install-field-label"><span class="required">*</span> {{ __('ptadmin::install.fields.nickname') }}</span>
@@ -77,11 +77,11 @@
                 </label>
                 <label class="install-field">
                     <span class="install-field-label"><span class="required">*</span> {{ __('ptadmin::install.fields.password') }}</span>
-                    <input type="password" name="password" placeholder="{{ __('ptadmin::install.placeholders.password') }}" autocomplete="new-password" class="install-input" required minlength="6">
+                    <input type="password" name="password" placeholder="{{ __('ptadmin::install.placeholders.password') }}" autocomplete="new-password" class="install-input" required minlength="6" maxlength="36">
                 </label>
                 <label class="install-field">
                     <span class="install-field-label"><span class="required">*</span> {{ __('ptadmin::install.fields.password_confirmation') }}</span>
-                    <input type="password" name="password_confirmation" placeholder="{{ __('ptadmin::install.placeholders.password_confirmation') }}" autocomplete="new-password" class="install-input" required minlength="6">
+                    <input type="password" name="password_confirmation" placeholder="{{ __('ptadmin::install.placeholders.password_confirmation') }}" autocomplete="new-password" class="install-input" required minlength="6" maxlength="36">
                 </label>
                 <label class="install-field">
                     <span class="install-field-label">{{ __('ptadmin::install.fields.email') }}</span>

@@ -55,7 +55,7 @@ final class ProfileController extends Controller
         try {
             $data = $request->validate([
                 'current_password' => ['required', 'string'],
-                'password' => ['required', 'string', 'min:6', 'max:4096', 'confirmed'],
+                'password' => ['required', 'string', 'min:6', 'max:36', 'confirmed'],
             ]);
         } catch (ValidationException $exception) {
             return AdminResponse::error(42200, '密码信息校验失败。', $exception->errors(), 422);

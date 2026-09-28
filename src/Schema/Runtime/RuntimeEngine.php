@@ -1141,6 +1141,30 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         foreach ($filters as $filter) {
             $field = (string) ($filter['field'] ?? '');
             $op = strtolower((string) ($filter['operator'] ?? 'eq'));
+            $extensions = (array) ($fields[$field]['extensions'] ?? []);
+            $searchFields = $extensions['search']['fields'] ?? [];
+            if ($searchFields !== []) {
+                if ($op !== 'contains' || !is_string($filter['value'] ?? null)) {
+                    throw $this->error('invalid_input', '组合搜索只支持 contains 字符串查询。', ['field' => $field]);
+                }
+                $keyword = trim($filter['value']);
+                if ($keyword === '') {
+                    continue;
+                }
+                foreach ($searchFields as $searchField) {
+                    if (empty($fields[$searchField]['persisted']) || empty($fields[$searchField]['searchable'])
+                        || FieldProtection::mode($fields[$searchField]) === 'encrypted') {
+                        throw $this->error('invalid_input', '组合搜索包含不可查询字段。', ['field' => $searchField]);
+                    }
+                }
+                // OR 只在组合搜索内部生效，外层权限范围和其他筛选仍以 AND 叠加。
+                $builder->where(function ($nested) use ($searchFields, $keyword): void {
+                    foreach ($searchFields as $searchField) {
+                        $nested->orWhere($searchField, 'like', '%'.$keyword.'%');
+                    }
+                });
+                continue;
+            }
             if (!isset($fields[$field]) || empty($fields[$field]['persisted'])) {
                 continue;
             }

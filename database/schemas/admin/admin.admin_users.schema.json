@@ -13,13 +13,34 @@
             "allow_recycle": true
         },
         "views": {
+            "searches": {
+                "default": {
+                    "fields": ["account_keyword", "email", "mobile", "status"]
+                }
+            },
             "tables": {
                 "default": {
+                    "columns": [
+                        { "field": "username" },
+                        { "field": "nickname" },
+                        { "field": "email" },
+                        { "field": "mobile" },
+                        { "field": "status" },
+                        { "field": "is_founder" },
+                        { "field": "login_at", "minWidth": 200 },
+                        { "field": "login_ip" }
+                    ],
                     "operate": {
+                        "minWidth": 320,
                         "actions": [
+                            { "action": "update" },
                             {
-                                "action": "update"
+                                "action": "sync_roles",
+                                "title": "设置角色",
+                                "icon": "users",
+                                "show_when": { "field": "is_founder", "op": "neq", "value": true }
                             },
+                            { "action": "reset_password", "title": "重置密码", "icon": "key-round" },
                             {
                                 "action": "delete",
                                 "show_when": {
@@ -33,6 +54,30 @@
                 }
             },
             "forms": {
+                "sync_roles": {
+                    "title": "",
+                    "span": 24,
+                    "props": { "labelPosition": "top" },
+                    "children": [{ "type": "field", "field": "role_ids" }]
+                },
+                "reset_password": {
+                    "title": "",
+                    "span": 24,
+                    "props": { "labelPosition": "top" },
+                    "children": [{
+                        "type": "field",
+                        "field": "password",
+                        "title": "新密码",
+                        "component": "password",
+                        "help": "6–36 个字符。",
+                        "props": { "autocomplete": "new-password", "showPassword": true }
+                    }, {
+                        "type": "field",
+                        "field": "password_confirmation",
+                        "component": "password",
+                        "props": { "autocomplete": "new-password", "showPassword": true }
+                    }]
+                },
                 "default": {
                     "span": 12,
                     "gap": 18,
@@ -42,16 +87,30 @@
                     "children": [
                         {
                             "type": "section",
-                            "title": "账号信息",
                             "span": 24,
                             "children": [
                                 {
                                     "type": "field",
-                                    "field": "username"
+                                    "field": "username",
+                                    "help": "4–36 个字符，支持字母、数字、点、下划线和短横线。",
+                                    "readonly_when": {
+                                        "field": "formMode",
+                                        "op": "eq",
+                                        "value": "edit"
+                                    }
                                 },
                                 {
                                     "type": "field",
                                     "field": "nickname"
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "password",
+                                    "component": "password",
+                                    "help": "6–36 个字符。",
+                                    "props": {
+                                        "autocomplete": "new-password"
+                                    }
                                 },
                                 {
                                     "type": "field",
@@ -63,32 +122,21 @@
                                 },
                                 {
                                     "type": "field",
-                                    "field": "avatar"
+                                    "field": "avatar",
+                                    "component": "image-upload",
+                                    "span": 24,
+                                    "props": {
+                                        "accept": "image/*",
+                                        "groupCode": "default",
+                                        "limit": 1,
+                                        "pickText": "从素材库选择",
+                                        "uploadText": "上传头像",
+                                        "valueMode": "url"
+                                    }
                                 },
                                 {
                                     "type": "field",
                                     "field": "status"
-                                },
-                                {
-                                    "type": "field",
-                                    "field": "password",
-                                    "component": "password"
-                                }
-                            ]
-                        },
-                        {
-                            "type": "section",
-                            "title": "角色",
-                            "span": 24,
-                            "children": [
-                                {
-                                    "type": "field",
-                                    "field": "role_ids",
-                                    "disabled_when": {
-                                        "field": "is_founder",
-                                        "op": "eq",
-                                        "value": true
-                                    }
                                 }
                             ]
                         }
@@ -97,6 +145,21 @@
             }
         },
         "fields": [
+            {
+                "name": "account_keyword",
+                "type": "string",
+                "label": "用户名或昵称",
+                "persisted": false,
+                "readonly": true,
+                "formable": false,
+                "listable": false,
+                "searchable": true,
+                "extensions": {
+                    "search": {
+                        "fields": ["username", "nickname"]
+                    }
+                }
+            },
             {
                 "name": "username",
                 "type": "string",
@@ -113,15 +176,15 @@
                 "validation": [
                     {
                         "type": "pattern",
-                        "value": "^[A-Za-z0-9_.-]{3,100}$",
-                        "message": "用户名只能包含字母、数字、点、下划线和短横线，长度为 3 到 100 个字符"
+                        "value": "^[A-Za-z0-9_.-]{4,36}$",
+                        "message": "用户名只能包含字母、数字、点、下划线和短横线，长度为 4 到 36 个字符"
                     }
                 ]
             },
             {
                 "name": "nickname",
                 "type": "string",
-                "label": "显示名称",
+                "label": "昵称",
                 "persisted": true,
                 "required": true,
                 "formable": true,
@@ -133,7 +196,7 @@
                     {
                         "type": "max_length",
                         "value": 100,
-                        "message": "显示名称不能超过 100 个字符"
+                        "message": "昵称不能超过 100 个字符"
                     }
                 ]
             },
@@ -191,7 +254,7 @@
                 "persisted": true,
                 "required": false,
                 "formable": true,
-                "listable": true,
+                "listable": false,
                 "searchable": false,
                 "sortable": false,
                 "normalize": {
@@ -224,7 +287,7 @@
                 "readonly": true,
                 "formable": false,
                 "listable": true,
-                "searchable": true,
+                "searchable": false,
                 "sortable": true
             },
             {
@@ -235,6 +298,7 @@
                 "readonly": true,
                 "formable": false,
                 "listable": true,
+                "searchable": false,
                 "sortable": true
             },
             {
@@ -244,14 +308,15 @@
                 "persisted": true,
                 "readonly": true,
                 "formable": false,
-                "listable": true
+                "listable": true,
+                "searchable": false
             },
             {
                 "name": "password",
                 "type": "string",
                 "label": "密码",
                 "persisted": false,
-                "required": true,
+                "required": false,
                 "formable": true,
                 "listable": false,
                 "extensions": {
@@ -261,14 +326,32 @@
                 },
                 "validation": [
                     {
+                        "type": "required",
+                        "when": {
+                            "field": "action",
+                            "op": "eq",
+                            "value": "create"
+                        },
+                        "message": "管理员密码不能为空。"
+                    },
+                    {
                         "type": "complexity",
                         "params": {
                             "min_length": 6,
-                            "max_length": 4096
+                            "max_length": 36
                         },
-                        "message": "密码长度必须为 6 到 4096 个字符"
+                        "message": "密码长度必须为 6 到 36 个字符"
                     }
                 ]
+            },
+            {
+                "name": "password_confirmation",
+                "type": "string",
+                "label": "确认新密码",
+                "persisted": false,
+                "formable": false,
+                "listable": false,
+                "extensions": { "secret": { "readable": false } }
             },
             {
                 "name": "role_ids",
@@ -276,7 +359,7 @@
                 "label": "角色",
                 "persisted": false,
                 "multiple": true,
-                "formable": true,
+                "formable": false,
                 "listable": false,
                 "reference": {
                     "resource": "admin.admin_roles",
@@ -296,13 +379,18 @@
         ],
         "actions": {
             "sync_roles": {
-                "label": "设置角色"
+                "title": "设置角色",
+                "kind": "custom",
+                "scope": "record",
+                "show_when": { "field": "is_founder", "op": "neq", "value": true }
             },
             "sync_permissions": {
                 "label": "设置直接授权"
             },
             "reset_password": {
-                "label": "重置密码"
+                "title": "重置密码",
+                "kind": "custom",
+                "scope": "record"
             },
             "revoke_sessions": {
                 "label": "撤销会话"

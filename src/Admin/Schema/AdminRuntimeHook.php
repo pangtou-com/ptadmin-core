@@ -99,10 +99,9 @@ final class AdminRuntimeHook
             }
             if (array_key_exists('password', $input)) {
                 $password = (string) $input['password'];
-                if ($password === '') {
-                    throw $this->error('invalid_input', '管理员密码不能为空。', ['field' => 'password']);
+                if ($password !== '') {
+                    $prepared['password'] = Hash::make($password);
                 }
-                $prepared['password'] = Hash::make($password);
             }
         } elseif ($resourceKey === 'admin.admin_roles') {
             $role = AdminRole::query()->findOrFail($id);
@@ -233,9 +232,16 @@ final class AdminRuntimeHook
         }
         if ($resourceKey === 'admin.admin_users' && $action === 'reset_password') {
             $this->admin($id);
-            $password = (string) (($input['data'] ?? [])['password'] ?? '');
-            if (strlen($password) < 6 || strlen($password) > 4096) {
-                throw $this->error('invalid_input', '新密码长度必须为 6 到 4096 个字符。', ['field' => 'password']);
+            $password = ($input['data'] ?? [])['password'] ?? null;
+            if (!is_string($password) || mb_strlen($password) < 6 || mb_strlen($password) > 36) {
+                throw $this->error('invalid_input', '新密码长度必须为 6 到 36 个字符。', ['field' => 'password']);
+            }
+            $confirmation = ($input['data'] ?? [])['password_confirmation'] ?? null;
+            if (!is_string($confirmation) || $confirmation === '') {
+                throw $this->error('invalid_input', '请再次输入新密码。', ['field' => 'password_confirmation']);
+            }
+            if ($password !== $confirmation) {
+                throw $this->error('invalid_input', '两次输入的新密码不一致。', ['field' => 'password_confirmation']);
             }
             Admin::query()->whereKey($id)->update(['password' => Hash::make($password), 'updated_at' => now()]);
             $this->sessions->revokeSubject(Admin::class, $id, 'admin');

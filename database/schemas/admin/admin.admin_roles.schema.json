@@ -42,32 +42,25 @@
                     },
                     "children": [
                         {
-                            "type": "section",
-                            "title": "角色信息",
-                            "span": 24,
-                            "children": [
-                                {
-                                    "type": "field",
-                                    "field": "code"
-                                },
-                                {
-                                    "type": "field",
-                                    "field": "name"
-                                },
-                                {
-                                    "type": "field",
-                                    "field": "description",
-                                    "span": 24
-                                },
-                                {
-                                    "type": "field",
-                                    "field": "status"
-                                },
-                                {
-                                    "type": "field",
-                                    "field": "sort"
-                                }
-                            ]
+                            "type": "field",
+                            "field": "code"
+                        },
+                        {
+                            "type": "field",
+                            "field": "name"
+                        },
+                        {
+                            "type": "field",
+                            "field": "description",
+                            "span": 24
+                        },
+                        {
+                            "type": "field",
+                            "field": "status"
+                        },
+                        {
+                            "type": "field",
+                            "field": "sort"
                         }
                     ]
                 }
@@ -136,18 +129,7 @@
                 "default": true,
                 "formable": true,
                 "listable": true,
-                "searchable": true,
-                "sortable": true
-            },
-            {
-                "name": "is_system",
-                "type": "boolean",
-                "label": "系统角色",
-                "persisted": true,
-                "readonly": true,
-                "formable": false,
-                "listable": true,
-                "searchable": true,
+                "searchable": false,
                 "sortable": true
             },
             {
@@ -158,7 +140,7 @@
                 "default": 0,
                 "formable": true,
                 "listable": true,
-                "sortable": true
+                "sortable": false
             },
             {
                 "name": "permissions",

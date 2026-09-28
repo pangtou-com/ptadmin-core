@@ -189,6 +189,30 @@ final class Validator
                 $issues[] = $this->issue('invalid_extension', 'extensions.authorization.owner_field', 'authorization owner_field must reference a persisted field');
             }
         }
+        foreach ((array) ($schema['fields'] ?? []) as $index => $field) {
+            $fieldExtensions = (array) ($field['extensions'] ?? []);
+            if (!isset($fieldExtensions['search'])) {
+                continue;
+            }
+            $path = 'fields.'.$index.'.extensions.search';
+            $search = (array) $fieldExtensions['search'];
+            $targets = $search['fields'] ?? null;
+            if (!empty($field['persisted']) || ($field['type'] ?? '') !== 'string' || empty($field['searchable'])) {
+                $issues[] = $this->issue('invalid_extension', $path, '组合搜索必须声明为可搜索的非持久化字符串字段');
+            }
+            if (!is_array($targets) || !array_is_list($targets) || $targets === []) {
+                $issues[] = $this->issue('invalid_extension', $path.'.fields', '组合搜索必须声明非空目标字段列表');
+                continue;
+            }
+            foreach ($targets as $target) {
+                $definition = is_string($target) ? ($names[$target] ?? null) : null;
+                if ($definition === null || empty($definition['persisted']) || empty($definition['searchable'])
+                    || ($definition['type'] ?? '') !== 'string' || !empty($definition['multiple'])
+                    || FieldProtection::mode($definition) === 'encrypted') {
+                    $issues[] = $this->issue('invalid_extension', $path.'.fields', '组合搜索目标必须是可搜索的非加密持久化单值字符串字段');
+                }
+            }
+        }
         $this->validateState($schema, $names, $issues);
         $this->validateTree($schema, $names, $issues);
         return $issues;

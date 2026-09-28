@@ -347,11 +347,11 @@ final class InstallService
         string $appUrl
     ): void
     {
-        if (preg_match('/^[A-Za-z0-9_.-]{3,100}$/', $username) !== 1) {
+        if (preg_match('/^[A-Za-z0-9_.-]{4,36}$/', $username) !== 1) {
             throw new InvalidInstallStateException('The administrator username is invalid.');
         }
-        if (strlen($password) < 6 || strlen($password) > 4096) {
-            throw new InvalidInstallStateException('管理员密码长度必须为 6 到 4096 个字符。');
+        if (mb_strlen($password) < 6 || mb_strlen($password) > 36) {
+            throw new InvalidInstallStateException('管理员密码长度必须为 6 到 36 个字符。');
         }
         if ($nickname === '' || mb_strlen($nickname) > 100) {
             throw new InvalidInstallStateException('The administrator nickname is invalid.');

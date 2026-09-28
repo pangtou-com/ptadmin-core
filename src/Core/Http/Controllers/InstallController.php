@@ -27,8 +27,8 @@ final class InstallController extends Controller
         }
 
         $validator = Validator::make($input, [
-            'username' => ['required', 'string', 'regex:/^[A-Za-z0-9_.-]{3,100}$/'],
-            'password' => ['required', 'string', 'min:6', 'max:4096'],
+            'username' => ['required', 'string', 'regex:/^[A-Za-z0-9_.-]{4,36}$/'],
+            'password' => ['required', 'string', 'min:6', 'max:36'],
             'nickname' => ['nullable', 'string', 'max:100'],
             'email' => ['nullable', 'email', 'max:255'],
             'mobile' => ['nullable', 'string', 'max:30'],
