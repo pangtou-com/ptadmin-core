@@ -8,6 +8,8 @@ final class NoticeChannel
 {
     public const IN_APP_CODE = 'ptadmin.in_app';
 
+    public const EMAIL_CODE = 'ptadmin.email';
+
     public static function register(string $type, string $title): NoticeChannelDefinitionBuilder
     {
         return app(NoticeRegistry::class)->channel($type, $title);

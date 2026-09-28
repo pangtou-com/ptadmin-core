@@ -6,6 +6,7 @@ namespace PTAdmin\Core\Config;
 
 use InvalidArgumentException;
 use PTAdmin\Schema\Definition\Schema;
+use PTAdmin\Schema\Support\FieldProtection;
 
 /**
  * 按配置 Schema 处理对象值。未知字段、类型、必填字段和封闭选项在写入前拒绝。
@@ -39,15 +40,19 @@ final class ConfigValueCodec
         $result = $existing;
         foreach ($fields as $name => $field) {
             if (array_key_exists($name, $input)) {
+                if (FieldProtection::mode($field) === 'encrypted' && ($input[$name] === '' || $input[$name] === null)) {
+                    continue;
+                }
                 $result[$name] = $this->cast($input[$name], $field);
                 $this->validateOptions($result[$name], $field);
+                $result[$name] = FieldProtection::store($result[$name], $field);
                 continue;
             }
             if (array_key_exists($name, $existing)) {
                 continue;
             }
             if (array_key_exists('default', $field)) {
-                $result[$name] = $this->cast($field['default'], $field);
+                $result[$name] = FieldProtection::store($this->cast($field['default'], $field), $field);
                 continue;
             }
             if (!empty($field['required'])) {
@@ -56,13 +61,8 @@ final class ConfigValueCodec
         }
 
         foreach ($fields as $name => $field) {
-            if (!array_key_exists($name, $result)) {
-                continue;
-            }
-            $secret = (array) (($field['extensions'] ?? [])['secret'] ?? []);
-            $mode = strtolower((string) ($secret['storage_mode'] ?? ''));
-            if (in_array($mode, ['hash', 'hashed'], true) && array_key_exists($name, $input)) {
-                $result[$name] = hash('sha256', (string) $result[$name]);
+            if (FieldProtection::mode($field) === 'encrypted' && !empty($field['required']) && !array_key_exists($name, $result)) {
+                throw new InvalidArgumentException('Required configuration field is missing: '.$name);
             }
         }
 
@@ -74,24 +74,22 @@ final class ConfigValueCodec
      * @param array<string, mixed> $stored
      * @return array<string, mixed>
      */
-    public function decode(array $schemaData, array $stored): array
+    public function decode(array $schemaData, array $stored, bool $includeDefaults = true): array
     {
         $schema = new Schema($schemaData);
         $result = [];
-        foreach ((array) $schema->fields as $field) {
+        foreach ($schema->toArray()['fields'] as $field) {
             $name = (string) ($field['name'] ?? '');
+            if (FieldProtection::hidden($field)) {
+                continue;
+            }
             if (!array_key_exists($name, $stored)) {
-                if (array_key_exists('default', $field)) {
-                    $result[$name] = $field['default'];
+                if ($includeDefaults && array_key_exists('default', $field)) {
+                    $result[$name] = FieldProtection::output(FieldProtection::store($field['default'], $field), $field);
                 }
                 continue;
             }
-            $secret = (array) (($field['extensions'] ?? [])['secret'] ?? []);
-            $mode = strtolower((string) ($secret['storage_mode'] ?? ''));
-            if ($secret !== [] && (empty($secret['readable']) || in_array($mode, ['hash', 'hashed'], true))) {
-                continue;
-            }
-            $result[$name] = $stored[$name];
+            $result[$name] = FieldProtection::output($stored[$name], $field);
         }
 
         return $result;

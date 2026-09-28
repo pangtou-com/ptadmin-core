@@ -16,6 +16,7 @@ final class NoticeSynchronizer
     public function syncCore(): int
     {
         $this->registry->ensureCoreInAppChannel();
+        $this->registry->ensureCoreEmailChannel();
 
         return $this->sync('system', 'ptadmin');
     }

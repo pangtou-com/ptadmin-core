@@ -19,7 +19,7 @@ final class ConfigController extends Controller
     public function definitions(Request $request, ConfigService $configs): JsonResponse
     {
         return AdminResponse::success('', [
-            'results' => $configs->definitions($request->only(['owner_type', 'owner_code', 'group_code', 'config_key'])),
+            'results' => $configs->definitions($request->only(['owner_type', 'owner_code', 'group_code', 'config_key']), false),
             'groups' => \PTAdmin\Core\Config\ConfigGroups::all(),
         ]);
     }
@@ -57,6 +57,7 @@ final class ConfigController extends Controller
     public function show(string $ownerType, string $ownerCode, string $configKey, Request $request, ConfigService $configs): JsonResponse
     {
         try {
+            $configs->assertGenericAccess($ownerType, $ownerCode, $configKey);
             return AdminResponse::success('', $configs->get(
                 $ownerType,
                 $ownerCode,
@@ -72,7 +73,7 @@ final class ConfigController extends Controller
     public function addonDefinitions(string $code, ConfigService $configs): JsonResponse
     {
         return AdminResponse::success('', [
-            'results' => $configs->definitions(['owner_type' => 'addon', 'owner_code' => $code]),
+            'results' => $configs->definitions(['owner_type' => 'addon', 'owner_code' => $code], false),
         ]);
     }
 
@@ -95,6 +96,7 @@ final class ConfigController extends Controller
         }
 
         try {
+            $configs->assertGenericAccess($ownerType, $ownerCode, $configKey);
             return AdminResponse::success('', $configs->put(
                 $ownerType,
                 $ownerCode,
@@ -114,10 +116,11 @@ final class ConfigController extends Controller
         $status = match ($exception->errorCode) {
             'config_not_found', 'config_scope_not_available' => 404,
             'config_revision_conflict' => 409,
+            'config_dedicated_editor_required' => 403,
             default => 422,
         };
 
-        return AdminResponse::error(42200, $exception->getMessage(), [
+        return AdminResponse::error($status === 403 ? 40300 : 42200, $exception->getMessage(), [
             'error_code' => $exception->errorCode,
             'details' => $exception->details,
         ], $status);

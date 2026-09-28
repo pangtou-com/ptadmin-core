@@ -102,7 +102,12 @@ final class InstallService
             $this->progress($progress, 'schema_ready');
 
             $this->progress($progress, 'config_syncing');
+            config(['app.name' => $appName]);
             $configDefinitions = $this->syncConfigDefinitions();
+            $site = $this->configs->get('core', 'ptadmin', 'site');
+            if (($site['effective_values']['url'] ?? '') === '') {
+                $this->configs->put('core', 'ptadmin', 'site', ['url' => $appUrl]);
+            }
             $state = $this->stateStore->writeState(array_merge($state, [
                 'stage' => 'config_ready',
                 'config_definitions' => $configDefinitions,
@@ -232,7 +237,6 @@ final class InstallService
         $runtimeDefaults = match ($configKey) {
             'site' => [
                 'site_name' => (string) config('app.name', 'PTAdmin'),
-                'site_url' => (string) config('app.url', 'http://localhost'),
             ],
             'mail' => [
                 'mailer' => (string) config('mail.default', 'log'),

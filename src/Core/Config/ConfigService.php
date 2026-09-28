@@ -7,7 +7,10 @@ namespace PTAdmin\Core\Config;
 use PTAdmin\Core\Config\Models\ConfigDefinition;
 use PTAdmin\Core\Config\Models\ConfigValue;
 use PTAdmin\Schema\Definition\Schema;
+use PTAdmin\Schema\Support\FieldProtection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Arr;
 use Throwable;
 
 /**
@@ -17,6 +20,42 @@ final class ConfigService
 {
     public function __construct(private ConfigValueCodec $codec)
     {
+    }
+
+    /** 通过配置组与字段路径读取生效值，默认读取 Core 配置，例如 site.url。 */
+    public function value(string $path, string $ownerType = 'core', string $ownerCode = 'ptadmin'): mixed
+    {
+        $segments = explode('.', $path, 2);
+        if (count($segments) !== 2 || $segments[0] === '' || $segments[1] === '') {
+            throw new ConfigException('Configuration path must contain a group and field: '.$path, 'config_path_invalid');
+        }
+        $configuration = $this->get($ownerType, $ownerCode, $segments[0]);
+
+        return Arr::get($configuration['effective_values'], $segments[1]);
+    }
+
+    /** 服务端专用：读取并解密指定凭据，不暴露给配置 HTTP 接口。 */
+    public function secretValue(string $path, string $ownerType = 'core', string $ownerCode = 'ptadmin'): ?string
+    {
+        $segments = explode('.', $path, 2);
+        if (count($segments) !== 2 || $segments[0] === '' || $segments[1] === '') {
+            throw new ConfigException('Configuration path must contain a group and field: '.$path, 'config_path_invalid');
+        }
+        $definition = $this->definition($ownerType, $ownerCode, $segments[0]);
+        foreach ((array) ($definition->schema_json['fields'] ?? []) as $field) {
+            if ($field['name'] !== $segments[1]) {
+                continue;
+            }
+            if (FieldProtection::mode($field) !== 'encrypted') {
+                throw new ConfigException('Configuration field is not encrypted: '.$path, 'config_secret_invalid');
+            }
+            $value = ConfigValue::query()->where([
+                'owner_type' => $ownerType, 'owner_code' => $ownerCode, 'config_key' => $segments[0],
+                'scope_type' => 'global', 'scope_id' => '',
+            ])->first();
+            return FieldProtection::reveal($value?->value_json[$segments[1]] ?? null, $field);
+        }
+        throw new ConfigException('Configuration secret field was not found: '.$path, 'config_secret_invalid');
     }
 
     /**
@@ -59,6 +98,9 @@ final class ConfigService
         $schemaData = (array) ($input['schema'] ?? []);
         $schemaData['name'] = self::schemaName($configKey, $schemaData['name'] ?? null);
         $schemaData['title'] = (string) ($schemaData['title'] ?? $title);
+        if (!in_array(data_get($schemaData, 'extensions.ptadmin.configuration.management', 'generic'), ['generic', 'dedicated'], true)) {
+            throw new ConfigException('Configuration management must be generic or dedicated.', 'config_definition_invalid');
+        }
         $schema = new Schema($schemaData);
         $issues = $schema->validate();
         if ($issues !== []) {
@@ -73,6 +115,24 @@ final class ConfigService
             'owner_code' => $ownerCode,
             'config_key' => $configKey,
         ]);
+        if ($definition->exists) {
+            $previousFields = array_column((array) ($definition->schema_json['fields'] ?? []), null, 'name');
+            foreach ($normalized['fields'] as $field) {
+                $previousMode = FieldProtection::mode($previousFields[$field['name']] ?? []);
+                $nextMode = FieldProtection::mode($field);
+                if ($previousMode === $nextMode || !in_array('encrypted', [$previousMode, $nextMode], true)) {
+                    continue;
+                }
+                $values = ConfigValue::query()->where([
+                    'owner_type' => $ownerType, 'owner_code' => $ownerCode, 'config_key' => $configKey,
+                ])->get();
+                foreach ($values as $value) {
+                    if (array_key_exists($field['name'], (array) $value->getAttribute('value_json'))) {
+                        throw new ConfigException('Configuration secret storage changes require a data migration: '.$configKey.'.'.$field['name'], 'config_secret_migration_required');
+                    }
+                }
+            }
+        }
         $definition->fill([
             'group_code' => $groupCode,
             'title' => $title,
@@ -88,14 +148,14 @@ final class ConfigService
             $definition->created_at = $now;
         }
         $definition->save();
-        Cache::forget($this->definitionCacheKey($ownerType, $ownerCode, $configKey));
-        Cache::forget($this->valueCacheKey($ownerType, $ownerCode, $configKey, 'global', ''));
+        $this->forgetAfterCommit($this->definitionCacheKey($ownerType, $ownerCode, $configKey));
+        $this->forgetAfterCommit($this->valueCacheKey($ownerType, $ownerCode, $configKey, 'global', ''));
 
         return $this->definitionPayload($definition);
     }
 
     /** @return array<int, array<string, mixed>> */
-    public function definitions(array $filters = []): array
+    public function definitions(array $filters = [], bool $includeDedicated = true): array
     {
         $query = ConfigDefinition::query()->where('status', true)->orderBy('group_code')->orderBy('id');
         foreach (['owner_type', 'owner_code', 'group_code', 'config_key'] as $field) {
@@ -105,7 +165,18 @@ final class ConfigService
             }
         }
 
-        return $query->get()->map(fn (ConfigDefinition $definition): array => $this->definitionPayload($definition))->all();
+        return $query->get()
+            ->filter(static fn (ConfigDefinition $definition): bool => $includeDedicated || data_get($definition->schema_json, 'extensions.ptadmin.configuration.management') !== 'dedicated')
+            ->map(fn (ConfigDefinition $definition): array => $this->definitionPayload($definition))->values()->all();
+    }
+
+    /** 通用 HTTP 配置入口不能绕过专用页面的业务校验与权限。 */
+    public function assertGenericAccess(string $ownerType, string $ownerCode, string $configKey): void
+    {
+        $definition = $this->definition($ownerType, $ownerCode, $configKey);
+        if (data_get($definition->schema_json, 'extensions.ptadmin.configuration.management') === 'dedicated') {
+            throw new ConfigException('请在对应业务页面管理此配置。', 'config_dedicated_editor_required');
+        }
     }
 
     /** @return array<string, mixed> */
@@ -121,7 +192,7 @@ final class ConfigService
         }
         $definition->status = false;
         $definition->save();
-        Cache::forget($this->definitionCacheKey($ownerType, $ownerCode, $configKey));
+        $this->forgetAfterCommit($this->definitionCacheKey($ownerType, $ownerCode, $configKey));
 
         return $this->definitionPayload($definition);
     }
@@ -131,7 +202,7 @@ final class ConfigService
     {
         $this->assertScope($scopeType, $scopeId);
         $definition = $this->definition($ownerType, $ownerCode, $configKey);
-        $valuePayload = Cache::remember(
+        $valuePayload = $this->rememberOutsideTransaction(
             $this->valueCacheKey($ownerType, $ownerCode, $configKey, $scopeType, $scopeId),
             3600,
             static function () use ($ownerType, $ownerCode, $configKey, $scopeType, $scopeId): ?array {
@@ -151,7 +222,7 @@ final class ConfigService
             'definition' => $this->definitionPayload($definition),
             'scope' => ['type' => $scopeType, 'id' => $scopeId],
             'defaults' => $this->codec->decode((array) $definition->schema_json, []),
-            'overrides' => $stored,
+            'overrides' => $this->codec->decode((array) $definition->schema_json, $stored, false),
             'effective_values' => $this->codec->decode((array) $definition->schema_json, $stored),
             'revision' => is_array($valuePayload) ? (int) ($valuePayload['revision'] ?? 0) : 0,
             'updated_at' => is_array($valuePayload) && !empty($valuePayload['updated_at'])
@@ -167,59 +238,63 @@ final class ConfigService
      */
     public function put(string $ownerType, string $ownerCode, string $configKey, array $data, string $scopeType = 'global', string $scopeId = '', ?int $expectedRevision = null): array
     {
-        $definition = $this->definition($ownerType, $ownerCode, $configKey);
-        $this->assertScope($scopeType, $scopeId);
-        $existing = ConfigValue::query()->where([
-            'owner_type' => $ownerType,
-            'owner_code' => $ownerCode,
-            'config_key' => $configKey,
-            'scope_type' => $scopeType,
-            'scope_id' => $scopeId,
-        ])->first();
-        $currentRevision = $existing ? (int) $existing->revision : 0;
-        if ($expectedRevision !== null && $expectedRevision !== $currentRevision) {
-            throw new ConfigException('Configuration value was changed by another request.', 'config_revision_conflict', [
-                'expected_revision' => $expectedRevision,
-                'actual_revision' => $currentRevision,
+        return DB::transaction(function () use ($ownerType, $ownerCode, $configKey, $data, $scopeType, $scopeId, $expectedRevision): array {
+            $definition = $this->definition($ownerType, $ownerCode, $configKey);
+            $this->assertScope($scopeType, $scopeId);
+            // 定义行始终存在，首次写入也能串行校验 revision，避免丢失并发更新。
+            ConfigDefinition::query()->whereKey($definition->id)->lockForUpdate()->first();
+            $existing = ConfigValue::query()->where([
+                'owner_type' => $ownerType,
+                'owner_code' => $ownerCode,
+                'config_key' => $configKey,
+                'scope_type' => $scopeType,
+                'scope_id' => $scopeId,
+            ])->lockForUpdate()->first();
+            $currentRevision = $existing ? (int) $existing->revision : 0;
+            if ($expectedRevision !== null && $expectedRevision !== $currentRevision) {
+                throw new ConfigException('Configuration value was changed by another request.', 'config_revision_conflict', [
+                    'expected_revision' => $expectedRevision,
+                    'actual_revision' => $currentRevision,
+                ]);
+            }
+            try {
+                $encoded = $this->codec->encodeOverrides(
+                    (array) $definition->schema_json,
+                    $data,
+                    $existing ? (array) $existing->value_json : [],
+                );
+            } catch (Throwable $exception) {
+                throw $exception instanceof ConfigException
+                    ? $exception
+                    : new ConfigException($exception->getMessage(), 'config_value_invalid');
+            }
+            $checksum = hash('sha256', json_encode($encoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+            $now = now();
+            $value = $existing ?: new ConfigValue();
+            $value->fill([
+                'owner_type' => $ownerType,
+                'owner_code' => $ownerCode,
+                'config_key' => $configKey,
+                'scope_type' => $scopeType,
+                'scope_id' => $scopeId,
+                'value_json' => $encoded,
+                'checksum' => $checksum,
+                'revision' => $currentRevision + 1,
+                'updated_at' => $now,
             ]);
-        }
-        try {
-            $encoded = $this->codec->encodeOverrides(
-                (array) $definition->schema_json,
-                $data,
-                $existing ? (array) $existing->value_json : [],
-            );
-        } catch (Throwable $exception) {
-            throw $exception instanceof ConfigException
-                ? $exception
-                : new ConfigException($exception->getMessage(), 'config_value_invalid');
-        }
-        $checksum = hash('sha256', json_encode($encoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
-        $now = now();
-        $value = $existing ?: new ConfigValue();
-        $value->fill([
-            'owner_type' => $ownerType,
-            'owner_code' => $ownerCode,
-            'config_key' => $configKey,
-            'scope_type' => $scopeType,
-            'scope_id' => $scopeId,
-            'value_json' => $encoded,
-            'checksum' => $checksum,
-            'revision' => $currentRevision + 1,
-            'updated_at' => $now,
-        ]);
-        if (!$value->exists) {
-            $value->created_at = $now;
-        }
-        $value->save();
-        Cache::forget($this->valueCacheKey($ownerType, $ownerCode, $configKey, $scopeType, $scopeId));
+            if (!$value->exists) {
+                $value->created_at = $now;
+            }
+            $value->save();
+            $this->forgetAfterCommit($this->valueCacheKey($ownerType, $ownerCode, $configKey, $scopeType, $scopeId));
 
-        return $this->get($ownerType, $ownerCode, $configKey, $scopeType, $scopeId);
+            return $this->get($ownerType, $ownerCode, $configKey, $scopeType, $scopeId);
+        });
     }
 
     private function definition(string $ownerType, string $ownerCode, string $configKey): ConfigDefinition
     {
-        $definition = Cache::remember($this->definitionCacheKey($ownerType, $ownerCode, $configKey), 3600, static function () use ($ownerType, $ownerCode, $configKey): ?ConfigDefinition {
+        $definition = $this->rememberOutsideTransaction($this->definitionCacheKey($ownerType, $ownerCode, $configKey), 3600, static function () use ($ownerType, $ownerCode, $configKey): ?ConfigDefinition {
             return ConfigDefinition::query()->where([
                 'owner_type' => $ownerType,
                 'owner_code' => $ownerCode,
@@ -236,6 +311,20 @@ final class ConfigService
         }
 
         return $definition;
+    }
+
+    /** 事务中的配置不得写入共享缓存，避免回滚后仍读到未提交值。 */
+    private function rememberOutsideTransaction(string $key, int $ttl, callable $load): mixed
+    {
+        return DB::connection()->transactionLevel() > 0 ? $load() : Cache::remember($key, $ttl, $load);
+    }
+
+    private function forgetAfterCommit(string $key): void
+    {
+        Cache::forget($key);
+        if (DB::connection()->transactionLevel() > 0) {
+            DB::afterCommit(static fn () => Cache::forget($key));
+        }
     }
 
     private function definitionCacheKey(string $ownerType, string $ownerCode, string $configKey): string

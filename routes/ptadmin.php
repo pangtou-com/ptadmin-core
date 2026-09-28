@@ -8,6 +8,7 @@ use PTAdmin\Admin\Http\Controllers\AssetController;
 use PTAdmin\Admin\Http\Controllers\DashboardController;
 use PTAdmin\Admin\Http\Controllers\DictionaryController;
 use PTAdmin\Admin\Http\Controllers\LoginController;
+use PTAdmin\Admin\Http\Controllers\NoticeInboxController;
 use PTAdmin\Admin\Http\Controllers\NoticeTemplateController;
 use PTAdmin\Admin\Http\Controllers\ProfileController;
 use PTAdmin\Admin\Http\Controllers\PublicDictionaryController;
@@ -127,6 +128,16 @@ Route::middleware($authenticatedMiddleware)
             ->whereNumber('id')
             ->middleware('ptadmin.permission:assets,restore')
             ->name('restore');
+    });
+
+Route::middleware($authenticatedMiddleware)
+    ->prefix($apiPrefix.'/notices')
+    ->as('ptadmin.notices.')
+    ->group(static function (): void {
+        Route::get('/', [NoticeInboxController::class, 'index'])->name('index');
+        Route::get('unread-count', [NoticeInboxController::class, 'unreadCount'])->name('unread-count');
+        Route::patch('read-all', [NoticeInboxController::class, 'markAllRead'])->name('read-all');
+        Route::patch('{id}/read', [NoticeInboxController::class, 'markRead'])->whereNumber('id')->name('read');
     });
 
 Route::middleware($authenticatedMiddleware)

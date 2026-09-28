@@ -53,7 +53,7 @@ final class InstallerTest extends TestCase
 
         self::assertSame('demo-addon', $result['code']);
         self::assertFileExists($this->root.'/addons/demo-addon/Bootstrap.php');
-        self::assertFileExists($public.'/admintest/modules/demo-addon/entry.js');
+        self::assertFileExists($public.'/admintest/plugins/demo-addon/entry.js');
     }
 
     public function testInstallAndUninstallClearRuntimeCache(): void
@@ -97,7 +97,7 @@ final class InstallerTest extends TestCase
 
         self::assertTrue($result['data_preserved']);
         self::assertDirectoryDoesNotExist($this->root.'/addons/demo-addon');
-        self::assertDirectoryDoesNotExist($this->root.'/public/admintest/modules/demo-addon');
+        self::assertDirectoryDoesNotExist($this->root.'/public/admintest/plugins/demo-addon');
         self::assertFileExists($this->root.'/business-data.json');
     }
 
@@ -129,7 +129,7 @@ final class InstallerTest extends TestCase
         }
 
         self::assertSame('backend-v1', file_get_contents($this->root.'/addons/demo-addon/backend.txt'));
-        self::assertSame('frontend-v1', file_get_contents($this->root.'/public/admintest/modules/demo-addon/entry.js'));
+        self::assertSame('frontend-v1', file_get_contents($this->root.'/public/admintest/plugins/demo-addon/entry.js'));
         self::assertSame('1.0.0', $state->read('demo-addon')['version']);
         self::assertSame('active', $state->read('demo-addon')['state']);
     }
@@ -214,7 +214,7 @@ final class InstallerTest extends TestCase
         $result = $installer->syncFrontend('demo-addon', 'admintest');
 
         self::assertTrue($result['published']);
-        self::assertFileExists($this->root.'/public/admintest/modules/demo-addon/entry.js');
+        self::assertFileExists($this->root.'/public/admintest/plugins/demo-addon/entry.js');
     }
 
     public function testSyncFrontendRejectsInvalidDescriptorJson(): void

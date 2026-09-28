@@ -234,7 +234,7 @@ files   -> 多个 <a>
 
 ### 其他内置指令
 
-- `seo()` 输出当前页面 SEO 头部；支持 `only` 数组和 `data` 变量，不通过输出指令隐式修改全局状态。
+- `seo()` 输出当前页面 SEO 头部；支持 `only` 数组和 `data` 变量，不通过输出指令隐式修改全局状态。标准字段包括 `title`、`description`、`keywords`、`canonical`、`robots`、`open_graph`、`twitter` 和 `structured_data`；`structured_data` 会以 JSON-LD script 输出。
 - `dump()` 仅用于开发调试，生产环境不输出敏感上下文；支持 `context`、`label` 和 `once`。
 
 ### 注册类示意

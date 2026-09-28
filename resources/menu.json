@@ -12,16 +12,6 @@
         "abilities": ["view"]
     },
     {
-        "resource_key": "admin.dashboard_widgets",
-        "title": "仪表盘组件设置",
-        "type": "action",
-        "parent_key": "dashboard",
-        "is_menu": false,
-        "status": true,
-        "sort": 1,
-        "abilities": ["update"]
-    },
-    {
         "resource_key": "admin",
         "title": "系统管理",
         "type": "group",
@@ -92,26 +82,6 @@
         "abilities": ["view"]
     },
     {
-        "resource_key": "admin.operation_records",
-        "title": "操作日志数据",
-        "type": "action",
-        "parent_key": "admin.logs",
-        "is_menu": false,
-        "status": true,
-        "sort": 1,
-        "abilities": ["list", "view"]
-    },
-    {
-        "resource_key": "admin.login_logs",
-        "title": "登录日志数据",
-        "type": "action",
-        "parent_key": "admin.logs",
-        "is_menu": false,
-        "status": true,
-        "sort": 2,
-        "abilities": ["list", "view"]
-    },
-    {
         "resource_key": "admin.dictionaries",
         "title": "数据字典",
         "type": "page",
@@ -143,25 +113,12 @@
         "type": "schema",
         "parent_key": "admin",
         "target_resource_key": "admin.notification_scenes",
-        "path": "/admin/notifications",
+        "path": "/admin/notifications/templates",
         "is_menu": true,
         "status": true,
         "sort": 80,
         "icon": "bell",
         "abilities": ["list", "view"]
-    },
-    {
-        "resource_key": "admin.notification_templates",
-        "title": "通知模板",
-        "type": "schema",
-        "parent_key": "admin.notifications",
-        "target_resource_key": "admin.notification_templates",
-        "path": "/admin/notifications/templates",
-        "is_menu": true,
-        "status": true,
-        "sort": 10,
-        "icon": "file-text",
-        "abilities": ["list", "view", "create", "update", "delete"]
     },
     {
         "resource_key": "schema.resources",
@@ -200,38 +157,6 @@
         "status": true,
         "sort": 10,
         "icon": "palette",
-        "abilities": ["view"]
-    },
-    {
-        "resource_key": "site.theme",
-        "title": "主题领域操作",
-        "type": "action",
-        "parent_key": "themes",
-        "is_menu": false,
-        "status": true,
-        "sort": 1,
-        "abilities": ["read", "install", "activate", "remove"]
-    },
-    {
-        "resource_key": "tasks",
-        "title": "任务中心",
-        "type": "page",
-        "page_key": "task.center",
-        "path": "/tasks",
-        "is_menu": true,
-        "status": true,
-        "sort": 100,
-        "icon": "list-checks",
-        "abilities": ["view"]
-    },
-    {
-        "resource_key": "core.tasks",
-        "title": "任务数据",
-        "type": "action",
-        "parent_key": "tasks",
-        "is_menu": false,
-        "status": true,
-        "sort": 1,
         "abilities": ["view"]
     }
 ]

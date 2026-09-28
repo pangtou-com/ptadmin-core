@@ -106,6 +106,23 @@ final class TemplateRendererTest extends TestCase
         $runtime = new TemplateRenderer($registry);
 
         self::assertSame('<title>Demo &amp; title</title><meta name="description" content="Description">', $runtime->render('@pt:seo(only=["title","description"])', ['seo' => ['title' => 'Demo & title', 'description' => 'Description']]));
+        self::assertSame(
+            '<meta name="robots" content="index,follow"><meta property="og:title" content="Share title"><meta property="og:image" content="/share.jpg"><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Demo"}</script>',
+            $runtime->render('@pt:seo(only=["robots","open_graph","structured_data"])', [
+                'seo' => [
+                    'robots' => 'index,follow',
+                    'open_graph' => ['title' => 'Share title', 'image' => '/share.jpg'],
+                    'structured_data' => ['@context' => 'https://schema.org', '@type' => 'WebPage', 'name' => 'Demo'],
+                ],
+            ]),
+        );
+        self::assertSame(
+            '<title>Explicit title</title><meta name="description" content="Explicit description">',
+            $runtime->render('@pt:seo(data=$page.seo,only=["title","description"])', [
+                'seo' => ['title' => 'Context title', 'description' => 'Context description'],
+                'page' => ['seo' => ['title' => 'Explicit title', 'description' => 'Explicit description']],
+            ]),
+        );
         self::assertSame('', $runtime->render('@pt:dump(context=["secret"="value"])', ['environment' => 'production']));
         self::assertStringContainsString('[secret] =&gt; [REDACTED]', $runtime->render('@pt:dump(context=["secret"="value","access_token"="another-value"])', ['environment' => 'local']));
         self::assertStringNotContainsString('value', $runtime->render('@pt:dump(context=["secret"="value"])', ['environment' => 'local']));

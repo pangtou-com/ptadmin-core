@@ -8,12 +8,15 @@ use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Carbon;
 use PTAdmin\Admin\Models\Admin;
 use PTAdmin\Core\Install\AdminFrontendManifest;
+use PTAdmin\Notice\NoticeInboxService;
+use PTAdmin\Notice\NoticeReceiver;
 
 final class DashboardService
 {
     public function __construct(
         private ConnectionInterface $database,
         private AdminFrontendManifest $frontendManifest,
+        private NoticeInboxService $noticeInbox,
     ) {
     }
 
@@ -232,12 +235,7 @@ final class DashboardService
     {
         $roleCount = $this->database->table('admin_user_roles')->where('admin_id', $admin->getKey())->count();
         $resourceCount = $this->database->table('admin_resources')->where('status', true)->whereNull('deleted_at')->count();
-        $unreadCount = $this->database->table('notice_messages')
-            ->where('receiver_type', 'admin')
-            ->where('receiver_id', (int) $admin->getKey())
-            ->whereNull('deleted_at')
-            ->whereNull('read_at')
-            ->count();
+        $unreadCount = $this->noticeInbox->unreadCount(NoticeReceiver::admin((int) $admin->getKey()));
 
         return ['type' => 'stats', 'items' => [
             ['id' => 'roles', 'label' => '我的角色', 'value' => $roleCount, 'unit' => '个', 'tone' => 'success'],

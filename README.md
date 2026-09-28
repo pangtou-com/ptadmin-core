@@ -12,7 +12,7 @@
 - `ptadmin-schema` 协议与 Runtime 源码提取到 `src/Schema/`。
 - 安装状态目录、进程锁、随机后台前缀和 `installed.json` 原子标记基础。
 - 首次安装后端编排：SQLite/MySQL 连接配置与验证、数据库迁移、自定义或随机后台前缀写入、首个 founder 管理员、核心权限资源和可恢复失败状态；SQLite 文件固定存放在宿主 `storage/database/`，默认文件名为 `ptadmin.db`，安装表单可以修改文件名但不能修改目录。
-- 核心前端 manifest 校验和首次原子发布到 `public/{PTADMIN_WEB_PREFIX}/`，发布时保留插件 `modules/` 目录。
+- 核心前端 manifest 校验和首次原子发布到 `public/{PTADMIN_WEB_PREFIX}/`，发布时保留插件 `plugins/` 目录。
 - Schema Runtime 标准资源路由、Session SubjectContext 和统一授权桥接。
 - 配置定义和值两张表、固定分组、全局 JSON 对象值和敏感字段脱敏服务。
 - 不透明 Bearer Session 存储、过期/撤销/续期服务和 `/ptadmin/session` 基础接口。
@@ -25,13 +25,13 @@
 - 创始人、系统角色和核心权限资源保护，以及按资源/动作执行的服务端权限检查。
 - 未安装启动阶段提供安装状态查询接口 `GET /__ptadmin__/install/status`，不暴露敏感安装输入；安装完成后该路由不再注册。
 - 独立 `GET /__ptadmin__/install` 安装向导，复用原 PTAdmin 分步 UI，提供协议确认、PHP/扩展与目录权限检查、基础信息、SQLite/MySQL 数据库配置、创始人账号表单和流式安装进度；数据库连接、`APP_KEY` 和核心前端 manifest 在实际安装阶段校验，不单独展示“运行环境”检测分组。完成后进入自定义或随机后台目录，已安装实例返回 404。
-- 已安装实例通过 `PTADMIN_WEB_PREFIX` 提供后台入口和 SPA fallback；入口由 Core 路由校验 `installed.json`，静态 assets 与插件 modules 仍由 Web Server 直接提供。
+- 已安装实例通过 `PTADMIN_WEB_PREFIX` 提供后台入口和 SPA fallback；入口由 Core 路由校验 `installed.json`，静态 assets 与插件 plugins 仍由 Web Server 直接提供。
 - Core 在服务启动时读取安装标记并选择唯一运行模式：未安装时只加载 `routes/install.php`、安装视图和宿主 Web 重定向，不加载 Bootstrap、登录、Session、Schema HTTP、插件 Runtime 或 PTAdmin 运维命令；已安装时只加载 `routes/ptadmin.php` 和正常 Runtime，安装路由不可访问。安装 API 为 `POST /__ptadmin__/install`，状态接口为 `GET /__ptadmin__/install/status`。
-- JSONL 任务中心：任务文件位于 `storage/app/ptadmin/tasks/{task_id}/`，后台接口提供任务创建、状态、事件 cursor、重试和取消；任务支持幂等键、心跳恢复和不可逆阶段保护，快照持久化当前消息并派生 `can_retry`/`can_cancel`，事件/载荷/结果统一脱敏并使用文件锁；核心前端可通过独立发布器校验清单后原子更新，同时保留插件 `modules/` 目录。
+- JSONL 任务中心：任务文件位于 `storage/app/ptadmin/tasks/{task_id}/`，后台接口提供任务创建、状态、事件 cursor、重试和取消；任务支持幂等键、心跳恢复和不可逆阶段保护，快照持久化当前消息并派生 `can_retry`/`can_cancel`，事件/载荷/结果统一脱敏并使用文件锁；核心前端可通过独立发布器校验清单后原子更新，同时保留插件 `plugins/` 目录。
 - 任务执行通过 `php artisan ptadmin:task:run {task_id}` 在独立进程中完成。执行器采用 `TaskExecutorRegistry` 扩展，目前内置 `admin_frontend.update`，未注册的核心/插件任务会进入 `blocked`，不会在 PHP-FPM 请求中伪成功。
 - 可使用 `php artisan ptadmin:task:recover` 扫描超时心跳任务；默认按重试次数重新排队，也可通过 `--no-requeue` 直接标记失败。
 - 插件信任链基础位于 `src/Addon`：`Manifest\ManifestVerifier` 校验 manifest、文件清单、摘要、兼容范围和 OpenSSL 签名；`Lifecycle\LifecycleStore` 持久化插件生命周期状态并防止非法状态跳转。
-- `Frontend\FrontendPublisher` 将插件前端以临时目录加原子替换发布到 `public/{PTADMIN_WEB_PREFIX}/modules/{code}`，失败时保留旧模块，卸载时仅删除对应模块目录。
+- `Frontend\FrontendPublisher` 将插件前端以临时目录加原子替换发布到 `public/{PTADMIN_WEB_PREFIX}/plugins/{code}`，失败时保留旧版本，卸载时仅删除对应插件目录。
 
 Schema Hook、Action、Resource Event、Owner、校验和缓存规则见 [Schema Runtime 扩展](docs/schema-runtime-extensions.md)。
 

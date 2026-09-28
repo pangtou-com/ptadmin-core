@@ -612,7 +612,6 @@ final class AdminRuntimeHook
             'logs.center' => 'admin.logs',
             'theme.center' => 'themes',
             'schema.design' => 'schema.resources',
-            'task.center' => 'tasks',
         ];
         $pageKey = (string) ($resource['page_key'] ?? '');
         if ($type === 'page' && isset($builtinKeys[$pageKey]) && $resourceKey !== $builtinKeys[$pageKey]) {
@@ -661,7 +660,7 @@ final class AdminRuntimeHook
     {
         return [
             'navigation.group', 'schema.resource', 'dashboard', 'asset.center', 'settings.center',
-            'dictionary.center', 'logs.center', 'theme.center', 'schema.design', 'task.center',
+            'dictionary.center', 'logs.center', 'theme.center', 'schema.design',
             'plugin.page', 'cloud.market', 'external.link',
         ];
     }
@@ -782,7 +781,7 @@ final class AdminRuntimeHook
             'admin.admin_users', 'admin.admin_roles', 'admin.admin_resources',
             'admin.dashboard_widgets', 'admin.notification_scenes', 'admin.notification_messages',
             'admin.notification_deliveries', 'admin.notice_channels',
-            'schema.resources', 'admin.config', 'tasks', 'core.tasks', 'core.update',
+            'schema.resources', 'admin.config', 'core.tasks', 'core.update',
             'admin.frontend', 'addon.manage', 'addon.download', 'addon.install',
             'addon.update', 'addon.uninstall', 'addon.frontend', 'addon.enable', 'addon.disable',
         ], true);

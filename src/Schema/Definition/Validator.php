@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace PTAdmin\Schema\Definition;
 
+use PTAdmin\Schema\Support\FieldProtection;
+
 /**
  * 校验 Schema 的标识、字段类型、引用、规则、选项和数据库约束，返回可定位的协议问题列表。
  */
@@ -115,6 +117,24 @@ final class Validator
             if (isset($extensions['secret']) && !in_array($type, ['string', 'text'], true)) {
                 $issues[] = $this->issue('invalid_extension', $path.'.extensions.secret', 'secret extension requires string-like field type');
             }
+            if (isset($extensions['secret'])) {
+                $mode = FieldProtection::mode($field);
+                if (!in_array($mode, ['', 'plain', 'hash', 'hashed', 'encrypted'], true)) {
+                    $issues[] = $this->issue('invalid_extension', $path.'.extensions.secret.storage_mode', 'secret storage_mode must be plain, hash, hashed or encrypted');
+                }
+                if (!empty($field['multiple'])) {
+                    $issues[] = $this->issue('invalid_extension', $path.'.extensions.secret', 'secret requires a single value');
+                }
+                if ($mode === 'encrypted') {
+                    if (!empty($field['searchable']) || !empty($field['sortable']) || isset($field['reference'])
+                        || isset($extensions['generator']) || isset($extensions['mirror']) || isset($extensions['clone'])) {
+                        $issues[] = $this->issue('invalid_extension', $path.'.extensions.secret', 'encrypted fields cannot be searched, sorted, referenced or generated');
+                    }
+                    if (isset($field['default_expr']) || (array_key_exists('default', $field) && $field['default'] !== '' && $field['default'] !== null)) {
+                        $issues[] = $this->issue('invalid_extension', $path.'.default', 'encrypted field credentials must be supplied as values, not Schema defaults');
+                    }
+                }
+            }
             if (isset($field['normalize'])) {
                 $case = strtolower((string) ($field['normalize']['case'] ?? ''));
                 if (!in_array($case, ['', 'lower', 'upper'], true)) {
@@ -153,6 +173,9 @@ final class Validator
                 foreach ($fields as $fieldName) {
                     if (!isset($constraintFields[$fieldName])) {
                         $issues[] = $this->issue('invalid_constraint', 'constraints.'.$constraintType.'.'.$index.'.fields', 'constraint field does not exist');
+                    }
+                    if (FieldProtection::mode($names[$fieldName] ?? []) === 'encrypted') {
+                        $issues[] = $this->issue('invalid_constraint', 'constraints.'.$constraintType.'.'.$index.'.fields', 'encrypted fields cannot be indexed');
                     }
                 }
             }

@@ -62,6 +62,19 @@ final class NoticeRegistry
             ->editor('message');
     }
 
+    public function ensureCoreEmailChannel(): void
+    {
+        $owner = 'system:ptadmin';
+        foreach ($this->channels[$owner] ?? [] as $channel) {
+            if (($channel->toArray()['code'] ?? null) === NoticeChannel::EMAIL_CODE) {
+                return;
+            }
+        }
+        $this->channels[$owner][] = (new NoticeChannelDefinitionBuilder('email', '系统邮件', 'system', 'ptadmin'))
+            ->code(NoticeChannel::EMAIL_CODE)
+            ->editor('html');
+    }
+
     /** @return list<array<string, mixed>> */
     public function scenesFor(string $sourceType, string $sourceCode): array
     {

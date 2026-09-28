@@ -24,6 +24,7 @@ use PTAdmin\Schema\Contracts\SchemaScopeResolverInterface;
 use PTAdmin\Schema\Contracts\SchemaSubjectContextInterface;
 use PTAdmin\Schema\Meta\Models\Resource;
 use PTAdmin\Schema\Support\Payload;
+use PTAdmin\Schema\Support\FieldProtection;
 
 /**
  * Schema 运行时执行器。它把协议输入转换为数据库查询，并集中处理字段校验、生成器、脱敏和服务端约束。
@@ -529,6 +530,9 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         if ($create && $mode === 'submit') {
             $this->applySubmitStateDefault($data, $schema);
         }
+        // Generators run before required-field checks so generated values (for example
+        // a slug derived from a required name) can satisfy the schema contract.
+        $this->applyGenerators($data, $fields, $resource, $create, $currentId);
         if ($create) {
             foreach ($fields as $name => $field) {
                 if (!array_key_exists($name, $data) && array_key_exists('default_expr', $field)) {
@@ -579,7 +583,6 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
                 }
             }
         }
-        $this->applyGenerators($data, $fields, $resource, $create, $currentId);
         $this->applyCloneFields($data, $fields, $resource);
         return $this->encodeForStorage($data, $fields);
     }
@@ -675,7 +678,9 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
     {
         $separator = (string) ($config['separator'] ?? '-');
         $value = trim($value);
-        if (function_exists('iconv')) {
+        if (($config['transliteration'] ?? '') === 'pinyin') {
+            $value = Str::transliterate($value);
+        } elseif (function_exists('iconv')) {
             $converted = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
             if ($converted !== false) {
                 $value = $converted;
@@ -892,7 +897,7 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
     private function validFormat(string $value, string $format): bool
     {
         return match (strtolower($format)) {
-            'email' => filter_var($value, FILTER_VALIDATE_EMAIL) !== false, 'url' => filter_var($value, FILTER_VALIDATE_URL) !== false, 'uuid' => (bool) preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $value), 'ip' => filter_var($value, FILTER_VALIDATE_IP) !== false, 'ipv4' => filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false, 'ipv6' => filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false, 'cn_mobile' => (bool) preg_match('/^1[3-9]\d{9}$/', $value), 'lower_alpha' => (bool) preg_match('/^[a-z]+$/', $value), 'alpha' => (bool) preg_match('/^[a-z]+$/i', $value), 'alpha_num' => (bool) preg_match('/^[a-z0-9]+$/i', $value), 'slug' => (bool) preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $value), 'identifier' => (bool) preg_match('/^[a-z][a-z0-9_]*$/', $value), default => true
+            'email' => filter_var($value, FILTER_VALIDATE_EMAIL) !== false, 'url' => filter_var($value, FILTER_VALIDATE_URL) !== false, 'uuid' => (bool) preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $value), 'ip' => filter_var($value, FILTER_VALIDATE_IP) !== false, 'ipv4' => filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false, 'ipv6' => filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false, 'cn_mobile' => (bool) preg_match('/^1[3-9]\d{9}$/', $value), 'lower_alpha' => (bool) preg_match('/^[a-z]+$/', $value), 'alpha' => (bool) preg_match('/^[a-z]+$/i', $value), 'alpha_num' => (bool) preg_match('/^[a-z0-9]+$/i', $value), 'slug' => (bool) preg_match('/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/', $value), 'identifier' => (bool) preg_match('/^[a-z][a-z0-9_]*$/', $value), default => true
         };
     }
 
@@ -904,12 +909,7 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
             }
             return array_map(fn ($item): mixed => $this->castScalar($item, (string) $field['type']), $value);
         }
-        $value = $this->castScalar($value, (string) ($field['type'] ?? 'string'));
-        $secret = (array) (($field['extensions'] ?? [])['secret'] ?? []);
-        if (in_array(strtolower((string) ($secret['storage_mode'] ?? '')), ['hash', 'hashed'], true) && $value !== null) {
-            $value = hash('sha256', (string) $value);
-        }
-        return $value;
+        return $this->castScalar($value, (string) ($field['type'] ?? 'string'));
     }
     private function castScalar(mixed $value, string $type): mixed
     {
@@ -926,6 +926,8 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
             }
             if (!empty($fields[$key]['multiple']) || ($fields[$key]['type'] ?? '') === 'json') {
                 $data[$key] = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            } else {
+                $data[$key] = FieldProtection::store($value, $fields[$key]);
             }
         }
         return $data;
@@ -946,13 +948,11 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
                 };
             }
             $extensions = (array) ($field['extensions'] ?? []);
-            $secret = (array) ($extensions['secret'] ?? []);
-            $storageMode = strtolower((string) ($secret['storage_mode'] ?? ''));
-            if (array_key_exists($name, $row) && (!empty($secret) && (empty($secret['readable']) || in_array($storageMode, ['hash', 'hashed'], true)))) {
+            if (FieldProtection::hidden($field)) {
                 unset($row[$name]);
             }
-            if (array_key_exists($name, $row) && isset($extensions['mask'])) {
-                $row[$name] = $this->maskValue($row[$name], (array) $extensions['mask']);
+            if (array_key_exists($name, $row)) {
+                $row[$name] = FieldProtection::output($row[$name], $field);
             }
             if (isset($field['reference'], $row[$name]) && $row[$name] !== null) {
                 $reference = (array) $field['reference'];
@@ -1111,34 +1111,6 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         return $payload;
     }
 
-    /**
-     * 按 mask 配置裁剪敏感字段输出，确保列表、详情和关联候选不会绕过脱敏规则。
-     *
-     * @param array<string, mixed> $mask
-     */
-    private function maskValue(mixed $value, array $mask): mixed
-    {
-        if ($value === null) {
-            return null;
-        }
-        $raw = (string) $value;
-        $type = strtolower((string) ($mask['type'] ?? ''));
-        if ($type === 'custom') {
-            return $mask['pattern'] ?? '****';
-        }
-        if ($type === 'email') {
-            $parts = explode('@', $raw, 2);
-            return count($parts) === 2 ? substr($parts[0], 0, 1).str_repeat('*', max(1, strlen($parts[0]) - 1)).'@'.$parts[1] : '****';
-        }
-        if ($type === 'name') {
-            return $raw === '' ? $raw : mb_substr($raw, 0, 1).str_repeat('*', max(0, mb_strlen($raw) - 1));
-        }
-        $keepLeft = $type === 'phone' || $type === 'id_card' ? 3 : 1;
-        $keepRight = $type === 'phone' || $type === 'id_card' ? 4 : 1;
-        $length = mb_strlen($raw);
-        return $length <= $keepLeft + $keepRight ? str_repeat('*', $length) : mb_substr($raw, 0, $keepLeft).str_repeat('*', $length - $keepLeft - $keepRight).mb_substr($raw, -$keepRight);
-    }
-
     private function applyMirrorOutput(array &$row, array $field): void
     {
         $mirror = (array) (($field['extensions'] ?? [])['mirror'] ?? []);
@@ -1171,6 +1143,9 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
             $op = strtolower((string) ($filter['operator'] ?? 'eq'));
             if (!isset($fields[$field]) || empty($fields[$field]['persisted'])) {
                 continue;
+            }
+            if (FieldProtection::mode($fields[$field]) === 'encrypted') {
+                throw $this->error('invalid_input', 'encrypted field cannot be filtered', ['field' => $field]);
             }
             $value = $filter['value'] ?? null;
             if ($op === 'in' && is_array($value)) {

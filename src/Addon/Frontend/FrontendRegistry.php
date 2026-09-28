@@ -174,13 +174,15 @@ final class FrontendRegistry
             }
             $entryPath = (string) ($declaredEntry['entry'] ?? '');
             $this->assertEntryPath($entryPath, $sandbox);
-            $publishedPath = $this->publicRoot.'/'.$this->webPrefix.'/modules/'.$code.'/'.$entryPath;
-            $realPublishedPath = realpath($publishedPath);
-            $moduleRoot = realpath($this->publicRoot.'/'.$this->webPrefix.'/modules/'.$code);
-            if (!is_string($realPublishedPath) || !is_string($moduleRoot)
-                || !str_starts_with($realPublishedPath, $moduleRoot.DIRECTORY_SEPARATOR)
-                || !is_file($realPublishedPath)) {
-                throw new AddonException('The addon frontend entry is not published.', 'frontend_entry_unavailable', ['entry' => $entryPath]);
+            if (!is_array($development)) {
+                $publishedPath = $this->publicRoot.'/'.$this->webPrefix.'/plugins/'.$code.'/'.$entryPath;
+                $realPublishedPath = realpath($publishedPath);
+                $pluginRoot = realpath($this->publicRoot.'/'.$this->webPrefix.'/plugins/'.$code);
+                if (!is_string($realPublishedPath) || !is_string($pluginRoot)
+                    || !str_starts_with($realPublishedPath, $pluginRoot.DIRECTORY_SEPARATOR)
+                    || !is_file($realPublishedPath)) {
+                    throw new AddonException('The addon frontend entry is not published.', 'frontend_entry_unavailable', ['entry' => $entryPath]);
+                }
             }
             $capabilities = $this->stringList($declaredEntry['capabilities'] ?? [], 'frontend_capabilities_invalid');
             foreach ($capabilities as $capability) {
@@ -192,7 +194,7 @@ final class FrontendRegistry
             $entry = [
                 'key' => $key,
                 'title' => $title,
-                'entry' => './modules/'.rawurlencode($code).'/'.$entryPath.'?v='.rawurlencode((string) ($manifest['version'] ?? 'dev')),
+                'entry' => './plugins/'.rawurlencode($code).'/'.$entryPath.'?v='.rawurlencode((string) ($manifest['version'] ?? 'dev')),
                 'sandbox' => $sandbox,
                 'host_api' => $hostApi,
             ];
@@ -214,6 +216,9 @@ final class FrontendRegistry
                 ];
             }
             if ($sandbox === 'trusted') {
+                if (!is_array($development)) {
+                    $entry['styles'] = $this->publishedStyles($code, $entryPath);
+                }
                 // trusted 模块与宿主同一执行上下文，必须同时满足包声明、Runtime Profile 和部署信任策略。
                 if (($manifest['sandbox'] ?? null) !== 'trusted') {
                     throw new AddonException('The addon package does not permit trusted frontend entries.', 'frontend_trust_not_declared');
@@ -351,6 +356,44 @@ final class FrontendRegistry
     private function validIdentifier(string $value): bool
     {
         return preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,190}$/', $value) === 1;
+    }
+
+    /** @return list<string> 仅公开已发布构建中的 CSS，不从用户输入拼接外部资源。 */
+    private function publishedStyles(string $code, string $entryPath): array
+    {
+        $root = realpath($this->publicRoot.'/'.$this->webPrefix.'/plugins/'.$code);
+        $path = $root.'/.vite/sparq-root.json';
+        if (!is_file($path)) {
+            return [];
+        }
+        $realPath = realpath($path);
+        if ($root === false || $realPath === false || !str_starts_with($realPath, $root.DIRECTORY_SEPARATOR)) {
+            throw new AddonException('插件构建描述不在发布目录内。', 'frontend_build_invalid');
+        }
+        try {
+            $build = json_decode((string) file_get_contents($realPath), true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            throw new AddonException('插件构建描述不是有效 JSON。', 'frontend_build_invalid');
+        }
+        if (!is_array($build) || ($build['schema'] ?? null) !== 'sparq.frontend-build/v1'
+            || ($build['entry'] ?? null) !== $entryPath || !is_array($build['styles'] ?? null) || !array_is_list($build['styles'])) {
+            throw new AddonException('插件构建描述的入口或样式清单无效。', 'frontend_build_invalid');
+        }
+        $urls = [];
+        foreach ($build['styles'] as $style) {
+            if (!is_string($style) || preg_match('/^[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.css$/', $style) !== 1
+                || in_array('..', explode('/', $style), true) || in_array('.', explode('/', $style), true)
+                || in_array('', explode('/', $style), true)) {
+                throw new AddonException('插件 CSS 路径无效。', 'frontend_style_invalid');
+            }
+            $file = realpath($root.'/'.$style);
+            if ($file === false || !str_starts_with($file, $root.DIRECTORY_SEPARATOR) || !is_file($file)) {
+                throw new AddonException('插件 CSS 未发布或超出发布目录。', 'frontend_style_unavailable', ['style' => $style]);
+            }
+            $urls[] = './plugins/'.rawurlencode($code).'/'.implode('/', array_map('rawurlencode', explode('/', $style)))
+                .'?v='.hash_file('sha256', $file);
+        }
+        return array_values(array_unique($urls));
     }
 
     /** @return array<string, mixed>|null */

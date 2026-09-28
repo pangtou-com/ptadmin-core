@@ -51,7 +51,7 @@ final class FrontendRegistryTest extends TestCase
         self::assertSame('/ptadmin/demo-addon', $plugin['api_base']);
         self::assertSame(['schema.runtime'], $plugin['entries'][0]['capabilities']);
         self::assertSame(
-            './modules/demo-addon/index.html?v=1.0.0',
+            './plugins/demo-addon/index.html?v=1.0.0',
             $plugin['entries'][0]['entry'],
         );
 
@@ -63,7 +63,7 @@ final class FrontendRegistryTest extends TestCase
     {
         $this->writeAddon('iframe', 'index.html');
         rename($this->addonsPath.'/demo-addon', $this->addonsPath.'/Cms');
-        rename($this->publicPath.'/admintest/modules/demo-addon', $this->publicPath.'/admintest/modules/Cms');
+        rename($this->publicPath.'/admintest/plugins/demo-addon', $this->publicPath.'/admintest/plugins/Cms');
 
         $manifestPath = $this->addonsPath.'/Cms/manifest.json';
         $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
@@ -82,7 +82,7 @@ final class FrontendRegistryTest extends TestCase
 
         self::assertSame('cms', $plugin['code']);
         self::assertSame('/ptadmin/cms', $plugin['api_base']);
-        self::assertSame('./modules/Cms/index.html?v=1.0.0', $plugin['entries'][0]['entry']);
+        self::assertSame('./plugins/Cms/index.html?v=1.0.0', $plugin['entries'][0]['entry']);
     }
 
     public function testTrustedLocalEntryNeedsExplicitPolicyAndIsNeverDowngraded(): void
@@ -109,7 +109,7 @@ final class FrontendRegistryTest extends TestCase
     public function testRegistryDoesNotPerformPackageIntegrityChecksAtRuntime(): void
     {
         $this->writeAddon('iframe', 'index.html');
-        file_put_contents($this->publicPath.'/admintest/modules/demo-addon/index.html', 'tampered');
+        file_put_contents($this->publicPath.'/admintest/plugins/demo-addon/index.html', 'tampered');
 
         $resolved = $this->registry(new TrustPolicy())->resolve(
             [['key' => 'demo-addon.page']],
@@ -138,6 +138,7 @@ final class FrontendRegistryTest extends TestCase
     public function testInlineDevelopmentDescriptorIsReturnedInLocalSessionWithoutRegistrationFile(): void
     {
         $this->writeAddon('trusted', 'frontend.mjs', true, false, true);
+        $this->remove($this->publicPath.'/admintest/plugins/demo-addon');
         $plugin = $this->registry(
             new TrustPolicy([], [], true, 'testing'),
             new FrontendDevelopmentStore('testing'),
@@ -189,6 +190,40 @@ final class FrontendRegistryTest extends TestCase
             ['frontend_contribution' => ['contribution' => 'demo-addon.review']],
             $plugin['design_flows'][0]['steps'][0]['mount'],
         );
+    }
+
+    public function testPublishedBuildStylesUseContentRevisionsAndRejectUnsafeOrMissingFiles(): void
+    {
+        $this->writeAddon('trusted', 'frontend.mjs', true);
+        $source = $this->addonsPath.'/demo-addon/Frontend/dist';
+        mkdir($source.'/.vite');
+        file_put_contents($source.'/page.css', '.page { color: red }');
+        $build = ['schema' => 'sparq.frontend-build/v1', 'entry' => 'frontend.mjs', 'styles' => ['page.css']];
+        $publish = function (array $descriptor) use ($source): array {
+            file_put_contents($source.'/.vite/sparq-root.json', json_encode($descriptor, JSON_THROW_ON_ERROR));
+            (new FrontendPublisher($this->publicPath))->publish('admintest', 'demo-addon', $source);
+            return $this->registry(new TrustPolicy([], [], true, 'testing'))->resolve([['key' => 'demo-addon.page']]);
+        };
+        $resolved = $publish($build);
+        self::assertSame([], $resolved['errors']);
+        $styles = $resolved['plugins'][0]['entries'][0]['styles'];
+        self::assertSame(['./plugins/demo-addon/page.css?v='.hash_file('sha256', $source.'/page.css')], $styles);
+        file_put_contents($source.'/page.css', '.page { color: blue }');
+        self::assertNotSame($styles, $publish($build)['plugins'][0]['entries'][0]['styles']);
+        foreach (['../page.css', '/page.css', 'https://example.test/page.css', 'page.css?x=1'] as $invalid) {
+            $result = $publish(array_replace($build, ['styles' => [$invalid]]));
+            self::assertSame([], $result['plugins']);
+            self::assertSame('frontend_style_invalid', $result['errors'][0]['error_code']);
+        }
+        self::assertSame('frontend_style_unavailable', $publish(array_replace($build, ['styles' => ['missing.css']]))['errors'][0]['error_code']);
+        self::assertSame('frontend_build_invalid', $publish(array_replace($build, ['entry' => 'other.mjs']))['errors'][0]['error_code']);
+        self::assertSame('frontend_build_invalid', $publish(array_replace($build, ['schema' => 'unknown']))['errors'][0]['error_code']);
+        $publish($build);
+        $published = $this->publicPath.'/admintest/plugins/demo-addon';
+        unlink($published.'/page.css');
+        symlink($source.'/page.css', $published.'/page.css');
+        $escaped = $this->registry(new TrustPolicy([], [], true, 'testing'))->resolve([['key' => 'demo-addon.page']]);
+        self::assertSame('frontend_style_unavailable', $escaped['errors'][0]['error_code']);
     }
 
     private function registry(TrustPolicy $trustPolicy, ?FrontendDevelopmentStore $development = null): FrontendRegistry

@@ -475,7 +475,9 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
         $name = (string) $field['name'];
         $type = strtolower((string) ($field['type'] ?? 'string'));
         $multiple = !empty($field['multiple']);
-        if ($multiple || $type === 'json') {
+        if (\PTAdmin\Schema\Support\FieldProtection::mode($field) === 'encrypted') {
+            $column = $table->longText($name)->comment(self::fieldComment($field));
+        } elseif ($multiple || $type === 'json') {
             $column = $table->json($name)->comment(self::fieldComment($field));
         } elseif ($type === 'integer') {
             $column = $table->integer($name)->comment(self::fieldComment($field));

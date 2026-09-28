@@ -11,7 +11,7 @@ use RuntimeException;
 
 /**
  * 首次安装时把核心包内的已校验前端原子发布到随机后台目录。
- * 已存在且有效的运行时前端会被保留，插件 modules 目录不会被覆盖。
+ * 已存在且有效的运行时前端会被保留，插件 plugins 目录不会被覆盖。
  */
 final class AdminFrontendPublisher
 {
@@ -32,7 +32,7 @@ final class AdminFrontendPublisher
         $target = rtrim($this->publicRoot, '/').'/'.$webPrefix;
         if (is_dir($target)) {
             $current = $this->manifest->verify($target);
-            $this->ensureModulesDirectory($target);
+            $this->ensureRuntimeDirectories($target);
 
             return [
                 'published' => false,
@@ -76,7 +76,7 @@ final class AdminFrontendPublisher
             )) {
                 throw new RuntimeException('Unable to publish the PTAdmin frontend manifest.');
             }
-            $this->ensureModulesDirectory($staging);
+            $this->ensureRuntimeDirectories($staging);
             $this->manifest->verify($staging);
             if (!rename($staging, $target)) {
                 throw new RuntimeException('Unable to publish the PTAdmin frontend directory.');
@@ -96,7 +96,7 @@ final class AdminFrontendPublisher
 
     /**
      * Replace the current core frontend with a verified artifact. The existing
-     * modules directory is moved into the staged tree before the directory swap.
+     * Plugin frontend directories are moved into the staged tree before the directory swap.
      * @return array{published:bool, frontend_version:string, path:string}
      */
     public function publishForUpdate(string $webPrefix, ?string $source = null): array
@@ -136,7 +136,11 @@ final class AdminFrontendPublisher
             if (is_dir($modules) && !rename($modules, $staging.'/modules')) {
                 throw new RuntimeException('Unable to preserve PTAdmin frontend modules.');
             }
-            $this->ensureModulesDirectory($staging);
+            $plugins = $target.'/plugins';
+            if (is_dir($plugins) && !rename($plugins, $staging.'/plugins')) {
+                throw new RuntimeException('Unable to preserve PTAdmin frontend plugins.');
+            }
+            $this->ensureRuntimeDirectories($staging);
             $this->manifest->verify($staging);
             if (!rename($target, $backup)) {
                 throw new RuntimeException('Unable to stage the current PTAdmin frontend.');
@@ -154,6 +158,9 @@ final class AdminFrontendPublisher
             if (!$swapped && is_dir($staging.'/modules') && !is_dir($target.'/modules')) {
                 @rename($staging.'/modules', $target.'/modules');
             }
+            if (!$swapped && is_dir($staging.'/plugins') && !is_dir($target.'/plugins')) {
+                @rename($staging.'/plugins', $target.'/plugins');
+            }
             if (is_dir($staging)) {
                 $this->deleteDirectory($staging);
             }
@@ -169,7 +176,7 @@ final class AdminFrontendPublisher
         ];
     }
 
-    private function ensureModulesDirectory(string $root): void
+    private function ensureRuntimeDirectories(string $root): void
     {
         $modules = $root.'/modules';
         if (is_link($modules) || (file_exists($modules) && !is_dir($modules))) {
@@ -177,6 +184,13 @@ final class AdminFrontendPublisher
         }
         if (!is_dir($modules) && !mkdir($modules, 0755, true) && !is_dir($modules)) {
             throw new RuntimeException('Unable to create the PTAdmin frontend modules directory.');
+        }
+        $plugins = $root.'/plugins';
+        if (is_link($plugins) || (file_exists($plugins) && !is_dir($plugins))) {
+            throw new RuntimeException('The PTAdmin frontend plugins path is invalid.');
+        }
+        if (!is_dir($plugins) && !mkdir($plugins, 0755, true) && !is_dir($plugins)) {
+            throw new RuntimeException('Unable to create the PTAdmin frontend plugins directory.');
         }
     }
 

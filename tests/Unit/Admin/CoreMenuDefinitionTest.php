@@ -82,7 +82,7 @@ final class CoreMenuDefinitionTest extends TestCase
         self::assertSame(['update'], $resources['admin.dashboard_widgets']['abilities']);
         self::assertSame('admin.logs', $resources['admin.operation_records']['parent_key']);
         self::assertSame('admin.logs', $resources['admin.login_logs']['parent_key']);
-        self::assertSame('tasks', $resources['core.tasks']['parent_key']);
+        self::assertSame(false, $resources['core.tasks']['is_menu']);
     }
 
     public function testSchemaMenuPermissionsAreExplicitlyDeclared(): void

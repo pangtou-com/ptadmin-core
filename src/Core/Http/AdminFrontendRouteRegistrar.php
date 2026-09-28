@@ -26,7 +26,7 @@ final class AdminFrontendRouteRegistrar
         Route::prefix($prefix)->group(static function (): void {
             Route::get('/', [AdminFrontendController::class, 'index']);
             Route::get('{path}', [AdminFrontendController::class, 'index'])
-                ->where('path', '^(?!assets(?:/|$)|modules(?:/|$)).*$');
+                ->where('path', '^(?!assets(?:/|$)|modules(?:/|$)|plugins(?:/|$)).*$');
         });
     }
 }

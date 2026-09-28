@@ -42,9 +42,34 @@ final class BuiltinDirectiveProvider
             $data = [];
         }
         $only = $arguments['only'] ?? null;
-        $keys = is_array($only) ? $only : ['title', 'description', 'keywords', 'canonical'];
+        $keys = is_array($only) ? array_values($only) : [
+            'title',
+            'description',
+            'keywords',
+            'canonical',
+            'robots',
+            'open_graph',
+            'twitter',
+            'structured_data',
+        ];
         $html = '';
         foreach ($keys as $key) {
+            $key = is_string($key) ? $key : '';
+            if ($key === '') {
+                continue;
+            }
+            if (in_array($key, ['open_graph', 'og'], true)) {
+                $html .= $this->seoMetaMap($data['open_graph'] ?? $data['og'] ?? null, 'property', 'og:');
+                continue;
+            }
+            if ($key === 'twitter') {
+                $html .= $this->seoMetaMap($data['twitter'] ?? null, 'name', 'twitter:');
+                continue;
+            }
+            if (in_array($key, ['structured_data', 'json_ld'], true)) {
+                $html .= $this->seoStructuredData($data['structured_data'] ?? $data['json_ld'] ?? null);
+                continue;
+            }
             $value = $data[$key] ?? null;
             if (!is_scalar($value) || $value === '') {
                 continue;
@@ -53,10 +78,52 @@ final class BuiltinDirectiveProvider
             $html .= match ($key) {
                 'title' => '<title>'.$escaped.'</title>',
                 'description',
-                'keywords' => '<meta name="'.$key.'" content="'.$escaped.'">',
-                'canonical' => '<link rel="canonical" href="'.$escaped.'">', default => ''
+                'keywords',
+                'robots' => '<meta name="'.$key.'" content="'.$escaped.'">',
+                'canonical' => '<link rel="canonical" href="'.$escaped.'">',
+                default => ''
             };
         }
+        return $html;
+    }
+
+    private function seoMetaMap(mixed $value, string $attribute, string $prefix): string
+    {
+        if (!is_array($value)) {
+            return '';
+        }
+        $html = '';
+        foreach ($value as $name => $content) {
+            if (!is_string($name) || !is_scalar($content) || $content === '' || !preg_match('/^[A-Za-z0-9:_-]+$/', $name)) {
+                continue;
+            }
+            $escapedName = htmlspecialchars($prefix.$name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $escapedContent = htmlspecialchars((string) $content, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $html .= '<meta '.$attribute.'="'.$escapedName.'" content="'.$escapedContent.'">';
+        }
+
+        return $html;
+    }
+
+    private function seoStructuredData(mixed $value): string
+    {
+        if (!is_array($value)) {
+            return '';
+        }
+        $items = array_is_list($value) ? $value : [$value];
+        $html = '';
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            try {
+                $json = json_encode($item, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            } catch (\JsonException) {
+                continue;
+            }
+            $html .= '<script type="application/ld+json">'.$json.'</script>';
+        }
+
         return $html;
     }
 

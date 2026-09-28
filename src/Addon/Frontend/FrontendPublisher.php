@@ -11,7 +11,7 @@ use RecursiveIteratorIterator;
 use RuntimeException;
 
 /**
- * 将已校验的插件前端产物发布到后台公开 modules 目录。
+ * 将已校验的插件前端产物发布到后台公开 plugins 目录。
  *
  * 发布使用 staging 和 backup 目录完成原子替换，避免复制中断时让请求读取到不完整模块；该服务不负责
  * manifest 信任校验，调用方必须先完成插件包验证。
@@ -36,9 +36,9 @@ final class FrontendPublisher
         if (false === $sourceRoot || !is_dir($sourceRoot)) {
             throw new AddonException('The addon frontend source is unavailable.', 'source_unavailable');
         }
-        $base = rtrim($this->publicRoot, '/').'/'.$webPrefix.'/modules';
+        $base = rtrim($this->publicRoot, '/').'/'.$webPrefix.'/plugins';
         if (!is_dir($base) && !mkdir($base, 0755, true) && !is_dir($base)) {
-            throw new RuntimeException('Unable to create addon frontend modules directory.');
+            throw new RuntimeException('Unable to create addon frontend plugins directory.');
         }
         $target = $base.'/'.$code;
         $staging = $base.'/.'.$code.'.staging-'.bin2hex(random_bytes(5));
@@ -94,7 +94,7 @@ final class FrontendPublisher
         if (preg_match('/^[a-z][a-z0-9_]{5,63}$/', $webPrefix) !== 1 || preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1) {
             throw new AddonException('The addon frontend target is invalid.', 'invalid_target');
         }
-        $target = rtrim($this->publicRoot, '/').'/'.$webPrefix.'/modules/'.$code;
+        $target = rtrim($this->publicRoot, '/').'/'.$webPrefix.'/plugins/'.$code;
         if (is_dir($target)) {
             $this->deleteDirectory($target);
         }

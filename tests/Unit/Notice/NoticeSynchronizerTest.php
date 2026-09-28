@@ -99,7 +99,7 @@ PHP);
         self::assertSame(0, (int) $connection->table('notice_channels')->value('enabled'));
     }
 
-    public function testCoreSynchronizationRegistersTheBuiltInInAppChannel(): void
+    public function testCoreSynchronizationRegistersTheBuiltInChannels(): void
     {
         $capsule = new Capsule();
         $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
@@ -128,9 +128,11 @@ PHP);
 
         $synchronizer = new NoticeSynchronizer($capsule->getDatabaseManager(), new NoticeRegistry());
 
-        self::assertSame(1, $synchronizer->syncCore());
+        self::assertSame(2, $synchronizer->syncCore());
         self::assertSame('in_app', $connection->table('notice_channels')->where('code', 'ptadmin.in_app')->value('type'));
         self::assertSame('message', $connection->table('notice_channels')->where('code', 'ptadmin.in_app')->value('editor'));
+        self::assertSame('email', $connection->table('notice_channels')->where('code', 'ptadmin.email')->value('type'));
+        self::assertSame('html', $connection->table('notice_channels')->where('code', 'ptadmin.email')->value('editor'));
     }
 
     private function remove(string $path): void
