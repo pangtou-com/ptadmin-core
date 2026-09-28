@@ -87,6 +87,11 @@ Route::middleware($authenticatedMiddleware)
         Route::get('/', [ProfileController::class, 'show'])->name('show');
         Route::put('/', [ProfileController::class, 'update'])->name('update');
         Route::post('password', [ProfileController::class, 'password'])->name('password');
+        Route::get('login-logs', [ProfileController::class, 'loginLogs'])->name('login-logs');
+        Route::get('operations', [ProfileController::class, 'operationLogs'])->name('operations');
+        Route::get('operations/{id}', [ProfileController::class, 'operationDetail'])
+            ->whereNumber('id')
+            ->name('operations.show');
     });
 
 Route::middleware($authenticatedMiddleware)
