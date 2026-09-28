@@ -53,6 +53,11 @@ use PTAdmin\Core\Tasks\TaskExecutorRegistry;
 use PTAdmin\Core\Tasks\Executors\AdminFrontendUpdateExecutor;
 use PTAdmin\Core\Tasks\Executors\AddonTaskExecutor;
 use PTAdmin\Core\Tasks\Executors\ThemeTaskExecutor;
+use PTAdmin\Cloud\Contracts\CloudClientInterface;
+use PTAdmin\Cloud\Contracts\CloudSessionStoreInterface;
+use PTAdmin\Cloud\EncryptedCloudSessionStore;
+use PTAdmin\Cloud\FounderAccess;
+use PTAdmin\Cloud\UnavailableCloudClient;
 use PTAdmin\Core\Theme\ActiveThemeResolver;
 use PTAdmin\Core\Theme\ThemeCatalog;
 use PTAdmin\Core\Theme\ThemeManifestValidator;
@@ -150,6 +155,14 @@ final class PTAdminServiceProvider extends ServiceProvider
         });
         $this->app->singleton(TaskEventLog::class);
         $this->app->singleton(TaskManager::class);
+        $this->app->singleton(CloudClientInterface::class, UnavailableCloudClient::class);
+        $this->app->singleton(CloudSessionStoreInterface::class, static function ($app): CloudSessionStoreInterface {
+            return new EncryptedCloudSessionStore(
+                (string) $app['config']->get('ptadmin.cloud.session_path', storage_path('app/ptadmin/cloud/session.json')),
+                $app->make('encrypter'),
+            );
+        });
+        $this->app->singleton(FounderAccess::class);
         $this->app->singleton(TaskExecutorRegistry::class, static function ($app): TaskExecutorRegistry {
             $registry = new TaskExecutorRegistry();
             $registry->register('admin_frontend.update', $app->make(AdminFrontendUpdateExecutor::class));

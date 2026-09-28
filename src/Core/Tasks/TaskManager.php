@@ -72,6 +72,23 @@ final class TaskManager
     private TaskStore $store;
     private TaskEventLog $events;
 
+    /** @var array<string, string> 由已加载模块注册的任务类型和权限资源。 */
+    private array $modulePermissions = [];
+
+    public function registerType(string $type, string $permission): void
+    {
+        if (isset(self::TASK_PERMISSIONS[$type]) || isset($this->modulePermissions[$type])
+            || preg_match('/^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/', $type) !== 1 || $permission === '') {
+            throw new TaskException('The module task type is invalid or already registered.', 'invalid_task_type');
+        }
+        $this->modulePermissions[$type] = $permission;
+    }
+
+    public function resourceFor(string $type): string
+    {
+        return $this->modulePermissions[$type] ?? self::permissionFor($type);
+    }
+
     public function __construct(TaskStore $store, TaskEventLog $events)
     {
         $this->store = $store;
@@ -79,12 +96,15 @@ final class TaskManager
     }
 
     /** @param array<string, mixed> $payload */
-    public function create(string $type, array $payload = [], ?string $requestId = null, int $maxAttempts = 1, ?string $idempotencyKey = null): array
+    public function create(string $type, array $payload = [], ?string $requestId = null, int $maxAttempts = 1, ?string $idempotencyKey = null, ?string $parentTaskId = null): array
     {
-        if (!isset(self::TASK_PERMISSIONS[$type]) || in_array($type, self::RETIRED_TASK_TYPES, true)) {
+        if ((!isset(self::TASK_PERMISSIONS[$type]) && !isset($this->modulePermissions[$type])) || in_array($type, self::RETIRED_TASK_TYPES, true)) {
             throw new TaskException('The task type is unsupported.', 'unsupported_task_type', ['type' => $type]);
         }
-        return $this->store->withCreationLock(function () use ($type, $payload, $requestId, $maxAttempts, $idempotencyKey): array {
+        if ($parentTaskId !== null) {
+            $this->assertExists($parentTaskId);
+        }
+        return $this->store->withCreationLock(function () use ($type, $payload, $requestId, $maxAttempts, $idempotencyKey, $parentTaskId): array {
             if (null !== $idempotencyKey) {
                 if (preg_match('/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/', $idempotencyKey) !== 1) {
                     throw new TaskException('The task idempotency key is invalid.', 'invalid_idempotency_key');
@@ -117,6 +137,7 @@ final class TaskManager
                 'error_message' => null,
                 'request_id' => $requestId,
                 'idempotency_key' => $idempotencyKey,
+                'parent_task_id' => $parentTaskId,
             ];
             $this->store->initialize($taskId);
             $this->store->writeState($taskId, $state);
@@ -331,7 +352,7 @@ final class TaskManager
     }
 
     /** @return array<string, mixed> */
-    private function snapshot(string $taskId, ?array $state = null): array
+    private function snapshot(string $taskId, ?array $state = null, bool $includeChildren = true): array
     {
         $state ??= $this->store->readState($taskId) ?? [];
         $status = (string) ($state['status'] ?? 'pending');
@@ -342,12 +363,27 @@ final class TaskManager
             && !in_array($stage, self::IRREVERSIBLE_STAGES, true);
         $canRetry = in_array($status, ['failed', 'blocked'], true) && $attempt < $maxAttempts;
 
-        return $state + [
+        $snapshot = $state + [
             'payload' => TaskRedactor::array($this->store->readPayload($taskId) ?? []),
             'result' => $this->store->readResult($taskId),
             'can_retry' => $canRetry,
             'can_cancel' => $canCancel,
         ];
+
+        if ($includeChildren) {
+            $children = [];
+            foreach (glob($this->store->root().'/*/state.json') ?: [] as $path) {
+                $childId = basename(dirname($path));
+                $childState = $this->store->readState($childId);
+                if (is_array($childState) && ($childState['parent_task_id'] ?? null) === $taskId) {
+                    $children[] = $this->snapshot($childId, $childState, false);
+                }
+            }
+            usort($children, static fn (array $left, array $right): int => strcmp((string) ($left['created_at'] ?? ''), (string) ($right['created_at'] ?? '')));
+            $snapshot['children'] = $children;
+        }
+
+        return $snapshot;
     }
 
     /** @return array<string, mixed> */

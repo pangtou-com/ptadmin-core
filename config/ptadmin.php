@@ -94,6 +94,12 @@ return [
         'heartbeat_timeout_seconds' => (int) env('PTADMIN_TASK_HEARTBEAT_TIMEOUT', 900),
         'event_limit' => (int) env('PTADMIN_TASK_EVENT_LIMIT', 100),
     ],
+    'cloud' => [
+        'client_id' => env('PTADMIN_CLOUD_CLIENT_ID', ''),
+        'redirect_uri' => env('PTADMIN_CLOUD_REDIRECT_URI', ''),
+        'callback_redirect' => env('PTADMIN_CLOUD_CALLBACK_REDIRECT', ''),
+        'session_path' => env('PTADMIN_CLOUD_SESSION_PATH', storage_path('app/ptadmin/cloud/session.json')),
+    ],
     'addon' => [
         'path' => env('PTADMIN_ADDON_PATH', base_path('addons')),
         'download_path' => env('PTADMIN_ADDON_DOWNLOAD_PATH', storage_path('app/ptadmin/addons/downloads')),

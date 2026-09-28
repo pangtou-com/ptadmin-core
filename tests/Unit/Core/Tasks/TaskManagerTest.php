@@ -86,6 +86,18 @@ final class TaskManagerTest extends TestCase
         self::assertCount(1, glob($this->directory.'/*/state.json') ?: []);
     }
 
+    public function testParentTaskSnapshotIncludesChildTasks(): void
+    {
+        $parent = $this->tasks->create(TaskManager::ADDON_INSTALL, ['code' => 'demo']);
+        $child = $this->tasks->create(TaskManager::ADDON_DOWNLOAD, ['code' => 'demo'], null, 1, null, $parent['task_id']);
+
+        $snapshot = $this->tasks->get($parent['task_id']);
+
+        self::assertSame($parent['task_id'], $child['parent_task_id']);
+        self::assertCount(1, $snapshot['children']);
+        self::assertSame($child['task_id'], $snapshot['children'][0]['task_id']);
+    }
+
     public function testIrreversibleRunningTaskCannotBeCancelled(): void
     {
         $task = $this->tasks->create(TaskManager::ADMIN_FRONTEND_UPDATE);
@@ -107,6 +119,22 @@ final class TaskManagerTest extends TestCase
         } catch (TaskException $exception) {
             self::assertSame('unsupported_task_type', $exception->errorCode);
         }
+    }
+
+    public function testModuleTaskRegistrationIsScopedToManagerAndCannotReplaceBuiltinTypes(): void
+    {
+        $this->tasks->registerType('cms.seo.push', 'cms.seo');
+        $task = $this->tasks->create('cms.seo.push', ['platform' => 'indexnow']);
+        self::assertSame('pending', $task['status']);
+        self::assertSame('cms.seo', $this->tasks->resourceFor('cms.seo.push'));
+        try {
+            TaskManager::permissionFor('cms.seo.push');
+            self::fail('Module payloads must not use the generic HTTP creation endpoint.');
+        } catch (TaskException $exception) {
+            self::assertSame('unsupported_task_type', $exception->errorCode);
+        }
+        $this->expectException(TaskException::class);
+        $this->tasks->registerType(TaskManager::CORE_UPDATE, 'cms.seo');
     }
 
     private function remove(string $path): void

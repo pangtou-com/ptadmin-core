@@ -19,6 +19,7 @@ use PTAdmin\Core\Http\Controllers\ConfigController;
 use PTAdmin\Core\Http\Controllers\SessionController;
 use PTAdmin\Core\Http\Controllers\TaskController;
 use PTAdmin\Core\Http\Controllers\ThemeController;
+use PTAdmin\Cloud\Http\Controllers\CloudController;
 use PTAdmin\Schema\Http\Controllers\PublishController;
 use PTAdmin\Schema\Http\Controllers\ResourceController;
 use PTAdmin\Schema\Http\Controllers\RuntimeController;
@@ -43,6 +44,10 @@ Route::middleware('ptadmin.request-id')
 Route::middleware('ptadmin.request-id')
     ->post($apiPrefix.'/login', LoginController::class)
     ->name('ptadmin.login');
+
+Route::middleware('ptadmin.request-id')
+    ->get($apiPrefix.'/cloud/session/callback', [CloudController::class, 'callback'])
+    ->name('ptadmin.cloud.session.callback');
 
 Route::middleware(['ptadmin.request-id', 'ptadmin.session'])
     ->group(static function () use ($apiPrefix): void {
@@ -117,6 +122,21 @@ Route::middleware($authenticatedMiddleware)
             ->whereNumber('id')
             ->middleware('ptadmin.permission:assets,restore')
             ->name('restore');
+    });
+
+Route::middleware($authenticatedMiddleware)
+    ->prefix($apiPrefix.'/cloud')
+    ->as('ptadmin.cloud.')
+    ->group(static function (): void {
+        Route::get('session', [CloudController::class, 'session'])->name('session');
+        Route::get('session/authorize', [CloudController::class, 'authorize'])->name('session.authorize');
+        Route::post('session/logout', [CloudController::class, 'logout'])->name('session.logout');
+        Route::get('catalog', [CloudController::class, 'catalog'])->name('catalog');
+        Route::post('orders', [CloudController::class, 'order'])->name('orders.store');
+        Route::get('orders/{orderId}', [CloudController::class, 'showOrder'])->name('orders.show');
+        Route::post('licenses/preview', [CloudController::class, 'license'])->name('licenses.preview');
+        Route::post('licenses/migrate-ip', [CloudController::class, 'migrateIp'])->name('licenses.migrate-ip');
+        Route::post('licenses/migration-requests', [CloudController::class, 'requestMigration'])->name('licenses.migration-requests.store');
     });
 
 Route::middleware($authenticatedMiddleware)

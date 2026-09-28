@@ -27,6 +27,8 @@ final class TaskController extends Controller
         $payload = $request->all();
         $type = trim((string) ($payload['type'] ?? ''));
         try {
+            // 模块任务必须经过模块自己的载荷校验和提交接口，通用入口只创建内置类型。
+            TaskManager::permissionFor($type);
             $this->assertTaskPermission($request, $type, 'create');
             $data = $payload['payload'] ?? [];
             if (!is_array($data)) {
@@ -96,7 +98,7 @@ final class TaskController extends Controller
         if (!$admin instanceof Admin) {
             throw new TaskException('The administrator account is unavailable.', 'unauthorized');
         }
-        $resource = TaskManager::permissionFor($type);
+        $resource = app(TaskManager::class)->resourceFor($type);
         if (!$this->authorization->allows($admin, $ability, $resource)) {
             throw new TaskException('You are not allowed to manage this task.', 'forbidden', ['resource' => $resource, 'ability' => $ability]);
         }
