@@ -2,16 +2,99 @@
     "group_code": "system",
     "config_key": "upload",
     "title": "上传策略",
-    "description": "公共和私有文件上传的存储位置及大小限制。",
+    "description": "控制文件上传开关、类型、大小和分片上传参数。",
     "schema": {
         "name": "upload",
         "title": "上传策略",
         "fields": [
-            {"name": "public_disk", "type": "string", "label": "公共存储盘", "required": true, "default": "public"},
-            {"name": "private_disk", "type": "string", "label": "私有存储盘", "required": true, "default": "local"},
-            {"name": "public_directory", "type": "string", "label": "公共目录", "required": true, "default": "assets"},
-            {"name": "private_directory", "type": "string", "label": "私有目录", "required": true, "default": "private"},
-            {"name": "max_upload_kilobytes", "type": "integer", "label": "单文件大小上限（KB）", "required": true, "default": 10240}
-        ]
+            {
+                "name": "enabled",
+                "type": "boolean",
+                "label": "开启上传",
+                "required": true,
+                "default": true,
+                "description": "关闭后，资源中心、Schema 上传字段和插件上传接口都会拒绝新的文件上传。"
+            },
+            {
+                "name": "max_file_size_kilobytes",
+                "type": "integer",
+                "label": "单文件上传大小上限（KB）",
+                "required": true,
+                "default": 10240,
+                "validation": [
+                    {"type": "min", "value": 1},
+                    {"type": "max", "value": 1048576}
+                ],
+                "description": "服务端校验的单个文件大小上限，最大支持 1 GB。"
+            },
+            {
+                "name": "chunk_enabled",
+                "type": "boolean",
+                "label": "开启分片上传",
+                "required": true,
+                "default": false,
+                "description": "分片传输协议启用后，大文件可以按分片上传并在服务端合并。"
+            },
+            {
+                "name": "allowed_extensions",
+                "type": "string",
+                "label": "允许上传的扩展名",
+                "required": true,
+                "default": "jpg,jpeg,png,gif,webp,svg,pdf,doc,docx,xls,xlsx,ppt,pptx,txt,zip,rar,7z,mp4,mov,avi,mkv,webm,mp3,wav,ogg",
+                "description": "可分多行填写，扩展名使用逗号分隔，不含点号，例如 jpg,pdf。服务端同时兼容中英文逗号。"
+            },
+            {
+                "name": "chunk_threshold_kilobytes",
+                "type": "integer",
+                "label": "分片上传切换阈值（KB）",
+                "required": true,
+                "default": 51200,
+                "validation": [
+                    {"type": "min", "value": 1},
+                    {"type": "max", "value": 1048576}
+                ],
+                "description": "文件大小达到该阈值时使用分片上传，建议设置为不超过单文件大小上限。"
+            },
+            {
+                "name": "chunk_concurrency",
+                "type": "integer",
+                "label": "分片并发数",
+                "required": true,
+                "default": 3,
+                "validation": [
+                    {"type": "min", "value": 1},
+                    {"type": "max", "value": 10}
+                ],
+                "description": "单个文件同时上传的分片数量。"
+            },
+            {
+                "name": "chunk_retry_count",
+                "type": "integer",
+                "label": "分片重试次数",
+                "required": true,
+                "default": 3,
+                "validation": [
+                    {"type": "min", "value": 0},
+                    {"type": "max", "value": 10}
+                ],
+                "description": "单个分片失败后的自动重试次数。"
+            }
+        ],
+        "views": {
+            "forms": {
+                "default": {
+                    "title": false,
+                    "children": [
+                        {"type": "field", "field": "enabled", "component": "switch", "span": 12},
+                        {"type": "field", "field": "max_file_size_kilobytes", "component": "number", "span": 12, "props": {"min": 1, "max": 1048576, "step": 1}},
+                        {"type": "field", "field": "chunk_enabled", "component": "switch", "span": 12},
+                        {"type": "field", "field": "allowed_extensions", "component": "textarea", "span": 24, "props": {"rows": 4, "placeholder": "jpg,png,pdf"}},
+                        {"type": "field", "field": "chunk_threshold_kilobytes", "component": "number", "span": 12, "props": {"min": 1, "max": 1048576, "step": 1}},
+                        {"type": "field", "field": "chunk_concurrency", "component": "number", "span": 12, "props": {"min": 1, "max": 10, "step": 1}},
+                        {"type": "field", "field": "chunk_retry_count", "component": "number", "span": 12, "props": {"min": 0, "max": 10, "step": 1}}
+                    ]
+                }
+            }
+        }
     }
 }

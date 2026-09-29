@@ -248,11 +248,13 @@ final class InstallService
                 'from_name' => (string) config('mail.from.name', 'PTAdmin'),
             ],
             'upload' => [
-                'public_disk' => (string) config('ptadmin.storage.public_disk', 'public'),
-                'private_disk' => (string) config('ptadmin.storage.private_disk', 'local'),
-                'public_directory' => (string) config('ptadmin.storage.public_directory', 'assets'),
-                'private_directory' => (string) config('ptadmin.storage.private_directory', 'private'),
-                'max_upload_kilobytes' => (int) config('ptadmin.storage.max_upload_kilobytes', 10240),
+                'enabled' => (bool) config('ptadmin.storage.enabled', true),
+                'max_file_size_kilobytes' => (int) config('ptadmin.storage.max_file_size_kilobytes', 10240),
+                'allowed_extensions' => (string) config('ptadmin.storage.allowed_extensions', ''),
+                'chunk_enabled' => (bool) config('ptadmin.storage.chunk_enabled', false),
+                'chunk_threshold_kilobytes' => (int) config('ptadmin.storage.chunk_threshold_kilobytes', 51200),
+                'chunk_concurrency' => (int) config('ptadmin.storage.chunk_concurrency', 3),
+                'chunk_retry_count' => (int) config('ptadmin.storage.chunk_retry_count', 3),
             ],
             default => [],
         };

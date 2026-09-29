@@ -61,7 +61,7 @@ final class AssetController extends Controller
 
     public function upload(Request $request): JsonResponse
     {
-        $maximum = max(1, (int) config('ptadmin.storage.max_upload_kilobytes', 10240));
+        $maximum = $this->uploads->maxUploadKilobytes();
         $validator = Validator::make(array_merge($request->all(), ['file' => $request->file('file')]), [
             'file' => ['required', 'file', 'max:'.$maximum],
             'title' => ['sometimes', 'nullable', 'string', 'max:255'],

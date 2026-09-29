@@ -72,4 +72,29 @@ final class CoreConfigResourceTest extends TestCase
             self::assertArrayHasKey($name, $fields);
         }
     }
+
+    public function testUploadConfigurationDeclaresPolicyInsteadOfStorageDirectories(): void
+    {
+        $definition = json_decode((string) file_get_contents(dirname(__DIR__, 4).'/resources/config.upload.json'), true, 512, JSON_THROW_ON_ERROR);
+        $fields = array_column($definition['schema']['fields'], null, 'name');
+
+        self::assertSame([
+            'enabled',
+            'max_file_size_kilobytes',
+            'chunk_enabled',
+            'allowed_extensions',
+            'chunk_threshold_kilobytes',
+            'chunk_concurrency',
+            'chunk_retry_count',
+        ], array_keys($fields));
+        foreach (['public_disk', 'private_disk', 'public_directory', 'private_directory', 'max_upload_kilobytes'] as $legacyField) {
+            self::assertArrayNotHasKey($legacyField, $fields);
+        }
+
+        self::assertSame('boolean', $fields['enabled']['type']);
+        self::assertSame('boolean', $fields['chunk_enabled']['type']);
+        self::assertIsString($fields['allowed_extensions']['default']);
+        self::assertSame('textarea', array_column($definition['schema']['views']['forms']['default']['children'], null, 'field')['allowed_extensions']['component']);
+        self::assertSame('number', array_column($definition['schema']['views']['forms']['default']['children'], null, 'field')['chunk_retry_count']['component']);
+    }
 }

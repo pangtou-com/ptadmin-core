@@ -71,9 +71,13 @@ return [
     'storage' => [
         'public_disk' => env('PTADMIN_PUBLIC_UPLOAD_DISK', 'public'),
         'private_disk' => env('PTADMIN_PRIVATE_UPLOAD_DISK', 'local'),
-        'public_directory' => env('PTADMIN_PUBLIC_UPLOAD_DIRECTORY', 'assets'),
-        'private_directory' => env('PTADMIN_PRIVATE_UPLOAD_DIRECTORY', 'private'),
-        'max_upload_kilobytes' => (int) env('PTADMIN_MAX_UPLOAD_KILOBYTES', 10240),
+        'enabled' => (bool) env('PTADMIN_UPLOAD_ENABLED', true),
+        'max_file_size_kilobytes' => (int) env('PTADMIN_MAX_FILE_SIZE_KILOBYTES', env('PTADMIN_MAX_UPLOAD_KILOBYTES', 10240)),
+        'allowed_extensions' => 'jpg,jpeg,png,gif,webp,svg,pdf,doc,docx,xls,xlsx,ppt,pptx,txt,zip,rar,7z,mp4,mov,avi,mkv,webm,mp3,wav,ogg',
+        'chunk_enabled' => (bool) env('PTADMIN_CHUNK_UPLOAD_ENABLED', false),
+        'chunk_threshold_kilobytes' => (int) env('PTADMIN_CHUNK_THRESHOLD_KILOBYTES', 51200),
+        'chunk_concurrency' => (int) env('PTADMIN_CHUNK_CONCURRENCY', 3),
+        'chunk_retry_count' => (int) env('PTADMIN_CHUNK_RETRY_COUNT', 3),
     ],
     'install' => [
         'database_default' => 'mysql',

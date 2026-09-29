@@ -9,9 +9,24 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use PTAdmin\Admin\Models\Asset;
+use PTAdmin\Core\Config\ConfigException;
+use PTAdmin\Core\Config\ConfigService;
 
 final class AssetUploadService
 {
+    private const PUBLIC_DIRECTORY = 'assets';
+
+    private const PRIVATE_DIRECTORY = 'private';
+
+    public function __construct(private ConfigService $configs)
+    {
+    }
+
+    public function maxUploadKilobytes(): int
+    {
+        return max(1, (int) $this->policy()['max_file_size_kilobytes']);
+    }
+
     /**
      * 公开上传同时创建资源记录，供资源中心、Schema 字段和插件 Host API 复用。
      *
@@ -23,16 +38,13 @@ final class AssetUploadService
         string $groupCode = 'default',
         array $metadata = [],
     ): Asset {
-        $maximumBytes = max(1, (int) config('ptadmin.storage.max_upload_kilobytes', 10240)) * 1024;
-        if ((int) ($file->getSize() ?: 0) > $maximumBytes) {
-            throw new \InvalidArgumentException('上传文件超过允许的大小。');
-        }
+        $this->assertUploadAllowed($file);
 
         $groupCode = $this->groupCode($groupCode);
         $stored = $this->store(
             $file,
             (string) config('ptadmin.storage.public_disk', 'public'),
-            $this->directory((string) config('ptadmin.storage.public_directory', 'assets'), $groupCode),
+            $this->directory(self::PUBLIC_DIRECTORY, $groupCode),
             'public',
             $metadata,
             true,
@@ -72,12 +84,11 @@ final class AssetUploadService
         string $directory = '',
         array $metadata = [],
     ): StoredFile {
-        $baseDirectory = (string) config('ptadmin.storage.private_directory', 'private');
-
+        $this->assertUploadAllowed($file);
         return $this->store(
             $file,
             (string) config('ptadmin.storage.private_disk', 'local'),
-            $this->directory($baseDirectory, $directory),
+            $this->directory(self::PRIVATE_DIRECTORY, $directory),
             'private',
             $metadata,
             false,
@@ -106,10 +117,7 @@ final class AssetUploadService
             throw new \RuntimeException('无法计算上传文件摘要。');
         }
 
-        $suffix = strtolower(trim($file->getClientOriginalExtension(), '.'));
-        if ($suffix === '') {
-            $suffix = strtolower((string) $file->guessExtension());
-        }
+        $suffix = $this->extension($file);
         if (strlen($suffix) > 20 || preg_match('/^[a-z0-9]+$/', $suffix) !== 1) {
             $suffix = '';
         }
@@ -165,5 +173,82 @@ final class AssetUploadService
         }
 
         return $directory;
+    }
+
+    private function assertUploadAllowed(UploadedFile $file): void
+    {
+        $policy = $this->policy();
+        if (!(bool) $policy['enabled']) {
+            throw new \InvalidArgumentException('文件上传已关闭。');
+        }
+
+        if ((int) ($file->getSize() ?: 0) > $this->maxUploadKilobytes() * 1024) {
+            throw new \InvalidArgumentException('上传文件超过允许的大小。');
+        }
+
+        $extension = $this->extension($file);
+        $allowed = $this->allowedExtensions($policy['allowed_extensions']);
+        if ($extension === '' || !in_array($extension, $allowed, true)) {
+            throw new \InvalidArgumentException('文件扩展名不在允许上传的范围内。');
+        }
+    }
+
+    /** @return array<string, mixed> */
+    private function policy(): array
+    {
+        $fallback = [
+            'enabled' => (bool) config('ptadmin.storage.enabled', true),
+            'max_file_size_kilobytes' => (int) config('ptadmin.storage.max_file_size_kilobytes', 10240),
+            'allowed_extensions' => config('ptadmin.storage.allowed_extensions', ''),
+            'chunk_enabled' => (bool) config('ptadmin.storage.chunk_enabled', false),
+            'chunk_threshold_kilobytes' => (int) config('ptadmin.storage.chunk_threshold_kilobytes', 51200),
+            'chunk_concurrency' => (int) config('ptadmin.storage.chunk_concurrency', 3),
+            'chunk_retry_count' => (int) config('ptadmin.storage.chunk_retry_count', 3),
+        ];
+
+        try {
+            $values = $this->configs->get('core', 'ptadmin', 'upload')['effective_values'];
+        } catch (ConfigException) {
+            return $fallback;
+        }
+
+        return array_replace($fallback, $values);
+    }
+
+    private function extension(UploadedFile $file): string
+    {
+        $suffix = strtolower(trim($file->getClientOriginalExtension(), '.'));
+        if ($suffix === '') {
+            $suffix = strtolower((string) $file->guessExtension());
+        }
+        if (strlen($suffix) > 20 || preg_match('/^[a-z0-9]+$/', $suffix) !== 1) {
+            return '';
+        }
+
+        return $suffix;
+    }
+
+    /** @return list<string> */
+    private function allowedExtensions(mixed $extensions): array
+    {
+        if (is_string($extensions)) {
+            $extensions = preg_split('/[,，]/u', $extensions) ?: [];
+        }
+        if (!is_array($extensions)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($extensions as $extension) {
+            if (!is_string($extension)) {
+                continue;
+            }
+            $extension = strtolower(trim($extension, " .\t\n\r\0\x0B"));
+            if ($extension !== '' && strlen($extension) <= 20 && preg_match('/^[a-z0-9]+$/', $extension) === 1) {
+                $normalized[$extension] = true;
+            }
+        }
+
+        return array_keys($normalized);
     }
 }
