@@ -31,6 +31,8 @@ return new class extends Migration {
             $table->string('method', 10)->comment('HTTP 请求方法');
             $table->string('path', 500)->comment('不含查询参数的请求路径');
             $table->unsignedSmallInteger('status_code')->comment('HTTP 响应状态码');
+            $table->unsignedInteger('response_time_ms')->default(0)->comment('请求从进入后台审计到生成响应的耗时，单位毫秒');
+            $table->json('request_payload')->nullable()->comment('脱敏并限量后的写请求参数 JSON');
             $table->boolean('successful')->comment('操作是否得到成功响应');
             $table->string('ip_address', 45)->default('')->comment('操作请求 IP 地址');
             $table->dateTime('created_at');

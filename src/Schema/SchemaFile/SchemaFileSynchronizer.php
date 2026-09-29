@@ -79,6 +79,41 @@ final class SchemaFileSynchronizer
         return $results;
     }
 
+    /** Create and publish missing user-editable resources from addon presets without replacing existing resources. */
+    public function syncCustomPresets(array $files): int
+    {
+        $created = 0;
+        foreach ($files as $file) {
+            $definition = $this->loader->resourceFromFile($file['path']);
+            $resourceKey = $definition['resource'];
+            if (Resource::query()->where('resource_key', $resourceKey)->exists()) {
+                continue;
+            }
+            $schema = $definition['schema'];
+            $this->resources->createResource([
+                'namespace' => str_contains($resourceKey, '.') ? explode('.', $resourceKey, 2)[0] : '',
+                'name' => $schema->name,
+                'title' => $schema->title,
+                'description' => $schema->description,
+                'source_type' => 'custom',
+                'owner_type' => $file['owner_type'],
+                'owner_code' => $file['owner_code'],
+                'table_name' => $definition['table_name'],
+                'migration_owner' => $definition['migration_owner'],
+            ]);
+            $saved = $this->resources->saveDraftSchema(['resource' => $resourceKey, 'schema' => $schema->toArray()]);
+            $checksum = (string) $saved->checksum;
+            $checked = $this->publish->checkDraft(['resource' => $resourceKey, 'expected_checksum' => $checksum]);
+            if (empty($checked->validation_result?->passed) || !empty($checked->migration_plan?->destructive)) {
+                throw new RuntimeException('CMS preset failed initial Schema validation: '.$resourceKey);
+            }
+            $this->publish->publishDraft(['resource' => $resourceKey, 'expected_checksum' => $checksum]);
+            $created++;
+        }
+
+        return $created;
+    }
+
     /** @return array{resource:string,status:string,risk:string,checksum:string} */
     public function publish(string $resourceKey, bool $force = false): array
     {

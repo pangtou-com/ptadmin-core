@@ -69,6 +69,13 @@ final class ResourceSynchronizer implements ResourceSynchronizerInterface
                 $schemaKeys[] = $schemaKey;
                 $counts['schemas']++;
             }
+            $presetFiles = $this->schemaSources->discoverDirectory(
+                $directory.'/database/schema-presets',
+                'addon',
+                $ownerCode,
+                'addon:'.$code
+            );
+            $counts['schemas'] += $this->schemaSynchronizer->syncCustomPresets($presetFiles);
             foreach ($this->jsonFiles($directory.'/Resources', 'config.') as $path) {
                 $definitions = $this->objectOrList($path);
                 foreach ($definitions as $definition) {
@@ -87,6 +94,7 @@ final class ResourceSynchronizer implements ResourceSynchronizerInterface
             if ($schemaKeys !== []) {
                 $schemaQuery->whereNotIn('resource_key', $schemaKeys);
             }
+            $schemaQuery->where('source_type', '!=', 'custom');
             foreach ($schemaQuery->get() as $resource) {
                 $this->resources->disableResource((string) $resource->resource_key);
             }
@@ -106,7 +114,7 @@ final class ResourceSynchronizer implements ResourceSynchronizerInterface
     {
         $ownerCode = strtolower($code);
         $this->database->transaction(function () use ($ownerCode): void {
-            foreach (Resource::query()->where(['owner_type' => 'addon', 'owner_code' => $ownerCode])->get() as $resource) {
+            foreach (Resource::query()->where(['owner_type' => 'addon', 'owner_code' => $ownerCode])->where('source_type', '!=', 'custom')->get() as $resource) {
                 $this->resources->disableResource((string) $resource->resource_key);
             }
             $this->menus->deactivateAddon($ownerCode);

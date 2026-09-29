@@ -10,17 +10,21 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Symfony\Component\HttpFoundation\Response;
 
-/**
- * 记录后台写请求的最小审计信息；不保存请求正文，避免密码、Token 和插件密钥进入日志表。
- */
+/** 记录后台写请求的审计信息，并对请求参数作脱敏和限量处理。 */
 final class RecordAdminOperationMiddleware
 {
+    private const MAX_PAYLOAD_BYTES = 16_384;
+    private const MAX_STRING_BYTES = 1_024;
+    private const MAX_ARRAY_ITEMS = 50;
+    private const MAX_DEPTH = 5;
+
     public function __construct(private ConnectionInterface $database)
     {
     }
 
     public function handle(Request $request, Closure $next): Response
     {
+        $startedAt = hrtime(true);
         $response = $next($request);
         if (in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'], true)) {
             return $response;
@@ -51,11 +55,68 @@ final class RecordAdminOperationMiddleware
             'method' => $request->method(),
             'path' => $request->path(),
             'status_code' => $response->getStatusCode(),
+            'response_time_ms' => intdiv(hrtime(true) - $startedAt, 1_000_000),
+            'request_payload' => $this->requestPayload($request),
             'successful' => $response->getStatusCode() < 400,
             'ip_address' => (string) $request->getClientIp(),
             'created_at' => now(),
         ]);
 
         return $response;
+    }
+
+    private function requestPayload(Request $request): string
+    {
+        $payload = $this->sanitizeValue($request->input(), 0);
+        $encoded = json_encode(
+            $payload,
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE,
+        );
+        if (!is_string($encoded) || strlen($encoded) > self::MAX_PAYLOAD_BYTES) {
+            return '{"_truncated":true,"_reason":"payload_too_large"}';
+        }
+
+        return $encoded;
+    }
+
+    private function sanitizeValue(mixed $value, int $depth): mixed
+    {
+        if ($depth >= self::MAX_DEPTH) {
+            return ['_truncated' => true, '_reason' => 'max_depth'];
+        }
+        if (is_array($value)) {
+            $sanitized = [];
+            $count = 0;
+            foreach ($value as $key => $item) {
+                if ($count++ >= self::MAX_ARRAY_ITEMS) {
+                    $sanitized['_truncated'] = true;
+                    $sanitized['_reason'] = 'max_items';
+                    break;
+                }
+
+                $key = (string) $key;
+                $sanitized[$key] = $this->isSensitiveKey($key)
+                    ? '[masked]'
+                    : $this->sanitizeValue($item, $depth + 1);
+            }
+
+            return $sanitized;
+        }
+        if (is_string($value) && strlen($value) > self::MAX_STRING_BYTES) {
+            return substr($value, 0, self::MAX_STRING_BYTES).'[truncated]';
+        }
+        if (is_scalar($value) || $value === null) {
+            return $value;
+        }
+
+        return '[unsupported_value]';
+    }
+
+    private function isSensitiveKey(string $key): bool
+    {
+        return preg_match(
+            '/password|token|secret|authorization|cookie|api[_-]?key|private[_-]?key|credential/i',
+            $key,
+        ) === 1;
     }
 }

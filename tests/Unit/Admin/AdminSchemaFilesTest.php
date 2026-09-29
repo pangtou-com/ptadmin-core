@@ -166,6 +166,34 @@ final class AdminSchemaFilesTest extends TestCase
         self::assertArrayNotHasKey('component', (array) $userPermissions['extensions']);
     }
 
+    public function testAuditLogsOnlyExposeReadAndDetailViews(): void
+    {
+        $directory = dirname(__DIR__, 3).'/database/schemas/admin';
+        foreach (['admin.login_logs.schema.json', 'admin.operation_records.schema.json'] as $filename) {
+            $schema = (new Loader())->resourceFromFile($directory.'/'.$filename)['schema']->toArray();
+            $table = $schema['views']['tables']['default'];
+
+            self::assertSame(['view'], array_column($table['operate']['actions'], 'action'));
+            self::assertSame(['left' => [], 'right' => [], 'batch' => []], $table['toolbar']);
+            self::assertFalse($table['selection']);
+            self::assertSame(['table' => 'default', 'detail' => 'default'], $schema['views']['page']);
+            self::assertContains('admin_name', array_column($table['columns'], 'field'));
+            self::assertNotContains('admin_id', array_column($table['columns'], 'field'));
+            self::assertFalse($this->field($schema['fields'], 'admin_id')['listable']);
+            self::assertTrue($this->field($schema['fields'], 'admin_name')['listable']);
+            self::assertFalse($schema['actions']['create']['enabled']);
+            self::assertFalse($schema['actions']['update']['enabled']);
+            self::assertFalse($schema['actions']['delete']['enabled']);
+        }
+
+        $operationSchema = (new Loader())->resourceFromFile($directory.'/admin.operation_records.schema.json')['schema']->toArray();
+        self::assertContains('response_time_ms', array_column($operationSchema['views']['tables']['default']['columns'], 'field'));
+        self::assertContains('response_time_ms', $this->formFields($operationSchema['views']['details']['default']['children']));
+        self::assertContains('request_payload', $this->formFields($operationSchema['views']['details']['default']['children']));
+        self::assertTrue($this->field($operationSchema['fields'], 'response_time_ms')['listable']);
+        self::assertFalse($this->field($operationSchema['fields'], 'request_payload')['listable']);
+    }
+
     /** @param list<array<string, mixed>> $nodes @return list<string> */
     private function formFields(array $nodes): array
     {

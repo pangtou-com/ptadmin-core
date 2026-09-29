@@ -6,6 +6,7 @@ namespace PTAdmin\Schema\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use PTAdmin\Schema\Meta\Models\Resource;
 use PTAdmin\Schema\Contracts\ResourceServiceInterface;
 
 /**
@@ -13,6 +14,40 @@ use PTAdmin\Schema\Contracts\ResourceServiceInterface;
  */
 final class ResourceController extends Controller
 {
+    public function options(Request $request): JsonResponse
+    {
+        return $this->respond(static function () use ($request): array {
+            $query = Resource::query()
+                ->where('status', 'active')
+                ->whereNotNull('active_version_id')
+                ->orderBy('title')
+                ->orderBy('resource_key');
+            foreach (['source_type', 'owner_type', 'owner_code', 'namespace'] as $field) {
+                if ($request->filled($field)) {
+                    $query->where($field, $request->query($field));
+                }
+            }
+            if ($request->filled('keyword')) {
+                $keyword = '%'.$request->query('keyword').'%';
+                $query->where(static function ($nested) use ($keyword): void {
+                    $nested->where('resource_key', 'like', $keyword)->orWhere('title', 'like', $keyword);
+                });
+            }
+            $limit = min(100, max(1, $request->integer('limit', 100)));
+
+            return ['results' => $query->limit($limit)->get()->map(static fn (Resource $resource): array => [
+                'value' => $resource->resource_key,
+                'label' => $resource->title !== '' ? $resource->title : $resource->resource_key,
+                'resource_key' => $resource->resource_key,
+                'description' => (string) $resource->description,
+                'source_type' => (string) $resource->source_type,
+                'owner_type' => (string) $resource->owner_type,
+                'owner_code' => (string) $resource->owner_code,
+                'version' => (int) $resource->active_version_id,
+            ])->all()];
+        });
+    }
+
     public function index(Request $request, ResourceServiceInterface $resources): JsonResponse
     {
         return $this->respond(static function () use ($request, $resources): mixed {

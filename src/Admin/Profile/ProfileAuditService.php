@@ -55,6 +55,7 @@ final class ProfileAuditService
             'method',
             'path',
             'status_code',
+            'response_time_ms',
             'successful',
             'ip_address',
             'created_at',
@@ -67,6 +68,7 @@ final class ProfileAuditService
                 'method' => (string) $row->method,
                 'path' => (string) $row->path,
                 'status_code' => (int) $row->status_code,
+                'response_time_ms' => (int) $row->response_time_ms,
                 'successful' => (bool) $row->successful,
                 'ip_address' => (string) $row->ip_address,
                 'created_at' => (string) $row->created_at,
@@ -93,6 +95,8 @@ final class ProfileAuditService
             'method' => (string) $row->method,
             'path' => (string) $row->path,
             'status_code' => (int) $row->status_code,
+            'response_time_ms' => (int) $row->response_time_ms,
+            'request_payload' => $this->jsonValue((string) ($row->request_payload ?? '')),
             'successful' => (bool) $row->successful,
             'ip_address' => (string) $row->ip_address,
             'created_at' => (string) $row->created_at,
@@ -122,5 +126,13 @@ final class ProfileAuditService
             'page' => $page,
             'limit' => $limit,
         ];
+    }
+
+    /** @return array<string, mixed>|list<mixed>|null */
+    private function jsonValue(string $value): array|null
+    {
+        $decoded = json_decode($value, true);
+
+        return is_array($decoded) ? $decoded : null;
     }
 }

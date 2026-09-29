@@ -315,6 +315,9 @@ Route::middleware($schemaMiddleware)
     ->prefix($schemaPrefix)
     ->as($schemaNamePrefix)
     ->group(static function (): void {
+        Route::get('options', [ResourceController::class, 'options'])
+            ->middleware('ptadmin.permission:schema.resources,view')
+            ->name('options.index');
         Route::get('resources', [ResourceController::class, 'index'])
             ->middleware('ptadmin.permission:schema.resources,view')
             ->name('resources.index');

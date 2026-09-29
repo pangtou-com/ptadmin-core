@@ -21,6 +21,63 @@
                 "enabled": false
             }
         },
+        "views": {
+            "page": {
+                "table": "default",
+                "detail": "default"
+            },
+            "tables": {
+                "default": {
+                    "columns": [
+                        { "field": "admin_name", "width": 140 },
+                        { "field": "resource_key", "minWidth": 180 },
+                        { "field": "action", "minWidth": 140 },
+                        { "field": "method", "width": 100 },
+                        { "field": "path", "minWidth": 220 },
+                        { "field": "status_code", "width": 120 },
+                        { "field": "response_time_ms", "width": 130 },
+                        { "field": "successful", "width": 120 },
+                        { "field": "ip_address", "width": 120 },
+                        { "field": "created_at", "width": 160 }
+                    ],
+                    "selection": false,
+                    "toolbar": {
+                        "left": [],
+                        "right": [],
+                        "batch": []
+                    },
+                    "operate": {
+                        "width": 110,
+                        "actions": [
+                            { "action": "view", "title": "查看" }
+                        ]
+                    }
+                }
+            },
+            "details": {
+                "default": {
+                    "title": "操作日志详情",
+                    "wrapper": {
+                        "type": "dialog",
+                        "props": { "width": "min(92vw, 680px)" }
+                    },
+                    "children": [
+                        { "type": "field", "field": "admin_name", "span": 12 },
+                        { "type": "field", "field": "created_at", "span": 12 },
+                        { "type": "field", "field": "status_code", "span": 12 },
+                        { "type": "field", "field": "response_time_ms", "span": 12 },
+                        { "type": "field", "field": "successful", "span": 12 },
+                        { "type": "field", "field": "request_id", "span": 24 },
+                        { "type": "field", "field": "resource_key", "span": 12 },
+                        { "type": "field", "field": "action", "span": 12 },
+                        { "type": "field", "field": "method", "span": 12 },
+                        { "type": "field", "field": "ip_address", "span": 12 },
+                        { "type": "field", "field": "path", "span": 24 },
+                        { "type": "field", "field": "request_payload", "span": 24 }
+                    ]
+                }
+            }
+        },
         "fields": [
             {
                 "name": "admin_id",
@@ -28,6 +85,18 @@
                 "label": "管理员 ID",
                 "persisted": true,
                 "readonly": true,
+                "formable": false,
+                "listable": false,
+                "searchable": false,
+                "sortable": false
+            },
+            {
+                "name": "admin_name",
+                "type": "string",
+                "label": "管理员",
+                "persisted": false,
+                "readonly": true,
+                "formable": false,
                 "listable": true,
                 "searchable": false,
                 "sortable": false
@@ -86,6 +155,28 @@
                 "listable": true,
                 "searchable": true,
                 "sortable": true
+            },
+            {
+                "name": "response_time_ms",
+                "type": "integer",
+                "label": "响应时间（毫秒）",
+                "persisted": true,
+                "readonly": true,
+                "formable": false,
+                "listable": true,
+                "searchable": false,
+                "sortable": true
+            },
+            {
+                "name": "request_payload",
+                "type": "json",
+                "label": "请求参数",
+                "persisted": true,
+                "readonly": true,
+                "formable": false,
+                "listable": false,
+                "searchable": false,
+                "sortable": false
             },
             {
                 "name": "successful",

@@ -23,6 +23,9 @@ use PTAdmin\Schema\Runtime\RuntimeHookContext;
  */
 final class AdminRuntimeHook
 {
+    /** @var array<int, string|null> */
+    private array $adminNicknames = [];
+
     public function __construct(
         private ConnectionInterface $database,
         private SessionManager $sessions,
@@ -205,6 +208,8 @@ final class AdminRuntimeHook
             $row['is_core'] = $this->isCoreResource((string) ($row['resource_key'] ?? ''));
             $row['abilities'] = $capabilities['abilities'];
             $row['scopes'] = $capabilities['scopes'];
+        } elseif (in_array($resourceKey, ['admin.login_logs', 'admin.operation_records'], true)) {
+            $row['admin_name'] = $this->adminName((int) ($row['admin_id'] ?? 0), (string) ($row['username'] ?? ''));
         }
 
         return $row;
@@ -785,6 +790,18 @@ final class AdminRuntimeHook
         }
 
         return $admin;
+    }
+
+    private function adminName(int $id, string $fallback): string
+    {
+        if ($id < 1) {
+            return $fallback;
+        }
+        if (!array_key_exists($id, $this->adminNicknames)) {
+            $this->adminNicknames[$id] = $this->database->table('admins')->where('id', $id)->value('nickname');
+        }
+
+        return $this->adminNicknames[$id] ?: $fallback;
     }
 
     private function role(int $id): AdminRole
