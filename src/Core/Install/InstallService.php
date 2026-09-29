@@ -236,10 +236,9 @@ final class InstallService
         $configKey = (string) ($definition['config_key'] ?? '');
         $runtimeDefaults = match ($configKey) {
             'site' => [
-                'site_name' => (string) config('app.name', 'PTAdmin'),
+                'title' => (string) config('app.name', 'PTAdmin'),
             ],
             'mail' => [
-                'mailer' => (string) config('mail.default', 'log'),
                 'host' => (string) config('mail.mailers.smtp.host', '127.0.0.1'),
                 'port' => (int) config('mail.mailers.smtp.port', 2525),
                 'encryption' => (string) (config('mail.mailers.smtp.encryption') ?? ''),

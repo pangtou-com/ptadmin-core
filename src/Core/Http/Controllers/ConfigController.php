@@ -7,8 +7,10 @@ namespace PTAdmin\Core\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Log;
 use PTAdmin\Core\Config\ConfigException;
 use PTAdmin\Core\Config\ConfigService;
+use PTAdmin\Core\Config\MailConfigurationTester;
 use PTAdmin\Core\Http\Responses\AdminResponse;
 
 /**
@@ -109,6 +111,33 @@ final class ConfigController extends Controller
         } catch (ConfigException $exception) {
             return $this->error($exception);
         }
+    }
+
+    public function testMail(Request $request, MailConfigurationTester $tester): JsonResponse
+    {
+        $validated = $request->validate([
+            'recipient' => ['required', 'email', 'max:254'],
+            'values' => ['required', 'array:host,port,encryption,username,password,from_address,from_name'],
+            'values.host' => ['required', 'string', 'max:255'],
+            'values.port' => ['required', 'integer', 'between:1,65535'],
+            'values.encryption' => ['present', 'nullable', 'string', 'in:,tls,ssl'],
+            'values.username' => ['nullable', 'string', 'max:255'],
+            'values.password' => ['nullable', 'string', 'max:4096'],
+            'values.from_address' => ['required', 'email', 'max:254'],
+            'values.from_name' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        try {
+            $tester->send($validated['recipient'], $validated['values']);
+        } catch (\InvalidArgumentException) {
+            return AdminResponse::error(42200, '邮件配置字段无效。', null, 422);
+        } catch (\Throwable $exception) {
+            Log::warning('PTAdmin 测试邮件发送失败', ['exception_type' => $exception::class]);
+
+            return AdminResponse::error(50200, '测试邮件发送失败，请检查 SMTP 配置和服务器连接。', null, 502);
+        }
+
+        return AdminResponse::success('测试邮件已提交至邮件服务器。');
     }
 
     private function error(ConfigException $exception): JsonResponse

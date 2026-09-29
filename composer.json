@@ -24,6 +24,9 @@
         "phpunit/phpunit": "^10.0"
     },
     "autoload": {
+        "files": [
+            "src/Core/Config/helpers.php"
+        ],
         "psr-4": {
             "PTAdmin\\": "src/"
         }

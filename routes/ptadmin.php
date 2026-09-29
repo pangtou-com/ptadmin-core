@@ -193,6 +193,9 @@ Route::middleware($authenticatedMiddleware)
     ->prefix($apiPrefix.'/config')
     ->as('ptadmin.config.')
     ->group(static function (): void {
+        Route::post('mail/test', [ConfigController::class, 'testMail'])
+            ->middleware(['ptadmin.permission:admin.config,update', 'throttle:5,1'])
+            ->name('mail.test');
         Route::get('definitions', [ConfigController::class, 'definitions'])
             ->middleware('ptadmin.permission:admin.config,view')
             ->name('definitions');

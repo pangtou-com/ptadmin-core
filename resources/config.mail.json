@@ -2,27 +2,11 @@
     "group_code": "system",
     "config_key": "mail",
     "title": "邮件配置",
-    "description": "系统邮件发送通道和发件人信息。",
+    "description": "SMTP 服务器和发件人信息。",
     "schema": {
         "name": "mail",
         "title": "邮件配置",
         "fields": [
-            {
-                "name": "mailer",
-                "type": "string",
-                "label": "发送驱动",
-                "required": true,
-                "default": "log",
-                "options": {
-                    "mode": "static",
-                    "value_policy": "closed",
-                    "items": [
-                        {"value": "log", "label": "日志"},
-                        {"value": "smtp", "label": "SMTP"},
-                        {"value": "sendmail", "label": "Sendmail"}
-                    ]
-                }
-            },
             {"name": "host", "type": "string", "label": "SMTP 主机", "default": "127.0.0.1"},
             {"name": "port", "type": "integer", "label": "SMTP 端口", "default": 2525},
             {
@@ -34,9 +18,9 @@
                     "mode": "static",
                     "value_policy": "closed",
                     "items": [
-                        {"value": "", "label": "不加密"},
-                        {"value": "tls", "label": "TLS"},
-                        {"value": "ssl", "label": "SSL"}
+                        {"value": "", "label": "自动（服务器支持时使用 STARTTLS）"},
+                        {"value": "tls", "label": "要求 STARTTLS"},
+                        {"value": "ssl", "label": "SSL（直接建立加密连接）"}
                     ]
                 }
             },

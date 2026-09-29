@@ -2,15 +2,45 @@
     "group_code": "system",
     "config_key": "site",
     "title": "站点信息",
-    "description": "当前应用对外展示的名称、地址和站点描述。",
+    "description": "站点展示、统计及备案信息。",
+    "exposure": "public",
     "schema": {
         "name": "site",
         "title": "站点信息",
         "fields": [
-            {"name": "site_name", "type": "string", "label": "站点名称", "required": true, "default": "PTAdmin"},
+            {"name": "title", "type": "string", "label": "站点名称", "required": true, "default": "PTAdmin"},
             {"name": "url", "type": "string", "label": "站点地址", "description": "站点公开访问的完整 HTTP(S) 地址，安装时写入，用于生成站点公开链接。", "required": true, "default": ""},
+            {"name": "site_keywords", "type": "string", "label": "站点关键词", "description": "多个关键词可使用英文逗号分隔。", "default": ""},
             {"name": "site_description", "type": "string", "label": "站点描述", "default": ""},
-            {"name": "site_logo", "type": "string", "label": "站点 Logo 地址", "default": ""}
-        ]
+            {"name": "site_logo", "type": "string", "label": "站点 Logo", "description": "站点标识图片的公开访问地址。", "default": ""},
+            {"name": "site_favicon", "type": "string", "label": "站点图标", "description": "浏览器标签页图标的公开访问地址。", "default": ""},
+            {"name": "copyright", "type": "string", "label": "版权信息", "description": "站点页脚可展示的版权文字。", "default": ""},
+            {"name": "statistics_code", "type": "string", "label": "统计代码", "description": "统计平台提供的代码片段；保存后不会自动插入公开页面。", "default": ""},
+            {"name": "icp_number", "type": "string", "label": "ICP备案号", "default": ""},
+            {"name": "icp_record_url", "type": "string", "label": "ICP备案链接", "description": "ICP备案信息对应的公开查询地址。", "default": "https://beian.miit.gov.cn/"},
+            {"name": "police_record_number", "type": "string", "label": "公安备案号", "default": ""},
+            {"name": "police_record_url", "type": "string", "label": "公安备案链接", "description": "公安备案信息对应的公开查询地址。", "default": ""}
+        ],
+        "views": {
+            "forms": {
+                "default": {
+                    "title": false,
+                    "children": [
+                        {"type": "field", "field": "title"},
+                        {"type": "field", "field": "url"},
+                        {"type": "field", "field": "site_keywords"},
+                        {"type": "field", "field": "site_description", "component": "textarea", "props": {"rows": 4}},
+                        {"type": "field", "field": "site_logo", "span": 12, "component": "image-upload", "props": {"accept": "image/*", "groupCode": "default", "limit": 1, "pickText": "从素材库选择", "uploadText": "上传 Logo", "valueMode": "url"}},
+                        {"type": "field", "field": "site_favicon", "span": 12, "component": "image-upload", "props": {"accept": "image/*", "groupCode": "default", "limit": 1, "pickText": "从素材库选择", "uploadText": "上传站点图标", "valueMode": "url"}},
+                        {"type": "field", "field": "copyright"},
+                        {"type": "field", "field": "statistics_code", "component": "textarea", "props": {"rows": 6}},
+                        {"type": "field", "field": "icp_number", "span": 12},
+                        {"type": "field", "field": "icp_record_url", "span": 12},
+                        {"type": "field", "field": "police_record_number", "span": 12},
+                        {"type": "field", "field": "police_record_url", "span": 12}
+                    ]
+                }
+            }
+        }
     }
 }

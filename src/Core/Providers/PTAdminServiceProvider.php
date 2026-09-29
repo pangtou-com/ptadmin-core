@@ -97,6 +97,7 @@ use PTAdmin\Addon\Runtime\TemplateDirectiveLoader;
 use PTAdmin\Template\Builtin\BuiltinDirectiveProvider;
 use PTAdmin\Template\Directive\DirectiveRegistry;
 use PTAdmin\Template\Runtime\TemplateRenderer;
+use PTAdmin\Template\Builtin\PublicConfigDirectiveProvider;
 use PTAdmin\Template\Parsing\DirectiveArgumentParser;
 use PTAdmin\Addon\Lifecycle\StateManager;
 use PTAdmin\Schema\Providers\SchemaServiceProvider;
@@ -142,6 +143,9 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app->singleton(InstallRequirementService::class);
         $this->app->singleton(ConfigValueCodec::class);
         $this->app->singleton(ConfigService::class);
+        $this->app->singleton(\PTAdmin\Core\Config\SystemMailTransport::class, static function ($app): \PTAdmin\Core\Config\SystemMailTransport {
+            return new \PTAdmin\Core\Config\SystemMailTransport($app->make(ConfigService::class), $app->make('mail.manager'));
+        });
         $this->app->singleton(DictionaryService::class);
         $this->app->singleton(DictionarySynchronizer::class);
         $this->app->singleton(NoticeRegistry::class);
@@ -261,6 +265,7 @@ final class PTAdminServiceProvider extends ServiceProvider
             $registry = new DirectiveRegistry();
             $registration = $registry->forNamespace('core');
             (new BuiltinDirectiveProvider())->register($registration);
+            (new PublicConfigDirectiveProvider($this->app->make(ConfigService::class)))->register($registration);
             (new ThemeDirectiveProvider($this->app->make(ThemeAssetResolver::class)))->register($registration);
             $registration->commit();
 
@@ -478,6 +483,12 @@ final class PTAdminServiceProvider extends ServiceProvider
 
             return;
         }
+
+        $this->app['config']->set('mail.mailers.ptadmin', ['transport' => 'ptadmin']);
+        $mailManager = $this->app->make('mail.manager');
+        $mailManager->setDefaultDriver('ptadmin');
+        $mailManager->extend('ptadmin', fn (): \Symfony\Component\Mailer\Transport\TransportInterface => $this->app->make(\PTAdmin\Core\Config\SystemMailTransport::class));
+        $mailManager->purge('ptadmin');
 
         $this->app['router']->aliasMiddleware('ptadmin.session', AuthenticateSessionMiddleware::class);
         $this->app['router']->aliasMiddleware('ptadmin.permission', RequirePermissionMiddleware::class);
