@@ -39,7 +39,7 @@ final class FrontendRegistryTest extends TestCase
         $this->writeAddon('iframe', 'index.html');
         $registry = $this->registry(new TrustPolicy());
         $resolved = $registry->resolve(
-            [['key' => 'demo-addon.page', 'children' => []]],
+            [['key' => 'demo-addon.page', 'owner_type' => 'addon', 'owner_code' => 'demo-addon', 'children' => []]],
         );
 
         self::assertSame([], $resolved['errors']);
@@ -56,7 +56,18 @@ final class FrontendRegistryTest extends TestCase
         );
 
         self::assertSame([], $registry->resolve([['key' => 'another.page']])['plugins']);
-        self::assertCount(1, $registry->resolve([['key' => 'demo-addon.page']])['plugins']);
+        self::assertCount(1, $registry->resolve([[
+            'key' => 'demo-addon.page', 'owner_type' => 'addon', 'owner_code' => 'demo-addon',
+        ]])['plugins']);
+        self::assertSame([], $registry->resolve([['key' => 'demo-addon.page', 'type' => 'page']])['plugins']);
+        foreach (['group', 'schema', 'page'] as $type) {
+            self::assertCount(1, $registry->resolve([[
+                'key' => 'independent-navigation-key',
+                'type' => $type,
+                'owner_type' => 'addon',
+                'owner_code' => 'demo-addon',
+            ]])['plugins']);
+        }
     }
 
     public function testRegistryUsesManifestCodeWhenAddonDirectoryUsesDifferentCase(): void
@@ -76,8 +87,9 @@ final class FrontendRegistryTest extends TestCase
 
         $plugin = $this->registry(new TrustPolicy())->resolve([[
             'key' => 'cms.page',
-            'type' => 'plugin',
-            'plugin_code' => 'cms',
+            'type' => 'page',
+            'owner_type' => 'addon',
+            'owner_code' => 'cms',
         ]])['plugins'][0];
 
         self::assertSame('cms', $plugin['code']);
@@ -90,13 +102,13 @@ final class FrontendRegistryTest extends TestCase
         $this->writeAddon('trusted', 'frontend.mjs', true);
 
         $denied = $this->registry(new TrustPolicy([], [], false, 'testing'))->resolve(
-            [['key' => 'demo-addon.page']],
+            $this->addonMenu(),
         );
         self::assertSame([], $denied['plugins']);
         self::assertSame('trusted_publisher_denied', $denied['errors'][0]['error_code']);
 
         $allowed = $this->registry(new TrustPolicy([], [], true, 'testing'))->resolve(
-            [['key' => 'demo-addon.page']],
+            $this->addonMenu(),
         );
         self::assertCount(1, $allowed['plugins']);
         $entry = $allowed['plugins'][0]['entries'][0];
@@ -112,7 +124,7 @@ final class FrontendRegistryTest extends TestCase
         file_put_contents($this->publicPath.'/admintest/plugins/demo-addon/index.html', 'tampered');
 
         $resolved = $this->registry(new TrustPolicy())->resolve(
-            [['key' => 'demo-addon.page']],
+            $this->addonMenu(),
         );
 
         self::assertCount(1, $resolved['plugins']);
@@ -125,7 +137,7 @@ final class FrontendRegistryTest extends TestCase
         $development = new FrontendDevelopmentStore('testing');
 
         $plugin = $this->registry(new TrustPolicy(), $development)
-            ->resolve([['key' => 'demo-addon.page']])['plugins'][0];
+            ->resolve($this->addonMenu())['plugins'][0];
 
         self::assertSame('/ptadmin/demo-addon', $plugin['api_base']);
         self::assertSame(['schema.runtime'], $plugin['entries'][0]['capabilities']);
@@ -142,7 +154,7 @@ final class FrontendRegistryTest extends TestCase
         $plugin = $this->registry(
             new TrustPolicy([], [], true, 'testing'),
             new FrontendDevelopmentStore('testing'),
-        )->resolve([['key' => 'demo-addon.page']])['plugins'][0];
+        )->resolve($this->addonMenu())['plugins'][0];
 
         self::assertSame('http://127.0.0.1:5173/src/frontend.ts', $plugin['entries'][0]['development']['entry_url']);
         self::assertSame('cms-local', $plugin['entries'][0]['development']['dev_revision']);
@@ -155,7 +167,7 @@ final class FrontendRegistryTest extends TestCase
         $plugin = $this->registry(
             new TrustPolicy([], [], true, 'testing'),
             new FrontendDevelopmentStore('production'),
-        )->resolve([['key' => 'demo-addon.page']])['plugins'][0];
+        )->resolve($this->addonMenu())['plugins'][0];
 
         self::assertArrayNotHasKey('development', $plugin['entries'][0]);
     }
@@ -171,7 +183,7 @@ final class FrontendRegistryTest extends TestCase
         $resolved = $this->registry(
             new TrustPolicy(),
             new FrontendDevelopmentStore('testing'),
-        )->resolve([['key' => 'demo-addon.page']]);
+        )->resolve($this->addonMenu());
 
         self::assertSame([], $resolved['plugins']);
         self::assertSame('frontend_development_invalid', $resolved['errors'][0]['error_code']);
@@ -182,7 +194,7 @@ final class FrontendRegistryTest extends TestCase
         $this->writeAddon('trusted', 'frontend.mjs', true, true);
 
         $plugin = $this->registry(new TrustPolicy([], [], true, 'testing'))
-            ->resolve([['key' => 'demo-addon.page']])['plugins'][0];
+            ->resolve($this->addonMenu())['plugins'][0];
 
         self::assertSame('demo-addon.schema', $plugin['design_flows'][0]['id']);
         self::assertSame('schema.resources.update', $plugin['design_flows'][0]['permission']);
@@ -202,7 +214,7 @@ final class FrontendRegistryTest extends TestCase
         $publish = function (array $descriptor) use ($source): array {
             file_put_contents($source.'/.vite/sparq-root.json', json_encode($descriptor, JSON_THROW_ON_ERROR));
             (new FrontendPublisher($this->publicPath))->publish('admintest', 'demo-addon', $source);
-            return $this->registry(new TrustPolicy([], [], true, 'testing'))->resolve([['key' => 'demo-addon.page']]);
+            return $this->registry(new TrustPolicy([], [], true, 'testing'))->resolve($this->addonMenu());
         };
         $resolved = $publish($build);
         self::assertSame([], $resolved['errors']);
@@ -222,7 +234,7 @@ final class FrontendRegistryTest extends TestCase
         $published = $this->publicPath.'/admintest/plugins/demo-addon';
         unlink($published.'/page.css');
         symlink($source.'/page.css', $published.'/page.css');
-        $escaped = $this->registry(new TrustPolicy([], [], true, 'testing'))->resolve([['key' => 'demo-addon.page']]);
+        $escaped = $this->registry(new TrustPolicy([], [], true, 'testing'))->resolve($this->addonMenu());
         self::assertSame('frontend_style_unavailable', $escaped['errors'][0]['error_code']);
     }
 
@@ -245,6 +257,17 @@ final class FrontendRegistryTest extends TestCase
             ['admin-v1'],
             ['schema.runtime'],
         );
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function addonMenu(): array
+    {
+        return [[
+            'key' => 'demo-addon.page',
+            'type' => 'page',
+            'owner_type' => 'addon',
+            'owner_code' => 'demo-addon',
+        ]];
     }
 
     private function writeAddon(

@@ -183,6 +183,13 @@ final class AdminRuntimeHook
         if ($resourceKey === 'admin.admin_users') {
             unset($row['password']);
             $row['role_ids'] = $this->database->table('admin_user_roles')->where('admin_id', (int) ($row['id'] ?? 0))->pluck('role_id')->map(static fn ($id): int => (int) $id)->values()->all();
+            $row['role_names'] = $this->database->table('admin_user_roles')
+                ->join('admin_roles', 'admin_roles.id', '=', 'admin_user_roles.role_id')
+                ->where('admin_user_roles.admin_id', (int) ($row['id'] ?? 0))
+                ->whereNull('admin_roles.deleted_at')
+                ->orderBy('admin_user_roles.role_id')
+                ->pluck('admin_roles.name')
+                ->implode('、');
             $row['permissions'] = $this->permissionPayload('admin', (string) ($row['id'] ?? 0));
         } elseif ($resourceKey === 'admin.admin_roles') {
             $row['permissions'] = $this->permissionPayload('role', (string) ($row['id'] ?? 0));
@@ -193,8 +200,7 @@ final class AdminRuntimeHook
             $row['target_resource_key'] = (string) ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '');
             $row['icon'] = (string) ($row['icon'] ?? $meta['icon'] ?? '');
             $row['external_url'] = (string) ($meta['external_url'] ?? '');
-            $row['page_type'] = (string) ($meta['page_type'] ?? $this->legacyPageType((string) ($row['type'] ?? ''), (string) ($row['page_key'] ?? '')));
-            $row['owner_type'] = (string) ($meta['owner_type'] ?? ($this->isCoreResource((string) ($row['resource_key'] ?? '')) ? 'core' : 'custom'));
+            $row['owner_type'] = $this->resourceOwnerType($meta);
             $row['owner_code'] = (string) ($meta['owner_code'] ?? '');
             $row['is_core'] = $this->isCoreResource((string) ($row['resource_key'] ?? ''));
             $row['abilities'] = $capabilities['abilities'];
@@ -202,17 +208,6 @@ final class AdminRuntimeHook
         }
 
         return $row;
-    }
-
-    private function legacyPageType(string $type, string $pageKey): string
-    {
-        return match ($type) {
-            'group' => 'navigation.group',
-            'schema' => 'schema.resource',
-            'plugin' => 'plugin.page',
-            'external' => 'external.link',
-            default => $pageKey,
-        };
     }
 
     public function executeAction(RuntimeHookContext $context, array $input): array
@@ -481,25 +476,11 @@ final class AdminRuntimeHook
      */
     private function prepareAdminResource(array $input, array $prepared, ?AdminResource $current = null): array
     {
-        // Accept the pre-schema page_type field at this API boundary while storing only the new type model.
-        $legacyPageType = (string) ($input['page_type'] ?? '');
-        if (($prepared['type'] ?? $current?->type) === 'page' && $legacyPageType !== '') {
-            if ($legacyPageType === 'navigation.group') {
-                $prepared['type'] = 'group';
-            } elseif ($legacyPageType === 'schema.resource') {
-                $prepared['type'] = 'schema';
-                $target = (string) ($input['target_resource_key'] ?? $input['resource_key'] ?? '');
-                if ($target !== '' && !array_key_exists('target_resource_key', $input)) {
-                    $input['target_resource_key'] = $target;
-                }
-            } elseif ($legacyPageType === 'external.link') {
-                $prepared['type'] = 'external';
-            } elseif ($legacyPageType !== '') {
-                $prepared['page_key'] = $prepared['page_key'] ?? $legacyPageType;
-            }
-        }
         $currentAttributes = $current?->getAttributes() ?? [];
         $meta = $this->decodeMeta($currentAttributes['meta_json'] ?? null);
+        if ($current === null) {
+            $meta['owner_type'] = 'custom';
+        }
         $metaFields = [
             'target_resource_key' => 'target_resource_key',
             'external_url' => 'external_url',
@@ -515,22 +496,30 @@ final class AdminRuntimeHook
                 $meta[$metaField] = $value;
             }
         }
-        if (array_key_exists('page_type', $input) && (string) $input['page_type'] !== '') {
-            $meta['page_type'] = (string) $input['page_type'];
-        }
-
         if (($prepared['type'] ?? $current?->type) !== 'schema') {
             unset($meta['target_resource_key']);
         }
         if (($prepared['type'] ?? $current?->type) !== 'external') {
             unset($meta['external_url']);
         }
+        $type = (string) ($prepared['type'] ?? $current?->type);
+        if ($current === null && $type === 'group' && !array_key_exists('is_menu', $input)) {
+            $prepared['is_menu'] = true;
+        }
+        if ($type === 'action' && ($current === null || $current->type !== 'action')) {
+            $prepared['is_menu'] = false;
+        }
+        if ($current !== null && $current->type !== $type && $type === 'action') {
+            $prepared['path'] = '';
+        }
+        if ($type === 'group' && $this->resourceOwnerType($meta) === 'custom') {
+            $prepared['path'] = '';
+        }
 
-        if ($current && ($this->isCoreResource((string) $current->resource_key) || ($meta['owner_type'] ?? null) === 'addon')) {
+        if ($current && in_array($this->resourceOwnerType($meta), ['core', 'addon'], true)) {
             $currentMeta = $this->decodeMeta($currentAttributes['meta_json'] ?? null);
             if ((string) ($prepared['type'] ?? $current->type) !== (string) $current->type
                 || (bool) ($prepared['is_menu'] ?? $current->is_menu) !== (bool) $current->is_menu
-                || (string) ($prepared['page_key'] ?? $current->page_key) !== (string) ($current->page_key ?? '')
                 || (string) ($meta['target_resource_key'] ?? '') !== (string) ($currentMeta['target_resource_key'] ?? $currentMeta['resource_key'] ?? '')
             ) {
                 throw $this->error('resource_binding_protected', '核心或插件资源的类型和页面绑定不能修改。', [
@@ -558,31 +547,22 @@ final class AdminRuntimeHook
         $status = (bool) ($resource['status'] ?? false);
         $meta = $this->decodeMeta($resource['meta_json'] ?? null);
 
-        if (!in_array($type, ['group', 'schema', 'page', 'plugin', 'external', 'action'], true)) {
-            throw $this->error('invalid_menu_resource', '资源类型只能是分组、Schema、插件页面、宿主页面、外链或操作权限。', ['field' => 'type']);
+        if (!in_array($type, ['group', 'schema', 'page', 'external', 'action'], true)) {
+            throw $this->error('invalid_menu_resource', '资源类型只能是分组、Schema、页面、外链或操作权限。', ['field' => 'type']);
         }
         $this->assertParentResource($resourceKey, $parentKey);
 
         if ($type === 'action') {
-            if ($isMenu || $path !== '' || ($resource['page_key'] ?? '') !== '' || ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '') !== '' || ($meta['external_url'] ?? '') !== '') {
+            if ($isMenu || $path !== '' || ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '') !== '' || ($meta['external_url'] ?? '') !== '') {
                 throw $this->error('invalid_resource_page_fields', '操作权限不能配置导航页面字段。', ['field' => 'type']);
             }
             return;
         }
-        if ($type === 'group' && (($resource['page_key'] ?? '') !== '' || ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '') !== '' || ($meta['external_url'] ?? '') !== '')) {
+        if ($type === 'group' && (($meta['target_resource_key'] ?? $meta['resource_key'] ?? '') !== '' || ($meta['external_url'] ?? '') !== '')) {
             throw $this->error('invalid_resource_page_fields', '导航分组不能配置页面绑定。', ['field' => 'type']);
-        }
-        if ($type === 'plugin' && (($resource['page_key'] ?? '') !== '' || ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '') !== '' || ($meta['external_url'] ?? '') !== '')) {
-            throw $this->error('invalid_resource_page_fields', '插件页面不能配置 page_key、target_resource_key 或 external_url。', ['field' => 'type']);
-        }
-        if ($type === 'plugin' && (string) ($resource['addon_code'] ?? '') === '') {
-            throw $this->error('invalid_plugin_resource', '插件页面必须归属于已安装插件。', ['field' => 'addon_code']);
         }
         if ($type === 'schema' && (string) ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '') === '') {
             throw $this->error('invalid_schema_resource', 'Schema 资源必须绑定目标资源。', ['field' => 'target_resource_key']);
-        }
-        if ($type === 'page' && $isMenu && (string) ($resource['page_key'] ?? '') === '') {
-            throw $this->error('invalid_page_binding', '内部页面必须绑定 page_key。', ['field' => 'page_key']);
         }
         if ($type === 'external' && (string) ($meta['external_url'] ?? '') === '') {
             throw $this->error('invalid_external_url', '外链必须配置 external_url。', ['field' => 'external_url']);
@@ -602,7 +582,7 @@ final class AdminRuntimeHook
 
         if ($isMenu && $parentKey !== '') {
             $parent = AdminResource::query()->where('resource_key', $parentKey)->first();
-            if (!$parent || !$parent->is_menu || !in_array($parent->type, ['group', 'schema', 'page', 'plugin'], true)) {
+            if (!$parent || !$parent->is_menu || !in_array($parent->type, ['group', 'schema', 'page'], true)) {
                 throw $this->error('invalid_parent_resource', '菜单父级必须是未删除的页面菜单。', ['parent_key' => $parentKey]);
             }
             if ($status && !$parent->status) {
@@ -610,31 +590,13 @@ final class AdminRuntimeHook
             }
         }
 
-        $builtinKeys = [
-            'dashboard' => 'dashboard',
-            'asset.center' => 'assets',
-            'settings.center' => 'admin.config',
-            'dictionary.center' => 'admin.dictionaries',
-            'logs.center' => 'admin.logs',
-            'theme.center' => 'themes',
-            'schema.design' => 'schema.resources',
-        ];
-        $pageKey = (string) ($resource['page_key'] ?? '');
-        if ($type === 'page' && isset($builtinKeys[$pageKey]) && $resourceKey !== $builtinKeys[$pageKey]) {
-            throw $this->error('invalid_page_binding', '内置页面只能绑定其约定的资源编码。', [
-                'resource_key' => $resourceKey,
-                'expected_resource_key' => $builtinKeys[$pageKey],
-            ]);
-        }
-
         $targetResourceKey = (string) ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '');
         if ($type === 'schema') {
-            $legacyDesignBinding = $resourceKey === 'schema.resources' && $targetResourceKey === 'schema.resource';
-            if ($targetResourceKey === '' || (!$legacyDesignBinding && !$this->database->table('schema_resources')
+            if ($targetResourceKey === '' || !$this->database->table('schema_resources')
                 ->whereNull('deleted_at')
                 ->where('status', 'active')
                 ->where('resource_key', $targetResourceKey)
-                ->exists())) {
+                ->exists()) {
                 throw $this->error('invalid_schema_resource', 'Schema 资源页必须绑定已发布且启用的目标资源。', [
                     'field' => 'target_resource_key',
                     'target_resource_key' => $targetResourceKey,
@@ -659,16 +621,6 @@ final class AdminRuntimeHook
                 throw $this->error('resource_has_enabled_children', '请先停用子菜单，再停用当前菜单。', ['resource_key' => $resourceKey]);
             }
         }
-    }
-
-    /** @return list<string> */
-    private function menuPageTypes(): array
-    {
-        return [
-            'navigation.group', 'schema.resource', 'dashboard', 'asset.center', 'settings.center',
-            'dictionary.center', 'logs.center', 'theme.center', 'schema.design',
-            'plugin.page', 'cloud.market', 'external.link',
-        ];
     }
 
     /** @param array<string, mixed> $input @return array<string, mixed> */
@@ -723,12 +675,30 @@ final class AdminRuntimeHook
 
     private function assertResourceCanBeRemoved(AdminResource $resource): void
     {
-        if ($this->isCoreResource((string) $resource->resource_key)) {
-            throw $this->error('core_resource_protected', '核心权限资源不能删除。', ['id' => (int) $resource->getKey()]);
+        $attributes = $resource->getAttributes();
+        $ownerType = $this->resourceOwnerType($this->decodeMeta($attributes['meta_json'] ?? null));
+        if ($ownerType === 'core') {
+            throw $this->error('core_resource_protected', '核心权限资源不能删除。', [
+                'id' => (int) $resource->getKey(),
+                'resource_key' => (string) $resource->resource_key,
+            ]);
+        }
+        if ($ownerType !== 'custom') {
+            throw $this->error('code_resource_protected', '仅后台新增的导航与权限资源允许删除，请通过编辑调整。', [
+                'id' => (int) $resource->getKey(),
+                'resource_key' => (string) $resource->resource_key,
+                'owner_type' => $ownerType,
+            ]);
         }
         if (AdminResource::withTrashed()->where('parent_key', $resource->resource_key)->exists()) {
             throw $this->error('resource_has_children', '存在子资源时不能删除当前资源。', ['id' => (int) $resource->getKey()]);
         }
+    }
+
+    /** @param array<string, mixed> $meta */
+    private function resourceOwnerType(array $meta): string
+    {
+        return (string) ($meta['owner_type'] ?? 'unknown');
     }
 
     /** @return array<string, mixed> */

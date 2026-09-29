@@ -11,7 +11,7 @@ use RuntimeException;
 final class MenuSynchronizer
 {
     /** @var list<string> */
-    private const TYPES = ['group', 'schema', 'page', 'plugin', 'external', 'action'];
+    private const TYPES = ['group', 'schema', 'page', 'external', 'action'];
 
     public function __construct(
         private DatabaseManager $database,
@@ -191,7 +191,6 @@ final class MenuSynchronizer
             'type' => $type,
             'parent_key' => trim((string) ($item['parent_key'] ?? '')),
             'path' => $this->normalizePath($rawPath, $type, $ownerType, $ownerCode, $key),
-            'page_key' => (string) ($item['page_key'] ?? ''),
             'target_resource_key' => (string) ($item['target_resource_key'] ?? ''),
             'external_url' => (string) ($item['external_url'] ?? ''),
             'icon' => (string) ($item['icon'] ?? ''),
@@ -222,30 +221,16 @@ final class MenuSynchronizer
             if ($type === 'action' && $definition['is_menu']) {
                 throw new RuntimeException(sprintf('Action 资源不能显示为菜单：%s', $key));
             }
-            if ($type === 'group' && ($definition['page_key'] !== '' || $definition['target_resource_key'] !== '' || $definition['external_url'] !== '')) {
+            if ($type === 'group' && ($definition['target_resource_key'] !== '' || $definition['external_url'] !== '')) {
                 throw new RuntimeException(sprintf('分组资源不能配置页面绑定：%s', $key));
-            }
-            if ($type === 'plugin') {
-                if ($ownerType !== 'addon') {
-                    throw new RuntimeException(sprintf('Core 资源不能声明 plugin 页面：%s', $key));
-                }
-                if ($definition['page_key'] !== '' || $definition['target_resource_key'] !== '' || $definition['external_url'] !== '') {
-                    throw new RuntimeException(sprintf('插件页面不能配置 page_key、target_resource_key 或 external_url：%s', $key));
-                }
-            }
-            if ($ownerType === 'addon' && $type === 'page') {
-                throw new RuntimeException(sprintf('插件页面必须使用 type=plugin：%s', $key));
             }
             if ($type === 'schema' && $definition['target_resource_key'] === '') {
                 throw new RuntimeException(sprintf('Schema 资源必须配置 target_resource_key：%s', $key));
             }
-            if ($type === 'page' && $definition['page_key'] === '') {
-                throw new RuntimeException(sprintf('内部页面必须配置 page_key：%s', $key));
-            }
             if ($type === 'external' && $definition['external_url'] === '') {
                 throw new RuntimeException(sprintf('外链资源必须配置 external_url：%s', $key));
             }
-            if ($type === 'action' && ($definition['path'] !== '' || $definition['page_key'] !== '' || $definition['target_resource_key'] !== '' || $definition['external_url'] !== '')) {
+            if ($type === 'action' && ($definition['path'] !== '' || $definition['target_resource_key'] !== '' || $definition['external_url'] !== '')) {
                 throw new RuntimeException(sprintf('资源 %s 的页面字段与 type 不匹配。', $key));
             }
             if ($definition['is_menu'] && $definition['path'] === '' && !in_array($type, ['group'], true)) {
@@ -337,9 +322,7 @@ final class MenuSynchronizer
             'status' => $definition['status'],
             'sort' => $definition['sort'],
             'module' => $ownerType === 'addon' ? 'addon' : 'admin',
-            'page_key' => $definition['page_key'] !== '' ? $definition['page_key'] : null,
             'icon' => $definition['icon'] !== '' ? $definition['icon'] : null,
-            'addon_code' => $ownerType === 'addon' ? $ownerCode : null,
         ];
     }
 
@@ -366,7 +349,7 @@ final class MenuSynchronizer
             return '';
         }
 
-        if ($ownerType === 'addon' && in_array($type, ['group', 'schema', 'plugin'], true)) {
+        if ($ownerType === 'addon' && in_array($type, ['group', 'schema', 'page'], true)) {
             if (str_starts_with($path, '/') || preg_match('!^[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$!', $path) !== 1) {
                 throw new RuntimeException(sprintf('插件资源 path 必须是相对路由片段：%s', $resourceKey));
             }
@@ -390,14 +373,6 @@ final class MenuSynchronizer
         $meta = json_decode((string) ($existing->meta_json ?? ''), true);
         $existingType = is_array($meta) ? (string) ($meta['owner_type'] ?? '') : '';
         $existingCode = is_array($meta) ? (string) ($meta['owner_code'] ?? '') : '';
-        if ($existingType === '' && $existing->addon_code !== null) {
-            $existingType = 'addon';
-            $existingCode = strtolower((string) $existing->addon_code);
-        }
-        if ($existingType === '' && (string) ($existing->module ?? '') === 'admin') {
-            $existingType = 'core';
-            $existingCode = 'ptadmin';
-        }
         if ($existingType !== '' && ($existingType !== $ownerType || $existingCode !== $ownerCode)) {
             throw new RuntimeException(sprintf('资源编码 owner 冲突：%s', $key));
         }
@@ -406,14 +381,7 @@ final class MenuSynchronizer
     /** @param list<string> $keepKeys @return array{created:int,updated:int,unchanged:int,disabled:int,resource_keys:list<string>} */
     private function deactivateOwner(string $ownerType, string $ownerCode, array $keepKeys = []): array
     {
-        $query = $this->database->table('admin_resources')
-            ->whereNull('deleted_at')
-            ->where('module', $ownerType === 'addon' ? 'addon' : 'admin');
-        if ($ownerType === 'addon') {
-            $query->where('addon_code', $ownerCode);
-        } else {
-            $query->whereNull('addon_code');
-        }
+        $query = $this->database->table('admin_resources')->whereNull('deleted_at');
         $disabled = 0;
         foreach ($query->get() as $resource) {
             $meta = json_decode((string) ($resource->meta_json ?? ''), true);

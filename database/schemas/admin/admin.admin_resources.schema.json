@@ -36,6 +36,8 @@
                         "title",
                         "resource_key",
                         "type",
+                        "owner_type",
+                        "owner_code",
                         "path",
                         "status"
                     ],
@@ -65,9 +67,9 @@
                             "action": "delete",
                             "title": "删除",
                             "show_when": {
-                                "field": "is_core",
-                                "op": "neq",
-                                "value": true
+                                "field": "owner_type",
+                                "op": "eq",
+                                "value": "custom"
                             }
                         }
                     ]
@@ -75,7 +77,7 @@
             },
             "forms": {
                 "default": {
-                    "title": "资源配置",
+                    "title": "导航编辑",
                     "wrapper": {
                         "type": "dialog",
                         "props": {
@@ -89,35 +91,31 @@
                     },
                     "children": [
                         {
-                            "type": "section",
-                            "title": "资源信息",
-                            "span": 24,
-                            "children": [
-                                {
-                                    "type": "field",
-                                    "field": "resource_key",
-                                    "span": 12
-                                },
-                                {
-                                    "type": "field",
-                                    "field": "title",
-                                    "span": 12
-                                },
-                                {
-                                    "type": "field",
-                                    "field": "type",
-                                    "span": 12
-                                },
-                                {
-                                    "type": "field",
-                                    "field": "parent_key",
-                                    "span": 12
-                                }
-                            ]
+                            "type": "field",
+                            "field": "resource_key",
+                            "span": 12
                         },
                         {
-                            "type": "section",
-                            "title": "页面与导航",
+                            "type": "field",
+                            "field": "title",
+                            "span": 12
+                        },
+                        {
+                            "type": "field",
+                            "field": "type",
+                            "span": 12,
+                            "component": "admin-menu-type-picker"
+                        },
+                        {
+                            "type": "field",
+                            "field": "parent_key",
+                            "span": 12,
+                            "props": {
+                                "checkStrictly": true
+                            }
+                        },
+                        {
+                            "type": "group",
                             "span": 24,
                             "show_when": {
                                 "field": "type",
@@ -127,28 +125,19 @@
                             "children": [
                                 {
                                     "type": "field",
-                                    "field": "is_menu",
-                                    "span": 12
-                                },
-                                {
-                                    "type": "field",
                                     "field": "path",
-                                    "span": 12
-                                },
-                                {
-                                    "type": "field",
-                                    "field": "page_key",
                                     "span": 12,
                                     "show_when": {
                                         "field": "type",
-                                        "op": "eq",
-                                        "value": "page"
+                                        "op": "neq",
+                                        "value": "group"
                                     }
                                 },
                                 {
                                     "type": "field",
                                     "field": "target_resource_key",
                                     "span": 12,
+                                    "component": "admin-schema-resource-picker",
                                     "show_when": {
                                         "field": "type",
                                         "op": "eq",
@@ -169,30 +158,37 @@
                                     "type": "field",
                                     "field": "icon",
                                     "span": 12,
-                                    "show_when": {
-                                        "field": "is_menu",
-                                        "op": "eq",
-                                        "value": true
+                                    "component": "icon-input",
+                                    "props": {
+                                        "icons": [
+                                            "bell", "blocks", "book-open-text", "building-2", "cloud",
+                                            "external-link", "file-text", "folder", "images", "key-round",
+                                            "layout-dashboard", "list-checks", "list-tree", "menu", "network",
+                                            "palette", "scroll-text", "settings", "shield-check", "users"
+                                        ]
                                     }
                                 }
                             ]
                         },
                         {
-                            "type": "section",
-                            "title": "状态与排序",
-                            "span": 24,
-                            "children": [
-                                {
-                                    "type": "field",
-                                    "field": "status",
-                                    "span": 12
-                                },
-                                {
-                                    "type": "field",
-                                    "field": "sort",
-                                    "span": 12
-                                }
-                            ]
+                            "type": "field",
+                            "field": "is_menu",
+                            "span": 12,
+                            "show_when": {
+                                "field": "type",
+                                "op": "neq",
+                                "value": "action"
+                            }
+                        },
+                        {
+                            "type": "field",
+                            "field": "status",
+                            "span": 12
+                        },
+                        {
+                            "type": "field",
+                            "field": "sort",
+                            "span": 12
                         }
                     ]
                 }
@@ -200,17 +196,17 @@
         },
         "actions": {
             "move_resource": {
-                "label": "移动资源"
+                "label": "移动导航"
             },
             "move_menu": {
-                "label": "移动资源"
+                "label": "移动导航"
             }
         },
         "fields": [
             {
                 "name": "resource_key",
                 "type": "string",
-                "label": "资源编码",
+                "label": "导航编码",
                 "persisted": true,
                 "required": true,
                 "formable": true,
@@ -225,14 +221,14 @@
                     {
                         "type": "pattern",
                         "value": "^[a-z][a-z0-9._-]{1,190}$",
-                        "message": "资源编码格式不正确"
+                        "message": "导航编码格式不正确"
                     }
                 ]
             },
             {
                 "name": "title",
                 "type": "string",
-                "label": "资源名称",
+                "label": "导航标题",
                 "persisted": true,
                 "required": true,
                 "formable": true,
@@ -244,16 +240,16 @@
                     {
                         "type": "max_length",
                         "value": 150,
-                        "message": "资源名称不能超过 150 个字符"
+                        "message": "导航标题不能超过 150 个字符"
                     }
                 ]
             },
             {
                 "name": "type",
                 "type": "string",
-                "label": "资源类型",
+                "label": "导航类型",
                 "persisted": true,
-                "default": "page",
+                "default": "group",
                 "formable": true,
                 "listable": true,
                 "searchable": true,
@@ -264,27 +260,28 @@
                     "items": [
                         {
                             "value": "group",
-                            "label": "导航分组"
+                            "label": "导航分组",
+                            "description": "组织子菜单，不设置访问地址"
                         },
                         {
                             "value": "schema",
-                            "label": "Schema 资源"
+                            "label": "Schema 资源",
+                            "description": "打开已发布的 Schema 数据页面"
                         },
                         {
                             "value": "page",
-                            "label": "内部页面"
-                        },
-                        {
-                            "value": "plugin",
-                            "label": "插件页面"
+                            "label": "页面",
+                            "description": "打开宿主或所属插件已注册的页面"
                         },
                         {
                             "value": "external",
-                            "label": "外部链接"
+                            "label": "外部链接",
+                            "description": "跳转到站外网址"
                         },
                         {
                             "value": "action",
-                            "label": "操作权限"
+                            "label": "操作权限",
+                            "description": "只用于授权，不显示在菜单中"
                         }
                     ]
                 }
@@ -292,7 +289,7 @@
             {
                 "name": "parent_key",
                 "type": "string",
-                "label": "父资源",
+                "label": "上级导航",
                 "persisted": true,
                 "formable": true,
                 "listable": true,
@@ -311,13 +308,26 @@
                 "reference": {
                     "resource": "admin.admin_resources",
                     "value_field": "resource_key",
-                    "label_field": "title"
+                    "label_field": "title",
+                    "parent_field": "parent_key"
+                },
+                "options": {
+                    "mode": "reference",
+                    "reference": {
+                        "parent_field": "parent_key",
+                        "load_mode": "all",
+                        "limit": 200,
+                        "filters": [
+                            { "field": "is_menu", "value": true },
+                            { "field": "resource_key", "operator": "<>", "from": "form.resource_key" }
+                        ]
+                    }
                 }
             },
             {
                 "name": "path",
                 "type": "string",
-                "label": "前端相对路径",
+                "label": "访问地址",
                 "persisted": true,
                 "required": false,
                 "formable": true,
@@ -332,25 +342,6 @@
                         "type": "max_length",
                         "value": 255,
                         "message": "前端路径不能超过 255 个字符"
-                    }
-                ]
-            },
-            {
-                "name": "page_key",
-                "type": "string",
-                "label": "页面注册键",
-                "persisted": true,
-                "formable": true,
-                "listable": true,
-                "searchable": true,
-                "normalize": {
-                    "trim": true
-                },
-                "validation": [
-                    {
-                        "type": "max_length",
-                        "value": 150,
-                        "message": "页面注册键不能超过 150 个字符"
                     }
                 ]
             },
@@ -390,10 +381,7 @@
                         "value": 100,
                         "message": "菜单图标编码不能超过 100 个字符"
                     }
-                ],
-                "extensions": {
-                    "component": "admin-menu-icon-picker"
-                }
+                ]
             },
             {
                 "name": "external_url",
@@ -425,9 +413,9 @@
             {
                 "name": "is_menu",
                 "type": "boolean",
-                "label": "显示为菜单",
+                "label": "菜单显示",
                 "persisted": true,
-                "default": false,
+                "default": true,
                 "formable": true,
                 "listable": true,
                 "searchable": true,
@@ -477,16 +465,26 @@
                 "persisted": false,
                 "readonly": true,
                 "formable": false,
-                "listable": true
+                "listable": true,
+                "options": {
+                    "mode": "static",
+                    "value_policy": "closed",
+                    "items": [
+                        { "value": "core", "label": "核心代码" },
+                        { "value": "addon", "label": "插件代码" },
+                        { "value": "custom", "label": "后台新增" },
+                        { "value": "unknown", "label": "来源未记录" }
+                    ]
+                }
             },
             {
                 "name": "owner_code",
                 "type": "string",
-                "label": "来源编码",
+                "label": "所属来源",
                 "persisted": false,
                 "readonly": true,
                 "formable": false,
-                "listable": false
+                "listable": true
             }
         ]
     }

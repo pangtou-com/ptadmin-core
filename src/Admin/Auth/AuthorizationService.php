@@ -141,11 +141,10 @@ final class AuthorizationService
         foreach ($resources as $resource) {
             $meta = $this->decode((string) ($resource->meta_json ?? ''));
             $type = (string) ($resource->type ?? '');
-            if (!in_array($type, ['group', 'schema', 'page', 'plugin', 'external'], true)) {
+            if (!in_array($type, ['group', 'schema', 'page', 'external'], true)) {
                 continue;
             }
 
-            $pageType = $this->legacyPageType($resource, $meta);
             $path = (string) ($resource->path ?? '');
 
             $menu = [
@@ -153,7 +152,6 @@ final class AuthorizationService
                 'title' => (string) $resource->title,
                 'type' => $type,
                 'path' => $this->menuPath($path),
-                'page_type' => $pageType,
                 'children' => [],
             ];
             $targetResourceKey = (string) ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '');
@@ -162,11 +160,11 @@ final class AuthorizationService
                 $menu['resource_key'] = $targetResourceKey;
                 $menu['target_resource_key'] = $targetResourceKey;
             }
-            if ((string) ($resource->page_key ?? '') !== '') {
-                $menu['page_key'] = (string) $resource->page_key;
-            }
-            if ($resource->addon_code !== null && (string) $resource->addon_code !== '') {
-                $menu['plugin_code'] = strtolower((string) $resource->addon_code);
+            $ownerType = (string) ($meta['owner_type'] ?? 'unknown');
+            $ownerCode = (string) ($meta['owner_code'] ?? '');
+            $menu['owner_type'] = $ownerType;
+            if ($ownerCode !== '') {
+                $menu['owner_code'] = $ownerCode;
             }
             if ($icon !== '') {
                 $menu['icon'] = $icon;
@@ -493,23 +491,6 @@ final class AuthorizationService
         $path = trim($path);
 
         return $path === '' ? '' : '/'.ltrim($path, '/');
-    }
-
-    /** @param object $resource @param array<string,mixed> $meta */
-    private function legacyPageType(object $resource, array $meta): string
-    {
-        $legacy = (string) ($meta['page_type'] ?? '');
-        if ($legacy !== '') {
-            return $legacy;
-        }
-
-        return match ((string) ($resource->type ?? '')) {
-            'group' => 'navigation.group',
-            'schema' => 'schema.resource',
-            'plugin' => 'plugin.page',
-            'external' => 'external.link',
-            default => (string) ($resource->page_key ?? 'page'),
-        };
     }
 
     /** @return array<string, mixed> */

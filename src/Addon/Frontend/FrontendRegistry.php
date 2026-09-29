@@ -452,13 +452,10 @@ final class FrontendRegistry
     {
         $codes = [];
         foreach ($menus as $menu) {
-            $type = (string) ($menu['type'] ?? '');
-            $code = $menu['plugin_code'] ?? null;
-            if ($type === 'plugin' && is_string($code) && $code !== '') {
+            $ownerType = (string) ($menu['owner_type'] ?? '');
+            $code = $menu['owner_code'] ?? null;
+            if ($ownerType === 'addon' && is_string($code) && $code !== '') {
                 $codes[strtolower($code)] = true;
-            } elseif ($type === '' && is_string($menu['key'] ?? null) && str_contains((string) $menu['key'], '.')) {
-                // 兼容尚未完成菜单重同步的旧 Session fixture；正式插件菜单必须使用 type=plugin 和 owner code。
-                $codes[strtolower((string) strstr((string) $menu['key'], '.', true))] = true;
             }
             $children = $menu['children'] ?? null;
             if (is_array($children)) {

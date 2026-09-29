@@ -23,6 +23,7 @@
                     "columns": [
                         { "field": "username" },
                         { "field": "nickname" },
+                        { "field": "role_names", "minWidth": 160 },
                         { "field": "email" },
                         { "field": "mobile" },
                         { "field": "status" },
@@ -354,6 +355,16 @@
                 "extensions": { "secret": { "readable": false } }
             },
             {
+                "name": "role_names",
+                "type": "string",
+                "label": "所属角色",
+                "persisted": false,
+                "readonly": true,
+                "formable": false,
+                "listable": true,
+                "searchable": false
+            },
+            {
                 "name": "role_ids",
                 "type": "integer",
                 "label": "角色",
@@ -365,6 +376,9 @@
                     "resource": "admin.admin_roles",
                     "value_field": "id",
                     "label_field": "name"
+                },
+                "options": {
+                    "mode": "reference"
                 }
             },
             {

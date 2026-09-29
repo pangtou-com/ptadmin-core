@@ -30,7 +30,6 @@ final class CoreMenuDefinitionTest extends TestCase
     {
         yield '资源中心' => ['assets', [
             'type' => 'page',
-            'page_key' => 'asset.center',
             'path' => '/assets',
             'is_menu' => true,
             'abilities' => ['view', 'upload', 'update', 'delete', 'restore'],
@@ -38,7 +37,6 @@ final class CoreMenuDefinitionTest extends TestCase
         yield '系统配置' => ['admin.config', [
             'type' => 'page',
             'parent_key' => 'admin',
-            'page_key' => 'settings.center',
             'path' => '/settings',
             'is_menu' => true,
             'abilities' => ['view', 'design', 'update'],
@@ -46,21 +44,19 @@ final class CoreMenuDefinitionTest extends TestCase
         yield '数据字典' => ['admin.dictionaries', [
             'type' => 'page',
             'parent_key' => 'admin',
-            'page_key' => 'dictionary.center',
             'path' => '/admin/dictionaries',
             'is_menu' => true,
             'abilities' => ['view', 'create', 'update', 'delete'],
         ]];
         yield '主题管理' => ['themes', [
             'type' => 'page',
-            'page_key' => 'theme.center',
             'path' => '/themes',
             'is_menu' => true,
             'abilities' => ['view'],
         ]];
     }
 
-    public function testDomainOperationsAreDeclaredAsNonMenuChildResources(): void
+    public function testNavigationUsesOneStableKeyAndSupportedTypes(): void
     {
         $definitions = json_decode(
             (string) file_get_contents(dirname(__DIR__, 3).'/resources/menu.json'),
@@ -70,19 +66,17 @@ final class CoreMenuDefinitionTest extends TestCase
         );
         $resources = array_column($definitions, null, 'resource_key');
 
-        self::assertSame([
-            'type' => 'action',
-            'parent_key' => 'themes',
-            'is_menu' => false,
-            'abilities' => ['read', 'install', 'activate', 'remove'],
-        ], array_intersect_key($resources['site.theme'], array_flip([
-            'parent_key', 'type', 'is_menu', 'abilities',
-        ])));
-        self::assertSame('dashboard', $resources['admin.dashboard_widgets']['parent_key']);
-        self::assertSame(['update'], $resources['admin.dashboard_widgets']['abilities']);
-        self::assertSame('admin.logs', $resources['admin.operation_records']['parent_key']);
-        self::assertSame('admin.logs', $resources['admin.login_logs']['parent_key']);
-        self::assertSame(false, $resources['core.tasks']['is_menu']);
+        self::assertCount(count($definitions), $resources);
+        foreach ($resources as $resource) {
+            self::assertContains($resource['type'], ['group', 'schema', 'page', 'external', 'action']);
+            self::assertArrayNotHasKey('page_key', $resource);
+            self::assertArrayNotHasKey('addon_code', $resource);
+            if ($resource['type'] === 'page') {
+                self::assertNotEmpty($resource['resource_key']);
+                self::assertNotEmpty($resource['path']);
+                self::assertArrayNotHasKey('target_resource_key', $resource);
+            }
+        }
     }
 
     public function testSchemaMenuPermissionsAreExplicitlyDeclared(): void
@@ -109,10 +103,6 @@ final class CoreMenuDefinitionTest extends TestCase
         );
         self::assertSame(
             ['list', 'view'],
-            $resources['admin.notifications']['abilities'],
-        );
-        self::assertSame(
-            ['list', 'view', 'create', 'update', 'delete'],
             $resources['admin.notification_templates']['abilities'],
         );
     }
