@@ -16,9 +16,9 @@ final class Filter extends ContractObject
         'value' => 'mixed',
     ];
 
-    /** @var array<string, array{nullable?: bool, omit_empty?: bool, serialized?: bool}> */
+    /** @var array<string, array{nullable?: bool, omit_empty?: bool, omit_null?: bool, serialized?: bool}> */
     protected const FIELD_OPTIONS = [
-        'value' => ['omit_empty' => true],
+        'value' => ['omit_null' => true],
     ];
 
     /** Field 查询字段。 */

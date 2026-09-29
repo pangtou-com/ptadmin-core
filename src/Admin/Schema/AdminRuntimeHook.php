@@ -75,6 +75,40 @@ final class AdminRuntimeHook
         return $prepared;
     }
 
+    /** @param array<string, mixed> $query @return array<string, mixed> */
+    public function prepareList(RuntimeHookContext $context, array $query): array
+    {
+        if ($context->resourceKey !== 'admin.operation_records') {
+            return $query;
+        }
+
+        $filters = [];
+        foreach ((array) ($query['filters'] ?? []) as $filter) {
+            $filter = (array) $filter;
+            if (($filter['field'] ?? '') !== 'operator_keyword') {
+                $filters[] = $filter;
+                continue;
+            }
+
+            $keyword = trim((string) ($filter['value'] ?? ''));
+            if ($keyword === '') {
+                continue;
+            }
+            $adminIds = $this->database->table('admins')
+                ->where(static function ($admins) use ($keyword): void {
+                    $admins->where('nickname', 'like', '%'.$keyword.'%')
+                        ->orWhere('username', 'like', '%'.$keyword.'%');
+                })
+                ->pluck('id')
+                ->map(static fn ($id): int => (int) $id)
+                ->all();
+            $filters[] = ['field' => 'admin_id', 'operator' => 'in', 'value' => $adminIds];
+        }
+        $query['filters'] = $filters;
+
+        return $query;
+    }
+
     public function created(RuntimeHookContext $context): void
     {
         [$resourceKey, $input, $schema, $id] = $this->contextValues($context, true);

@@ -526,6 +526,7 @@ final class PTAdminServiceProvider extends ServiceProvider
             ));
             $resource = $owner->resource($resourceKey);
             $resource
+                ->hook('list.prepare', AdminRuntimeHook::class, 'prepareList')
                 ->hook('create.prepare', AdminRuntimeHook::class, 'prepareCreate')
                 ->hook('create.after', AdminRuntimeHook::class, 'created')
                 ->hook('update.prepare', AdminRuntimeHook::class, 'prepareUpdate')

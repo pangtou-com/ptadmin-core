@@ -17,7 +17,7 @@ abstract class ContractObject extends DataObject implements ArrayAccess
     /** @var array<string, string|array<class-string>|class-string> */
     protected const FIELD_TYPES = [];
 
-    /** @var array<string, array{nullable?: bool, omit_empty?: bool, serialized?: bool}> */
+    /** @var array<string, array{nullable?: bool, omit_empty?: bool, omit_null?: bool, serialized?: bool}> */
     protected const FIELD_OPTIONS = [];
 
     /**
@@ -83,6 +83,9 @@ abstract class ContractObject extends DataObject implements ArrayAccess
             }
 
             $value = property_exists($this, $field) ? $this->{$field} : ($this->attributes[$field] ?? null);
+            if (($options['omit_null'] ?? false) && $value === null) {
+                continue;
+            }
             if (($options['omit_empty'] ?? false) && self::isEmptyProtocolValue($value)) {
                 continue;
             }

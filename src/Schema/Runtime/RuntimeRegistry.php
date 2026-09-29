@@ -14,6 +14,7 @@ final class RuntimeRegistry
     private const OWNER_TYPES = ['core', 'app', 'addon'];
 
     private const HOOK_STAGES = [
+        'list.prepare',
         'create.prepare', 'create.before', 'create.after',
         'update.prepare', 'update.before', 'update.after',
         'delete.before', 'delete.after',

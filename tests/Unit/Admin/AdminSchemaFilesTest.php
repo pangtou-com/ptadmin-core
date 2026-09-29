@@ -176,7 +176,7 @@ final class AdminSchemaFilesTest extends TestCase
             self::assertSame(['view'], array_column($table['operate']['actions'], 'action'));
             self::assertSame(['left' => [], 'right' => [], 'batch' => []], $table['toolbar']);
             self::assertFalse($table['selection']);
-            self::assertSame(['table' => 'default', 'detail' => 'default'], $schema['views']['page']);
+            self::assertSame(['search' => 'default', 'table' => 'default', 'detail' => 'default'], $schema['views']['page']);
             self::assertContains('admin_name', array_column($table['columns'], 'field'));
             self::assertNotContains('admin_id', array_column($table['columns'], 'field'));
             self::assertFalse($this->field($schema['fields'], 'admin_id')['listable']);
@@ -187,11 +187,23 @@ final class AdminSchemaFilesTest extends TestCase
         }
 
         $operationSchema = (new Loader())->resourceFromFile($directory.'/admin.operation_records.schema.json')['schema']->toArray();
+        self::assertSame(
+            ['operator_keyword', 'resource_key', 'successful', 'ip_address', 'method'],
+            $operationSchema['views']['searches']['default']['fields'],
+        );
+        self::assertFalse($this->field($operationSchema['fields'], 'admin_id')['searchable']);
+        self::assertFalse($this->field($operationSchema['fields'], 'operator_keyword')['persisted']);
         self::assertContains('response_time_ms', array_column($operationSchema['views']['tables']['default']['columns'], 'field'));
         self::assertContains('response_time_ms', $this->formFields($operationSchema['views']['details']['default']['children']));
         self::assertContains('request_payload', $this->formFields($operationSchema['views']['details']['default']['children']));
         self::assertTrue($this->field($operationSchema['fields'], 'response_time_ms')['listable']);
         self::assertFalse($this->field($operationSchema['fields'], 'request_payload')['listable']);
+
+        $loginSchema = (new Loader())->resourceFromFile($directory.'/admin.login_logs.schema.json')['schema']->toArray();
+        self::assertSame(
+            ['username', 'successful', 'ip_address'],
+            $loginSchema['views']['searches']['default']['fields'],
+        );
     }
 
     /** @param list<array<string, mixed>> $nodes @return list<string> */

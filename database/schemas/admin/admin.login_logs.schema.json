@@ -22,7 +22,13 @@
             }
         },
         "views": {
+            "searches": {
+                "default": {
+                    "fields": ["username", "successful", "ip_address"]
+                }
+            },
             "page": {
+                "search": "default",
                 "table": "default",
                 "detail": "default"
             },
@@ -108,7 +114,15 @@
                 "readonly": true,
                 "listable": true,
                 "searchable": true,
-                "sortable": true
+                "sortable": true,
+                "options": {
+                    "mode": "static",
+                    "value_policy": "closed",
+                    "items": [
+                        { "value": true, "label": "成功" },
+                        { "value": false, "label": "失败" }
+                    ]
+                }
             },
             {
                 "name": "failure_reason",

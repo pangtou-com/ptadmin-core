@@ -36,6 +36,20 @@ final class RuntimeBindingExecutorTest extends TestCase
         ));
     }
 
+    public function testListPrepareUsesTheRuntimePipeline(): void
+    {
+        $container = new Container();
+        $registry = new RuntimeRegistry();
+        $registry->forOwner('core', 'ptadmin')->resource('cms.articles')
+            ->hook('list.prepare', RuntimeBindingHandler::class, 'prepareFirst');
+
+        self::assertSame(['first' => true], (new RuntimeBindingExecutor($container))->prepare(
+            $registry->build(),
+            new RuntimeHookContext('cms.articles', 'list.prepare'),
+            [],
+        ));
+    }
+
     public function testActionRequiresAndReturnsAnArray(): void
     {
         $container = new Container();

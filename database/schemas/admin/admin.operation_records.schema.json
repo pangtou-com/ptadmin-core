@@ -22,7 +22,13 @@
             }
         },
         "views": {
+            "searches": {
+                "default": {
+                    "fields": ["operator_keyword", "resource_key", "successful", "ip_address", "method"]
+                }
+            },
             "page": {
+                "search": "default",
                 "table": "default",
                 "detail": "default"
             },
@@ -91,6 +97,16 @@
                 "sortable": false
             },
             {
+                "name": "operator_keyword",
+                "type": "string",
+                "label": "操作人员",
+                "persisted": false,
+                "readonly": true,
+                "formable": false,
+                "listable": false,
+                "searchable": true
+            },
+            {
                 "name": "admin_name",
                 "type": "string",
                 "label": "管理员",
@@ -135,7 +151,17 @@
                 "persisted": true,
                 "readonly": true,
                 "listable": true,
-                "searchable": true
+                "searchable": true,
+                "options": {
+                    "mode": "static",
+                    "value_policy": "closed",
+                    "items": [
+                        { "value": "POST", "label": "POST" },
+                        { "value": "PUT", "label": "PUT" },
+                        { "value": "PATCH", "label": "PATCH" },
+                        { "value": "DELETE", "label": "DELETE" }
+                    ]
+                }
             },
             {
                 "name": "path",
@@ -186,7 +212,15 @@
                 "readonly": true,
                 "listable": true,
                 "searchable": true,
-                "sortable": true
+                "sortable": true,
+                "options": {
+                    "mode": "static",
+                    "value_policy": "closed",
+                    "items": [
+                        { "value": true, "label": "成功" },
+                        { "value": false, "label": "失败" }
+                    ]
+                }
             },
             {
                 "name": "ip_address",

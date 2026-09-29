@@ -75,6 +75,13 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         $this->authorize($resolved['resource']->resource_key, 'list');
         $schema = $resolved['schema'];
         $resource = $resolved['resource'];
+        $snapshot = $this->runtimeSnapshot();
+        $query = $this->prepareRuntime(
+            $snapshot,
+            new RuntimeHookContext($resource->resource_key, 'list.prepare', $schema, input: $query),
+            $query,
+        );
+        $query = Payload::dto($query, ListQuery::class);
         $recycleMode = strtolower(trim((string) ($query['recycle_mode'] ?? '')));
         if (in_array($recycleMode, ['only', 'with'], true) && empty($schema->capabilities['allow_recycle'])) {
             throw $this->error('invalid_input', 'recycle query is not enabled for resource');
