@@ -1,6 +1,6 @@
 # PTAdmin Core
 
-`ptadmin/core` 是 PTAdmin 重构后的后端核心包，正式源码目录为当前仓库的 `src/`。核心包最终包含 `Admin`、`Addon`、`Schema` 和 `Core` 四个模块；Schema Runtime 是标准资源和 CRUD 的唯一运行时基础设施。
+`ptadmin/core` 是 PTAdmin 重构后的后端核心包，正式源码目录为当前仓库的 `src/`。核心包统一维护 `Admin`、`Addon`、`Schema` 和 `Core`，并提供 `Notice`、`Template` 和 `Cloud` 等能力；Schema Runtime 是标准资源和 CRUD 的唯一运行时基础设施。
 
 当前阶段已完成：
 
@@ -9,7 +9,7 @@
 - `ptadmin.json` 应用身份生成、加载、显式重建和原子写入。
 - 已安装模式提供匿名 `/ptadmin/bootstrap` 路由；未安装模式不启动 Admin 前端协议。
 - `X-Request-ID` 请求追踪中间件和 `code/message/data` 响应工厂基础。
-- `ptadmin-schema` 协议与 Runtime 源码提取到 `src/Schema/`。
+- Schema 协议、定义、发布与 Runtime 统一维护在 `src/Schema/`，不依赖独立历史包。
 - 安装状态目录、进程锁、随机后台前缀和 `installed.json` 原子标记基础。
 - 首次安装后端编排：SQLite/MySQL 连接配置与验证、数据库迁移、自定义或随机后台前缀写入、首个 founder 管理员、核心权限资源和可恢复失败状态；SQLite 文件固定存放在宿主 `storage/database/`，默认文件名为 `ptadmin.db`，安装表单可以修改文件名但不能修改目录。
 - 核心前端 manifest 校验和首次原子发布到 `public/{PTADMIN_WEB_PREFIX}/`，发布时保留插件 `plugins/` 目录。
