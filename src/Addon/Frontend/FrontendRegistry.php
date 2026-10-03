@@ -44,6 +44,35 @@ final class FrontendRegistry
         $this->apiPrefix = trim($apiPrefix, '/');
     }
 
+    /** 资源和预设通过同一可信声明恢复流程，不依赖菜单可见性。 */
+    public function designFlow(string $reference): ?array
+    {
+        if (!str_contains($reference, ':')) {
+            return null;
+        }
+        [$plugin, $id] = explode(':', $reference, 2);
+        foreach ($this->discovery->scan()['addons'] as $addon) {
+            if (strtolower((string) ($addon['manifest']['code'] ?? $addon['code'])) !== $plugin || $addon['state'] !== 'active') {
+                continue;
+            }
+            $descriptor = $this->descriptor($addon['code']);
+            if ($descriptor === null) {
+                return null;
+            }
+            try {
+                $flows = $this->designFlows($addon['code'], $this->declaredDesignFlows($addon['manifest'] ?? [], $descriptor), $descriptor['entries'] ?? []);
+            } catch (AddonException) {
+                return null;
+            }
+            foreach ($flows as $flow) {
+                if ($flow['id'] === $id) {
+                    return $flow;
+                }
+            }
+        }
+        return null;
+    }
+
     /**
      * 根据当前管理员权限和可见菜单生成插件模块列表；单个插件声明无效时只记录该插件错误。
      *
@@ -80,6 +109,8 @@ final class FrontendRegistry
                     $registeredKeys[] = $entry['key'];
                 }
                 $plugin = [
+                    'owner_type' => 'addon',
+                    'owner_code' => $pluginCode,
                     'code' => $pluginCode,
                     'version' => (string) ($addon['version'] ?? ''),
                     'enabled' => true,
@@ -217,7 +248,11 @@ final class FrontendRegistry
             }
             if ($sandbox === 'trusted') {
                 if (!is_array($development)) {
-                    $entry['styles'] = $this->publishedStyles($code, $entryPath);
+                    $entry['styles'] = (new PublishedBuildStyles())->resolve(
+                        $this->publicRoot.'/'.$this->webPrefix.'/plugins/'.$code,
+                        $entryPath,
+                        './plugins/'.rawurlencode($code),
+                    );
                 }
                 // trusted 模块与宿主同一执行上下文，必须同时满足包声明、Runtime Profile 和部署信任策略。
                 if (($manifest['sandbox'] ?? null) !== 'trusted') {
@@ -237,8 +272,16 @@ final class FrontendRegistry
             'entries' => $resolved,
             'design_flows' => $resolved === []
                 ? []
-                : $this->designFlows($code, $descriptor['design_flows'] ?? [], $resolved),
+                : $this->designFlows($code, $this->declaredDesignFlows($manifest, $descriptor), $resolved),
         ];
+    }
+
+    /** 设计流程属于插件能力声明，优先从后端 manifest 读取；保留旧前端清单兼容。 */
+    private function declaredDesignFlows(array $manifest, array $descriptor): mixed
+    {
+        return array_key_exists('design_flows', $manifest)
+            ? $manifest['design_flows']
+            : ($descriptor['design_flows'] ?? []);
     }
 
     /**
@@ -272,6 +315,10 @@ final class FrontendRegistry
                 || $target !== 'schema.designer' || !$this->validIdentifier($permission)) {
                 throw new AddonException('The addon frontend design flow identity is invalid.', 'frontend_design_flows_invalid');
             }
+            $extensionNamespace = $flow['extension_namespace'] ?? null;
+            if ($extensionNamespace !== null && (!is_string($extensionNamespace) || !preg_match('/^[a-z][a-z0-9_]*$/', $extensionNamespace))) {
+                throw new AddonException('The design flow extension namespace is invalid.', 'frontend_design_flows_invalid');
+            }
             $namespace = $flow['namespace'] ?? null;
             if (null !== $namespace && (!is_string($namespace) || !$this->validIdentifier($namespace))) {
                 throw new AddonException('The addon frontend design flow namespace is invalid.', 'frontend_design_flows_invalid');
@@ -282,6 +329,7 @@ final class FrontendRegistry
             }
             $stepIds = [];
             $resolvedSteps = [];
+            $claimedPaths = [];
             foreach ($steps as $step) {
                 if (!is_array($step) || array_is_list($step)) {
                     throw new AddonException('The addon frontend design flow step must be an object.', 'frontend_design_flows_invalid');
@@ -293,7 +341,26 @@ final class FrontendRegistry
                 }
                 $mount = $this->designFlowMount($code, $step['mount'] ?? null, $entryKeys, $hasTrustedEntry);
                 $stepIds[] = $stepId;
-                $resolvedSteps[] = ['id' => $stepId, 'title' => $title, 'mount' => $mount];
+                $resolvedStep = ['id' => $stepId, 'title' => $title, 'mount' => $mount];
+                $paths = $step['extension_paths'] ?? [];
+                if (!is_array($paths) || !array_is_list($paths) || ($paths !== [] && $extensionNamespace === null)) {
+                    throw new AddonException('The design step extension paths are invalid.', 'frontend_design_flows_invalid');
+                }
+                foreach ($paths as $path) {
+                    if (!is_string($path) || !preg_match('/^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$/', $path)) {
+                        throw new AddonException('The design step extension path is invalid.', 'frontend_design_flows_invalid');
+                    }
+                    foreach ($claimedPaths as $claimed) {
+                        if ($path === $claimed || str_starts_with($path, $claimed.'.') || str_starts_with($claimed, $path.'.')) {
+                            throw new AddonException('The design step extension paths overlap.', 'frontend_design_flows_invalid');
+                        }
+                    }
+                    $claimedPaths[] = $path;
+                }
+                if ($paths !== []) {
+                    $resolvedStep['extension_paths'] = $paths;
+                }
+                $resolvedSteps[] = $resolvedStep;
             }
             $flowIds[] = $id;
             $resolvedFlow = [
@@ -302,6 +369,9 @@ final class FrontendRegistry
                 'permission' => $permission,
                 'steps' => $resolvedSteps,
             ];
+            if ($extensionNamespace !== null) {
+                $resolvedFlow['extension_namespace'] = $extensionNamespace;
+            }
             if (is_string($namespace)) {
                 $resolvedFlow['namespace'] = $namespace;
             }
@@ -356,44 +426,6 @@ final class FrontendRegistry
     private function validIdentifier(string $value): bool
     {
         return preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,190}$/', $value) === 1;
-    }
-
-    /** @return list<string> 仅公开已发布构建中的 CSS，不从用户输入拼接外部资源。 */
-    private function publishedStyles(string $code, string $entryPath): array
-    {
-        $root = realpath($this->publicRoot.'/'.$this->webPrefix.'/plugins/'.$code);
-        $path = $root.'/.vite/sparq-root.json';
-        if (!is_file($path)) {
-            return [];
-        }
-        $realPath = realpath($path);
-        if ($root === false || $realPath === false || !str_starts_with($realPath, $root.DIRECTORY_SEPARATOR)) {
-            throw new AddonException('插件构建描述不在发布目录内。', 'frontend_build_invalid');
-        }
-        try {
-            $build = json_decode((string) file_get_contents($realPath), true, 512, JSON_THROW_ON_ERROR);
-        } catch (JsonException) {
-            throw new AddonException('插件构建描述不是有效 JSON。', 'frontend_build_invalid');
-        }
-        if (!is_array($build) || ($build['schema'] ?? null) !== 'sparq.frontend-build/v1'
-            || ($build['entry'] ?? null) !== $entryPath || !is_array($build['styles'] ?? null) || !array_is_list($build['styles'])) {
-            throw new AddonException('插件构建描述的入口或样式清单无效。', 'frontend_build_invalid');
-        }
-        $urls = [];
-        foreach ($build['styles'] as $style) {
-            if (!is_string($style) || preg_match('/^[A-Za-z0-9_][A-Za-z0-9_.\/-]*\.css$/', $style) !== 1
-                || in_array('..', explode('/', $style), true) || in_array('.', explode('/', $style), true)
-                || in_array('', explode('/', $style), true)) {
-                throw new AddonException('插件 CSS 路径无效。', 'frontend_style_invalid');
-            }
-            $file = realpath($root.'/'.$style);
-            if ($file === false || !str_starts_with($file, $root.DIRECTORY_SEPARATOR) || !is_file($file)) {
-                throw new AddonException('插件 CSS 未发布或超出发布目录。', 'frontend_style_unavailable', ['style' => $style]);
-            }
-            $urls[] = './plugins/'.rawurlencode($code).'/'.implode('/', array_map('rawurlencode', explode('/', $style)))
-                .'?v='.hash_file('sha256', $file);
-        }
-        return array_values(array_unique($urls));
     }
 
     /** @return array<string, mixed>|null */
