@@ -11,6 +11,27 @@ use JsonException;
  */
 final class Protocol
 {
+    /** JSON 对象转为协议数组，保留任意配置中的空对象与空数组区别。 */
+    public static function decode(string $json): mixed
+    {
+        return self::decodedValue(json_decode($json, false, 512, JSON_THROW_ON_ERROR));
+    }
+
+    private static function decodedValue(mixed $value): mixed
+    {
+        if ($value instanceof \stdClass) {
+            $properties = get_object_vars($value);
+            if ($properties === []) {
+                return $value;
+            }
+            return array_map([self::class, 'decodedValue'], $properties);
+        }
+        if (is_array($value)) {
+            return array_map([self::class, 'decodedValue'], $value);
+        }
+        return $value;
+    }
+
     /** @param mixed $value */
     public static function normalize(mixed $value): mixed
     {
@@ -117,12 +138,12 @@ final class Protocol
     private static function orderedSchema(array $schema): array
     {
         $ordered = [];
-        foreach (['title', 'name', 'description', 'features', 'capabilities', 'state', 'tree', 'constraints', 'views', 'fields', 'actions'] as $key) {
+        foreach (['title', 'name', 'description', 'features', 'capabilities', 'state', 'tree', 'constraints', 'views', 'fields', 'actions', 'extensions'] as $key) {
             if (!array_key_exists($key, $schema)) {
                 continue;
             }
             $value = $schema[$key];
-            if ($key === 'features' || $key === 'actions') {
+            if ($key === 'features' || $key === 'actions' || $key === 'extensions') {
                 $value = self::sortMap($value);
             }
             if ($key === 'capabilities') {
@@ -369,6 +390,10 @@ final class Protocol
     /** @param mixed $value @return mixed */
     private static function sortMap(mixed $value): mixed
     {
+        if (is_object($value)) {
+            $properties = self::sortMap(get_object_vars($value));
+            return (object) $properties;
+        }
         if (!is_array($value) || self::isList($value)) {
             return is_array($value) ? array_map([self::class, 'sortMap'], $value) : $value;
         }

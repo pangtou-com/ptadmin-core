@@ -18,6 +18,8 @@ use PTAdmin\Schema\Contract\SchemaError;
 use PTAdmin\Schema\Contract\SchemaSnapshotQuery;
 use PTAdmin\Schema\Contract\UpdateInput;
 use PTAdmin\Schema\Definition\Schema;
+use PTAdmin\Schema\Extension\ExtensionRegistry;
+use PTAdmin\Schema\Meta\Models\PublishTask;
 use PTAdmin\Schema\Contracts\SchemaAuthorizationInterface;
 use PTAdmin\Schema\Contracts\DictionaryResolverInterface;
 use PTAdmin\Schema\Contracts\SchemaScopeResolverInterface;
@@ -44,6 +46,7 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         ?RuntimeBindingExecutor $runtimeExecutor = null,
         ?RuntimeEventDispatcher $runtimeEvents = null,
         ?DictionaryResolverInterface $dictionaryResolver = null,
+        private ?ExtensionRegistry $extensions = null,
     )
     {
         $this->authorization = $authorization;
@@ -66,6 +69,21 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
     private ?RuntimeBindingExecutor $runtimeExecutor = null;
     private ?RuntimeEventDispatcher $runtimeEvents = null;
     private ?DictionaryResolverInterface $dictionaryResolver = null;
+
+    /** 与发布共用资源锁，拒绝迁移期间或版本切换前取得的旧写入快照。 */
+    private function lockWriteResource(Resource $resource): void
+    {
+        $locked = Resource::query()->whereKey($resource->id)->lockForUpdate()->first();
+        if ($locked === null) {
+            throw $this->error('resource_not_found', '内容模型不存在。');
+        }
+        if ($locked->active_version_id !== $resource->active_version_id) {
+            throw $this->error('version_conflict', '内容模型版本已变化，请重新加载后保存。');
+        }
+        if (PublishTask::query()->where('resource_id', $resource->id)->where('status', 'running')->exists()) {
+            throw $this->error('publish_in_progress', '内容模型正在发布，请稍后保存。');
+        }
+    }
 
     /** @param array<string, mixed>|object $query */
     public function list(array|object $query): array
@@ -152,6 +170,7 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         $snapshot = $this->runtimeSnapshot();
         $scope = $this->scopeFor($resolved['resource']->resource_key, 'create');
         $id = DB::transaction(function () use ($resolved, $data, $raw, $snapshot, $scope): int {
+            $this->lockWriteResource($resolved['resource']);
             $context = new RuntimeHookContext($resolved['resource']->resource_key, 'create.prepare', $resolved['schema'], input: $raw);
             $data = $this->prepareRuntime($snapshot, $context, $data);
             if (!$this->constraintApplier->matches($data, $scope, $resolved['schema'])) {
@@ -162,6 +181,7 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
             $id = (int) DB::table($resolved['resource']->table_name)->insertGetId($data);
             $context = new RuntimeHookContext($resolved['resource']->resource_key, 'create.after', $resolved['schema'], $id, $raw);
             $this->runRuntime($snapshot, $context);
+            $this->extensions?->written($resolved['resource'], $resolved['schema'], $id);
             $this->scheduleEvent($snapshot, $resolved['resource']->resource_key, 'created', $id, ['data' => $data]);
 
             return $id;
@@ -186,7 +206,8 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         $data = $this->prepareInput($raw, $resolved['schema'], false, (string) ($input['mode'] ?? 'submit'), $resolved['resource'], $id);
         $snapshot = $this->runtimeSnapshot();
         $changed = DB::transaction(function () use ($builder, $data, $resolved, $id, $raw, $snapshot, $serverConstraint, $scope): array {
-            $current = $builder->first();
+            $this->lockWriteResource($resolved['resource']);
+            $current = $builder->lockForUpdate()->first();
             if (!$current) {
                 throw $this->error('record_not_found', 'record not found', ['id' => $id]);
             }
@@ -205,6 +226,7 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
             }
             $context = new RuntimeHookContext($resolved['resource']->resource_key, 'update.after', $resolved['schema'], $id, $raw);
             $this->runRuntime($snapshot, $context);
+            $this->extensions?->written($resolved['resource'], $resolved['schema'], $id);
             $this->scheduleEvent($snapshot, $resolved['resource']->resource_key, 'updated', $id, ['data' => $data]);
 
             return array_keys($data);
@@ -388,7 +410,8 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
                 throw $this->error('invalid_input', $exception->getMessage(), ['field' => $query['field'] ?? '', 'dictionary' => $code]);
             }
         }
-        $reference = (array) ($field['reference'] ?? ($options['reference'] ?? []));
+        // 字段 reference 保存稳定引用，options.reference 保存候选查询；两者共同执行正式协议。
+        $reference = array_replace((array) ($options['reference'] ?? []), (array) ($field['reference'] ?? []));
         if ($reference === [] && strtolower((string) ($options['mode'] ?? '')) === 'static') {
             $items = array_map(static fn (array $item): array => ['value' => $item['value'] ?? null, 'label' => (string) ($item['label'] ?? ''), 'disabled' => (bool) ($item['disabled'] ?? false)], (array) ($options['items'] ?? []));
             $keyword = strtolower(trim((string) ($query['keyword'] ?? '')));
@@ -429,7 +452,11 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
                 $value = $source;
             }
             if ($value !== null && isset($filter['field'])) {
-                $builder->where($filter['field'], $filter['operator'] ?? 'eq', $value);
+                $this->applyFilters($builder, [[
+                    'field' => $filter['field'],
+                    'operator' => $filter['operator'] ?? 'eq',
+                    'value' => $value,
+                ]], $target['schema']);
             }
         }
         $page = max(1, (int) ($query['page'] ?? 1));
@@ -456,7 +483,7 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         $resolved = $this->resolved((string) ($query['resource'] ?? ''));
         $this->authorize($resolved['resource']->resource_key, 'view');
         $schema = $resolved['schema'];
-        return ['resource' => $resolved['resource']->resource_key, 'version' => ['version_id' => (int) $resolved['version']->id, 'version' => (int) $resolved['version']->version, 'status' => $resolved['version']->status, 'checksum' => $resolved['version']->checksum], 'features' => $schema->features ?? [], 'capabilities' => $schema->capabilities ?? [], 'state' => $schema->state ?? null, 'tree' => $schema->tree ?? null, 'views' => $schema->views ?? [], 'fields' => $schema->fields ?? [], 'actions' => $schema->actions ?? []];
+        return ['resource' => $resolved['resource']->resource_key, 'version' => ['version_id' => (int) $resolved['version']->id, 'version' => (int) $resolved['version']->version, 'status' => $resolved['version']->status, 'checksum' => $resolved['version']->checksum], 'extensions' => $schema->extensions ?? (object) [], 'features' => $schema->features ?? [], 'capabilities' => $schema->capabilities ?? [], 'state' => $schema->state ?? null, 'tree' => $schema->tree ?? null, 'views' => $schema->views ?? [], 'fields' => $schema->fields ?? [], 'actions' => $schema->actions ?? []];
     }
 
     /** @return array{resource:Resource,version:object,schema:Schema} */

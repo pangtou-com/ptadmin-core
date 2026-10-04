@@ -18,6 +18,8 @@ use PTAdmin\Schema\Contract\PublishTaskInfo;
 use PTAdmin\Schema\Contract\RebuildFieldsProjectionResult;
 use PTAdmin\Schema\Contract\SchemaError;
 use PTAdmin\Schema\Definition\Schema;
+use PTAdmin\Schema\Extension\ExtensionContext;
+use PTAdmin\Schema\Extension\ExtensionRegistry;
 use PTAdmin\Schema\Meta\Models\FieldProjection;
 use PTAdmin\Schema\Meta\Models\PublishTask;
 use PTAdmin\Schema\Meta\Models\Resource;
@@ -31,7 +33,7 @@ use PTAdmin\Schema\Support\Payload;
  */
 final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceInterface
 {
-    public function __construct(private ResourceLocator $locator)
+    public function __construct(private ResourceLocator $locator, private ExtensionRegistry $extensions)
     {
     }
 
@@ -46,6 +48,7 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
         $schema = new Schema((array) $draft->schema_json);
         $issues = $schema->validate();
         $active = $resource->versions()->where('status', 'active')->first();
+        array_push($issues, ...$this->extensions->validate(new ExtensionContext($resource, $schema->toArray(), $active ? (array) $active->schema_json : null)));
         $plan = $this->migrationPlan($resource, $active, $schema->toArray());
         $summary = $this->changeSummary($active ? (array) $active->schema_json : [], $schema->toArray());
         $validation = ['passed' => $issues === [], 'errors' => $issues, 'warnings' => []];
@@ -107,8 +110,19 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
         if (!empty($plan['destructive']) && !$approval) {
             throw $this->error('destructive_approval_required', 'destructive migration requires approval', 'draft', ['resource_key' => $resource->resource_key]);
         }
-        $task = DB::transaction(function () use ($resource, $draft, $approval): PublishTask {
-            Resource::query()->whereKey($resource->id)->lockForUpdate()->firstOrFail();
+        $task = DB::transaction(function () use ($resource, $draft, $approval, $expected): PublishTask {
+            $lockedResource = Resource::query()->whereKey($resource->id)->lockForUpdate()->firstOrFail();
+            $currentDraft = $this->locator->draft($lockedResource);
+            $this->assertChecksum($currentDraft, $draft->checksum, 'draft');
+            $this->assertChecksum($currentDraft, $expected, 'draft');
+            if ($currentDraft->id !== $draft->id || $currentDraft->check_status !== 'passed' || $currentDraft->check_checksum !== $currentDraft->checksum) {
+                throw $this->error('check_required', '草稿已变化，请重新检查后发布。', 'draft');
+            }
+            $active = $lockedResource->versions()->where('status', 'active')->first();
+            $issues = $this->extensions->validate(new ExtensionContext($lockedResource, (array) $draft->schema_json, $active ? (array) $active->schema_json : null));
+            if ($issues !== []) {
+                throw new SchemaError('invalid_extension', $issues[0]['message'], ['resource_key' => $resource->resource_key], $issues, false, 'checking');
+            }
             $running = PublishTask::query()->where('resource_id', $resource->id)->where('status', 'running')->latest('id')->first();
             if ($running) {
                 throw $this->error('publish_in_progress', 'publish task is already running', 'draft', ['resource_key' => $resource->resource_key, 'task_id' => $running->id]);
@@ -674,8 +688,9 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
                 );
             }
         }
+        $constraints = (array) ($schema['constraints'] ?? []);
         foreach (['indexes' => 'create_index', 'uniques' => 'create_unique'] as $kind => $prefix) {
-            foreach ((array) (($schema['constraints'] ?? [])[$kind] ?? []) as $constraint) {
+            foreach ((array) ($constraints[$kind] ?? []) as $constraint) {
                 $fields = array_values(array_filter((array) ($constraint['fields'] ?? [])));
                 if ($fields !== []) {
                     $steps[] = $this->migrationStep($prefix.':'.($constraint['name'] ?? implode('_', $fields)), 'table:'.$resource->table_name, 'safe', ['constraint']);

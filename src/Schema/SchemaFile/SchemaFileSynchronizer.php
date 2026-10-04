@@ -90,24 +90,29 @@ final class SchemaFileSynchronizer
                 continue;
             }
             $schema = $definition['schema'];
+            $body = $schema->toArray();
             $this->resources->createResource([
                 'namespace' => str_contains($resourceKey, '.') ? explode('.', $resourceKey, 2)[0] : '',
-                'name' => $schema->name,
-                'title' => $schema->title,
-                'description' => $schema->description,
+                'name' => $body['name'],
+                'title' => $body['title'],
+                'description' => $body['description'] ?? '',
                 'source_type' => 'custom',
                 'owner_type' => $file['owner_type'],
                 'owner_code' => $file['owner_code'],
                 'table_name' => $definition['table_name'],
                 'migration_owner' => $definition['migration_owner'],
+                'design_flow_id' => $definition['metadata']['design_flow_id'] ?? '',
             ]);
             $saved = $this->resources->saveDraftSchema(['resource' => $resourceKey, 'schema' => $schema->toArray()]);
             $checksum = (string) $saved->checksum;
             $checked = $this->publish->checkDraft(['resource' => $resourceKey, 'expected_checksum' => $checksum]);
-            if (empty($checked->validation_result?->passed) || !empty($checked->migration_plan?->destructive)) {
-                throw new RuntimeException('CMS preset failed initial Schema validation: '.$resourceKey);
+            if (empty($checked->validation_result->passed) || !empty($checked->migration_plan->destructive)) {
+                throw new RuntimeException('Schema preset failed initial validation: '.$resourceKey);
             }
-            $this->publish->publishDraft(['resource' => $resourceKey, 'expected_checksum' => $checksum]);
+            $published = $this->publish->publishDraft(['resource' => $resourceKey, 'expected_checksum' => $checksum]);
+            if ($published->task->status !== 'succeeded') {
+                throw new RuntimeException('Schema preset initial publication did not finish: '.$resourceKey);
+            }
             $created++;
         }
 

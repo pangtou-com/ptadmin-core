@@ -409,31 +409,13 @@ parameters:
 			path: src/Schema/Meta/Service/ResourceLocator.php
 
 		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$check_status\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Schema/Meta/Service/ResourceLocator.php
-
-		-
 			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$checked_at\.$#'
 			identifier: property.notFound
 			count: 1
 			path: src/Schema/Meta/Service/ResourceLocator.php
 
 		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$checksum\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Schema/Meta/Service/ResourceLocator.php
-
-		-
 			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$created_at\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Schema/Meta/Service/ResourceLocator.php
-
-		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 1
 			path: src/Schema/Meta/Service/ResourceLocator.php
@@ -523,24 +505,6 @@ parameters:
 			path: src/Schema/Meta/Service/ResourceService.php
 
 		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$check_checksum\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Schema/Meta/Service/ResourceService.php
-
-		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$check_status\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Schema/Meta/Service/ResourceService.php
-
-		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$checksum\.$#'
-			identifier: property.notFound
-			count: 4
-			path: src/Schema/Meta/Service/ResourceService.php
-
-		-
 			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$migration_plan_json\.$#'
 			identifier: property.notFound
 			count: 1
@@ -613,33 +577,9 @@ parameters:
 			path: src/Schema/Publish/Service/PublishService.php
 
 		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$check_checksum\.$#'
-			identifier: property.notFound
-			count: 4
-			path: src/Schema/Publish/Service/PublishService.php
-
-		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$check_status\.$#'
-			identifier: property.notFound
-			count: 3
-			path: src/Schema/Publish/Service/PublishService.php
-
-		-
 			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$checked_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: src/Schema/Publish/Service/PublishService.php
-
-		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$checksum\.$#'
-			identifier: property.notFound
-			count: 6
-			path: src/Schema/Publish/Service/PublishService.php
-
-		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\ResourceVersion\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 9
 			path: src/Schema/Publish/Service/PublishService.php
 
 		-

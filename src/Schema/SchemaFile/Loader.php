@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PTAdmin\Schema\SchemaFile;
 
 use PTAdmin\Schema\Definition\Schema;
+use PTAdmin\Schema\Support\Protocol;
 
 /**
  * 读取带注释和尾逗号容错的 Schema JSON，并补齐协议默认的 persisted 标记。
@@ -46,6 +47,9 @@ final class Loader
      */
     private function resourceFromDecoded(array $decoded): array
     {
+        if (array_key_exists('extensions', $decoded)) {
+            throw new \InvalidArgumentException('Resource extensions must be declared in schema.extensions.');
+        }
         $resource = trim((string) ($decoded['resource'] ?? ''));
         if ($resource === '') {
             throw new \InvalidArgumentException('Schema resource file requires resource.');
@@ -77,34 +81,6 @@ final class Loader
     }
 
     /**
-     * 将 JSON 对象转换为协议数组，同时保留空对象与空数组的类型差异。
-     *
-     * 空 JSON 对象可作为 json 字段的默认值参与 Go checksum；若一律转换为空数组，
-     * PHP 会把 {} 序列化成 []，导致同一份 Schema 在跨语言发布校验时产生不同摘要。
-     */
-    private function normalizeDecodedValue(mixed $value): mixed
-    {
-        if ($value instanceof \stdClass) {
-            $properties = get_object_vars($value);
-            if ($properties === []) {
-                return $value;
-            }
-
-            $result = [];
-            foreach ($properties as $key => $item) {
-                $result[$key] = $this->normalizeDecodedValue($item);
-            }
-
-            return $result;
-        }
-        if (is_array($value)) {
-            return array_map(fn ($item) => $this->normalizeDecodedValue($item), $value);
-        }
-
-        return $value;
-    }
-
-    /**
      * 从文件加载 Schema。文件不可读或内容非法时抛出异常，不静默返回空 Schema。
      */
     public function fromFile(string $path): Schema
@@ -122,7 +98,7 @@ final class Loader
         $json = $this->stripComments($contents);
         $json = preg_replace('/,\s*([}\]])/', '$1', $json) ?? $json;
         try {
-            $decoded = $this->normalizeDecodedValue(json_decode($json, false, 512, JSON_THROW_ON_ERROR));
+            $decoded = Protocol::decode($json);
         } catch (\JsonException $exception) {
             throw new \InvalidArgumentException('Schema JSON is invalid.', 0, $exception);
         }
@@ -137,7 +113,7 @@ final class Loader
     private function decodeJson(string $contents): array
     {
         try {
-            $decoded = $this->normalizeDecodedValue(json_decode($contents, false, 512, JSON_THROW_ON_ERROR));
+            $decoded = Protocol::decode($contents);
         } catch (\JsonException $exception) {
             throw new \InvalidArgumentException('Schema JSON is invalid.', 0, $exception);
         }

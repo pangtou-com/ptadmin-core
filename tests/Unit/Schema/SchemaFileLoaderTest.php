@@ -63,6 +63,25 @@ final class SchemaFileLoaderTest extends TestCase
         (new Loader())->resourceFromFile($path);
     }
 
+    public function testResourceExtensionsRemainInSchemaWithExplicitFlowMetadata(): void
+    {
+        $definition = $this->resource('demo.extension');
+        $definition['design_flow_id'] = 'demo:demo.schema';
+        $definition['schema']['extensions'] = ['demo' => ['items' => [], 'enabled' => false, 'extra' => ['zero' => 0]]];
+        $loaded = (new Loader())->loadJsonResource(json_encode($definition, JSON_THROW_ON_ERROR));
+        self::assertSame('demo:demo.schema', $loaded['metadata']['design_flow_id']);
+        self::assertSame($definition['schema']['extensions'], $loaded['schema']->toArray()['extensions']);
+    }
+
+    public function testOuterExtensionsAreRejectedInsteadOfSilentlyIgnored(): void
+    {
+        $definition = $this->resource('demo.extension');
+        $definition['extensions'] = ['demo' => ['value' => true]];
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('schema.extensions');
+        (new Loader())->loadJsonResource(json_encode($definition, JSON_THROW_ON_ERROR));
+    }
+
     /** @return array<string, mixed> */
     private function resource(string $resource): array
     {

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace PTAdmin\Schema\Meta\Service;
 
 use Illuminate\Support\Facades\DB;
+use PTAdmin\Addon\Frontend\FrontendRegistry;
+use PTAdmin\Schema\Meta\Models\PublishTask;
 use PTAdmin\Schema\Contract\BeginDraftEditResult;
 use PTAdmin\Schema\Contract\CreateResourceInput;
 use PTAdmin\Schema\Contract\CreateResourceResult;
@@ -36,7 +38,7 @@ use PTAdmin\Schema\Support\Protocol;
  */
 final class ResourceService implements \PTAdmin\Schema\Contracts\ResourceServiceInterface
 {
-    public function __construct(private ResourceLocator $locator)
+    public function __construct(private ResourceLocator $locator, private FrontendRegistry $frontend)
     {
     }
 
@@ -61,6 +63,16 @@ final class ResourceService implements \PTAdmin\Schema\Contracts\ResourceService
         if (!preg_match('/^[a-z][a-z0-9_]{0,62}$/', $table)) {
             throw $this->error('invalid_input', 'table_name is invalid', 'resource', ['table_name' => $table]);
         }
+        $flowId = trim((string) ($input['design_flow_id'] ?? ''));
+        if ($flowId !== '') {
+            $flow = $this->frontend->designFlow($flowId);
+            if ($flow === null || (isset($flow['namespace']) && $flow['namespace'] !== $namespace)) {
+                throw $this->error('design_flow_unavailable', '资源绑定的插件设计流程不存在或不适用。', 'resource', ['design_flow_id' => $flowId]);
+            }
+            [$plugin] = explode(':', $flowId, 2);
+            $input['owner_type'] = 'addon';
+            $input['owner_code'] = $plugin;
+        }
         $existing = Resource::query()->where('resource_key', $key)->first();
         if ($existing) {
             if (($sourceType = trim((string) ($input['source_type'] ?? ''))) !== '' && $existing->source_type !== '' && $existing->source_type !== $sourceType) {
@@ -72,6 +84,7 @@ final class ResourceService implements \PTAdmin\Schema\Contracts\ResourceService
             'title' => (string) ($input['title'] ?? ''),
             'name' => $name,
             'description' => (string) ($input['description'] ?? ''),
+            'fields' => [],
         ]);
         $this->assertValid($schema, 'draft');
         $now = now();
@@ -169,26 +182,35 @@ final class ResourceService implements \PTAdmin\Schema\Contracts\ResourceService
     public function saveDraftSchema(array|object $input): SaveDraftSchemaResult
     {
         $input = Payload::dto($input, SaveDraftSchemaInput::class);
-        $resource = $this->locator->resource((string) ($input['resource'] ?? ''));
-        $version = $this->locator->draft($resource);
-        $expected = (string) ($input['expected_checksum'] ?? '');
-        if ($expected !== '' && $expected !== $version->checksum) {
-            throw $this->error('checksum_mismatch', 'draft checksum mismatch', 'draft', ['resource_key' => $resource->resource_key, 'expected_checksum' => $expected, 'current_checksum' => $version->checksum]);
-        }
-        $schema = new Schema((array) ($input['schema'] ?? []));
-        $this->assertValid($schema, 'draft');
-        $checksum = $schema->checksum();
-        $changed = $checksum !== $version->checksum;
-        if ($changed) {
-            $version->schema_json = $schema->toArray();
-            $version->checksum = $checksum;
-            $version->check_status = 'none';
-            $version->check_checksum = '';
-            $version->validation_result_json = null;
-            $version->migration_plan_json = null;
-            $version->save();
-        }
-        return new SaveDraftSchemaResult(['resource' => $resource->resource_key, 'version' => $this->locator->versionInfo($version), 'checksum' => $checksum, 'changed' => $changed]);
+        return DB::transaction(function () use ($input): SaveDraftSchemaResult {
+            $resource = $this->locator->resource((string) ($input['resource'] ?? ''));
+            $resource = Resource::query()->whereKey($resource->id)->lockForUpdate()->first();
+            if ($resource === null) {
+                throw $this->error('resource_not_found', '资源不存在。', 'draft');
+            }
+            if (PublishTask::query()->where('resource_id', $resource->id)->where('status', 'running')->exists()) {
+                throw $this->error('publish_in_progress', '资源正在发布，请稍后保存草稿。', 'draft');
+            }
+            $version = $this->locator->draft($resource);
+            $expected = (string) ($input['expected_checksum'] ?? '');
+            if ($expected !== '' && $expected !== $version->checksum) {
+                throw $this->error('checksum_mismatch', 'draft checksum mismatch', 'draft', ['resource_key' => $resource->resource_key, 'expected_checksum' => $expected, 'current_checksum' => $version->checksum]);
+            }
+            $schema = new Schema((array) ($input['schema'] ?? []));
+            $this->assertValid($schema, 'draft');
+            $checksum = $schema->checksum();
+            $changed = $checksum !== $version->checksum;
+            if ($changed) {
+                $version->schema_json = $schema->toArray();
+                $version->checksum = $checksum;
+                $version->check_status = 'none';
+                $version->check_checksum = '';
+                $version->validation_result_json = null;
+                $version->migration_plan_json = null;
+                $version->save();
+            }
+            return new SaveDraftSchemaResult(['resource' => $resource->resource_key, 'version' => $this->locator->versionInfo($version), 'checksum' => $checksum, 'changed' => $changed]);
+        });
     }
 
     public function getActiveVersion(string $resourceKey): GetActiveVersionResult
@@ -312,7 +334,7 @@ final class ResourceService implements \PTAdmin\Schema\Contracts\ResourceService
             if ($versions->count() !== 1 || $versions->first()->status !== 'draft') {
                 throw $this->draftDeletionError($resource, 'resource version history is not an initial draft');
             }
-            $tasks = \PTAdmin\Schema\Meta\Models\PublishTask::query()->where('version_id', $versions->first()->id)->lockForUpdate()->get();
+            $tasks = PublishTask::query()->where('version_id', $versions->first()->id)->lockForUpdate()->get();
             foreach ($tasks as $task) {
                 if ($task->status === 'running') {
                     throw $this->draftDeletionError($resource, 'resource publish task is still running');
@@ -324,7 +346,7 @@ final class ResourceService implements \PTAdmin\Schema\Contracts\ResourceService
             if (\PTAdmin\Schema\Meta\Models\FieldProjection::query()->where('resource_id', $resource->id)->exists()) {
                 throw $this->draftDeletionError($resource, 'resource has published field projections');
             }
-            \PTAdmin\Schema\Meta\Models\PublishTask::query()->where('resource_id', $resource->id)->delete();
+            PublishTask::query()->where('resource_id', $resource->id)->delete();
             $resource->versions()->delete();
             $resource->delete();
         });

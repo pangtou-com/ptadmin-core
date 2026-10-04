@@ -40,6 +40,7 @@ final class SchemaServiceProvider extends ServiceProvider
         $this->app->singleton(ResourceService::class);
         $this->app->singleton(ResourceLocator::class);
         $this->app->singleton(PublishService::class);
+        $this->app->singleton(\PTAdmin\Schema\Extension\ExtensionRegistry::class);
         $this->app->singleton(RuntimeRegistry::class);
         $this->app->singleton(RuntimeBindingExecutor::class);
         $this->app->singleton(RuntimeEventDispatcher::class);

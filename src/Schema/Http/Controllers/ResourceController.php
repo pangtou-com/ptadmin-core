@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use PTAdmin\Schema\Meta\Models\Resource;
 use PTAdmin\Schema\Contracts\ResourceServiceInterface;
+use PTAdmin\Schema\Support\Protocol;
 
 /**
  * 资源、草稿、版本和资源状态管理 API。
@@ -22,7 +23,7 @@ final class ResourceController extends Controller
                 ->whereNotNull('active_version_id')
                 ->orderBy('title')
                 ->orderBy('resource_key');
-            foreach (['source_type', 'owner_type', 'owner_code', 'namespace'] as $field) {
+            foreach (['source_type', 'owner_type', 'owner_code', 'namespace', 'design_flow_id'] as $field) {
                 if ($request->filled($field)) {
                     $query->where($field, $request->query($field));
                 }
@@ -84,7 +85,7 @@ final class ResourceController extends Controller
 
     public function saveDraft(string $resource, Request $request, ResourceServiceInterface $resources): JsonResponse
     {
-        return $this->respond(fn (): mixed => $resources->saveDraftSchema(array_merge($request->all(), ['resource' => $resource])));
+        return $this->respond(fn (): mixed => $resources->saveDraftSchema(array_merge($this->schemaInput($request), ['resource' => $resource])));
     }
 
     public function activeVersion(string $resource, ResourceServiceInterface $resources): JsonResponse
@@ -94,7 +95,28 @@ final class ResourceController extends Controller
 
     public function syncCode(string $resource, Request $request, ResourceServiceInterface $resources): JsonResponse
     {
-        return $this->respond(fn (): mixed => $resources->syncCodeResource(array_merge($request->all(), ['resource' => $resource])));
+        return $this->respond(fn (): mixed => $resources->syncCodeResource(array_merge($this->schemaInput($request), ['resource' => $resource])));
+    }
+
+    /** Schema JSON 不能用 Laravel 的关联数组解码丢失任意空对象。 */
+    private function schemaInput(Request $request): array
+    {
+        if (!$request->isJson()) {
+            return $request->all();
+        }
+        try {
+            $input = Protocol::decode($request->getContent());
+        } catch (\JsonException $error) {
+            throw new \InvalidArgumentException('Schema request JSON is invalid.', previous: $error);
+        }
+        if (!is_array($input)) {
+            throw new \InvalidArgumentException('Schema request must contain an object.');
+        }
+        $parameters = $request->all();
+        if (is_array($input['schema'] ?? null) && array_key_exists('extensions', $input['schema'])) {
+            $parameters['schema']['extensions'] = $input['schema']['extensions'];
+        }
+        return $parameters;
     }
 
     public function versions(string $resource, Request $request, ResourceServiceInterface $resources): JsonResponse

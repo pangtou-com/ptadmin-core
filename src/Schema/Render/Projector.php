@@ -56,6 +56,7 @@ final class Projector
             'name' => $resourceKey,
             'title' => $resourceTitle,
             'primaryKey' => 'id',
+            'extensions' => $schema->extensions ?? null,
             'capabilities' => $schema->capabilities ?? [],
             'state' => $schema->state ?? null,
             'tree' => $schema->tree ?? null,

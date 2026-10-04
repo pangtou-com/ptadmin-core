@@ -46,7 +46,7 @@ final class Schema extends DataObject
     {
         $schema = parent::toArray();
         // fields 是 Schema 协议的稳定数组，即使为空也必须保留，避免消费者把空定义误判为缺失字段。
-        $schema = Protocol::withoutEmpty($schema, ['title', 'name', 'capabilities', 'constraints', 'views', 'fields']);
+        $schema = Protocol::withoutEmpty($schema, ['title', 'name', 'capabilities', 'constraints', 'views', 'fields', 'extensions']);
         if (!array_key_exists('capabilities', $schema)) {
             $schema['capabilities'] = (object) [];
         }
@@ -81,6 +81,14 @@ final class Schema extends DataObject
                 'detail',
                 'details',
             ]);
+        }
+        foreach (['capabilities', 'constraints', 'views'] as $objectKey) {
+            if ($schema[$objectKey] === []) {
+                $schema[$objectKey] = (object) [];
+            }
+        }
+        if (array_key_exists('extensions', $schema) && $schema['extensions'] === []) {
+            $schema['extensions'] = (object) [];
         }
         if (isset($schema['fields'])) {
             $schema['fields'] = array_map(static fn (array $field): array => Field::serializeDefinition($field), $schema['fields']);

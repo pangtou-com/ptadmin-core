@@ -21,6 +21,21 @@ final class Validator
         if (($schema['title'] ?? '') === '') {
             $issues[] = $this->issue('invalid_schema', 'title', 'schema title is required');
         }
+        if (array_key_exists('extensions', $schema)) {
+            $extensions = $schema['extensions'];
+            if (!($extensions instanceof \stdClass) && (!is_array($extensions) || ($extensions !== [] && array_is_list($extensions)))) {
+                $issues[] = $this->issue('invalid_extension', 'extensions', '资源扩展必须是对象。');
+            } else {
+                foreach ((array) $extensions as $namespace => $configuration) {
+                    if (!is_string($namespace) || !preg_match('/^[a-z][a-z0-9_]*$/', $namespace)) {
+                        $issues[] = $this->issue('invalid_extension', 'extensions', '资源扩展命名空间无效。');
+                    }
+                    if (!($configuration instanceof \stdClass) && (!is_array($configuration) || ($configuration !== [] && array_is_list($configuration)))) {
+                        $issues[] = $this->issue('invalid_extension', 'extensions.'.$namespace, '插件扩展配置必须是对象。');
+                    }
+                }
+            }
+        }
         $names = [];
         foreach ((array) ($schema['fields'] ?? []) as $index => $field) {
             $path = 'fields.'.$index;
