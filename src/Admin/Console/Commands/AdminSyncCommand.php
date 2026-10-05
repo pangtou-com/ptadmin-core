@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace PTAdmin\Admin\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Schema;
 use PTAdmin\Core\Install\InstallService;
 use PTAdmin\Notice\NoticeSynchronizer;
 use PTAdmin\Schema\SchemaFile\SchemaFileSynchronizer;
@@ -30,14 +29,6 @@ final class AdminSyncCommand extends Command
 
     public function handle(): int
     {
-        foreach (['admins', 'admin_resources', 'admin_roles', 'schema_resources', 'ptadmin_config_definitions', 'admin_dicts', 'admin_dict_items'] as $table) {
-            if (!Schema::hasTable($table)) {
-                $this->error(sprintf('缺少数据表 %s，请先执行 php artisan migrate。', $table));
-
-                return self::FAILURE;
-            }
-        }
-
         try {
             $schemaResources = $this->schemaSynchronizer->sync($this->schemaSources->discoverCore());
             $blockedSchemas = array_values(array_filter(

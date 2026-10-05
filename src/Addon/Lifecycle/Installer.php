@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PTAdmin\Addon\Lifecycle;
 
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Database\Migrations\Migrator;
 use PTAdmin\Addon\Exception\AddonException;
 use PTAdmin\Addon\Frontend\FrontendPublisher;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
@@ -36,6 +37,7 @@ final class Installer
         private ?RuntimeCacheStore $runtimeCache = null,
         private ?RuntimeLifecycleValidator $runtimeValidator = null,
         private ?LifecycleRegistrar $lifecycleRegistrar = null,
+        private ?Migrator $migrator = null,
     ) {
         $this->addonsPath = rtrim($addonsPath, '/');
         $this->stagingPath = rtrim($stagingPath, '/');
@@ -121,6 +123,7 @@ final class Installer
             $frontendSource = $target.'/Frontend/dist';
             // 数据库资源在事务内同步；文件与前端产物由外层 catch 使用目录备份执行补偿回滚。
             $activate = function () use ($target, $code, $manifest, $frontendSource, $webPrefix, $update, $onProgress): array {
+                $this->runMigrations($target);
                 if ($onProgress !== null) {
                     $onProgress('sync_resources', 60, '正在同步插件资源。');
                 }
@@ -214,6 +217,7 @@ final class Installer
             $activate = $enable || !$disabledByUser;
 
             $this->runtimeCache?->clear();
+            $this->runMigrations($target);
             $synced = $this->resourceSynchronizer?->sync($target, $code)
                 ?? ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'notices' => 0, 'admin_resources' => 0];
             $resourcesChanged = true;
@@ -356,6 +360,17 @@ final class Installer
                 $this->locks?->release($lockHandle);
             }
         }
+    }
+
+    /** 执行插件自身尚未应用的固定表迁移。 */
+    private function runMigrations(string $directory): void
+    {
+        $path = $directory.'/database/migrations';
+        if ($this->migrator === null || !is_dir($path)) {
+            return;
+        }
+        $this->migrator->path($path);
+        $this->migrator->run([$path]);
     }
 
     /** 把 Setup 的生命周期状态推进到可激活的 ready，保留状态图约束。 */

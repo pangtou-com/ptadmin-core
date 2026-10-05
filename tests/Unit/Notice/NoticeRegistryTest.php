@@ -29,6 +29,28 @@ final class NoticeRegistryTest extends TestCase
         self::assertSame('demo.sms', $registry->channelsFor('addon', 'demo')[0]['code']);
     }
 
+    public function testApplicationOwnerIsStableAndDoesNotLeakIntoCoreDefinitions(): void
+    {
+        $registry = new NoticeRegistry();
+        $registry->beginOwner('app', 'host');
+        $registry->scene('site.account.verify_email', '账户验证')->channels(['email']);
+        $registry->channel('sms', '宿主短信')->editor('content');
+        $registry->endOwner();
+        $registry->ensureCoreEmailChannel();
+
+        self::assertSame('app', $registry->scenesFor('app', 'host')[0]['source_type']);
+        self::assertSame('host.sms', $registry->channelsFor('app', 'host')[0]['code']);
+        self::assertSame('system', $registry->channelsFor('system', 'ptadmin')[0]['source_type']);
+        $registry->beginOwner('app', 'host');
+        self::assertSame([], $registry->scenesFor('app', 'host'));
+    }
+
+    public function testApplicationCannotClaimAnotherOwnerCode(): void
+    {
+        $this->expectException(\PTAdmin\Notice\NoticeDefinitionException::class);
+        (new NoticeRegistry())->beginOwner('app', 'other');
+    }
+
     public function testChannelCodeIsStableForSameTypeAndTitle(): void
     {
         $first = new NoticeRegistry();

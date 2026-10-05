@@ -134,7 +134,7 @@ final class DirectiveArgumentParser
         for ($i = 0; $i < $length; $i++) {
             $char = $source[$i];
             if ($quote !== null) {
-                if ($char === $quote && ($i === 0 || $source[$i - 1] !== '\\')) {
+                if ($char === $quote && !$this->isEscaped($source, $i)) {
                     $quote = null;
                 }
                 continue;
@@ -166,7 +166,7 @@ final class DirectiveArgumentParser
         for ($i = 0, $length = strlen($source); $i < $length; $i++) {
             $char = $source[$i];
             if ($quote !== null) {
-                if ($char === $quote && $source[$i - 1] !== '\\') {
+                if ($char === $quote && !$this->isEscaped($source, $i)) {
                     $quote = null;
                 }
                 continue;

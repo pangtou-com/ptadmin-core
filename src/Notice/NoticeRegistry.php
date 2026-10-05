@@ -18,7 +18,8 @@ final class NoticeRegistry
 
     public function beginOwner(string $sourceType, string $sourceCode): void
     {
-        if (!in_array($sourceType, ['system', 'addon'], true) || trim($sourceCode) === '') {
+        if (!in_array($sourceType, ['system', 'app', 'addon'], true) || trim($sourceCode) === ''
+            || ($sourceType === 'app' && $sourceCode !== 'host')) {
             throw new NoticeDefinitionException('通知定义 owner 无效。', 'notice_owner_invalid');
         }
         $this->sourceType = $sourceType;

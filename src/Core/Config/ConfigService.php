@@ -69,6 +69,7 @@ final class ConfigService
         $configKey = trim((string) ($input['config_key'] ?? ''));
         $groupCode = trim((string) ($input['group_code'] ?? ''));
         $title = trim((string) ($input['title'] ?? ''));
+        $icon = (string) ($input['icon'] ?? 'general');
         $exposure = (string) ($input['exposure'] ?? 'internal');
         $activationMode = (string) ($input['activation_mode'] ?? 'immediate');
         if (!in_array($ownerType, ['core', 'addon', 'app'], true)) {
@@ -87,6 +88,9 @@ final class ConfigService
         }
         if ($title === '') {
             throw new ConfigException('Configuration title is required.', 'config_definition_invalid');
+        }
+        if (!in_array($icon, ['general', 'security', 'resource', 'notification', 'custom'], true)) {
+            throw new ConfigException('Configuration icon is invalid.', 'config_definition_invalid');
         }
         if (!in_array($exposure, ['internal', 'public'], true)) {
             throw new ConfigException('Configuration exposure is invalid.', 'config_definition_invalid');
@@ -137,6 +141,7 @@ final class ConfigService
             'group_code' => $groupCode,
             'title' => $title,
             'description' => (string) ($input['description'] ?? ''),
+            'icon' => $icon,
             'exposure' => $exposure,
             'activation_mode' => $activationMode,
             'schema_json' => $normalized,
@@ -356,6 +361,7 @@ final class ConfigService
             'owner_code' => (string) $definition->owner_code,
             'title' => (string) $definition->title,
             'description' => (string) $definition->description,
+            'icon' => (string) ($definition->icon ?: 'general'),
             'exposure' => (string) ($definition->exposure ?: 'internal'),
             'activation_mode' => (string) ($definition->activation_mode ?: 'immediate'),
             'schema' => (array) $definition->schema_json,

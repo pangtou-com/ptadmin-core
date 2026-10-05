@@ -57,7 +57,7 @@ final class RuntimeRegistrar
                 $manifest = is_array($addon['manifest'] ?? null) ? $addon['manifest'] : [];
                 $verifiedCode = (string) ($manifest['code'] ?? '');
                 $this->assertCanonicalDirectories($directory);
-                $this->registerMigrations($directory);
+                $this->registerMigrationPath($directory);
                 $this->registerFunctions($directory, $manifest);
                 $this->registerBootstrap($directory, $verifiedCode, $manifest);
                 $this->registerRoutes($directory, $manifest);
@@ -73,6 +73,14 @@ final class RuntimeRegistrar
                         throw new AddonException('Runtime registry is unavailable.', 'runtime_registry_unavailable');
                     }
                     $this->contributeRuntime($directory, $verifiedCode, $manifest, $registry);
+                }
+                if (is_file($directory.'/Runtime/PaymentProvider.php') || is_file($directory.'/Runtime/SocialAuthProvider.php')) {
+                    if (!$this->app->bound(ServiceProtocolLoader::class)) {
+                        throw new AddonException('支付与登录协议加载器未注册。', 'service_protocol_loader_unavailable');
+                    }
+                    $this->app->make(ServiceProtocolLoader::class)->register(
+                        $directory, $verifiedCode, $this->addonNamespace($manifest, $verifiedCode),
+                    );
                 }
                 $loaded[] = $code;
             } catch (\Throwable $exception) {
@@ -95,6 +103,21 @@ final class RuntimeRegistrar
             }
         }
         return ['loaded' => $loaded, 'errors' => $errors];
+    }
+
+    /** Register active addon migration paths before the application's migration run. */
+    public function registerMigrations(): void
+    {
+        $scan = $this->discovery->scan(true);
+        foreach ($scan['addons'] as $addon) {
+            if (($addon['state'] ?? 'active') !== 'active') {
+                continue;
+            }
+            $code = (string) ($addon['code'] ?? '');
+            if ($code !== '') {
+                $this->registerMigrationPath($this->addonsPath.'/'.$code);
+            }
+        }
     }
 
     /**
@@ -159,7 +182,7 @@ final class RuntimeRegistrar
         }
     }
 
-    private function registerMigrations(string $directory): void
+    private function registerMigrationPath(string $directory): void
     {
         $path = $directory.'/database/migrations';
         if (!is_dir($path)) {

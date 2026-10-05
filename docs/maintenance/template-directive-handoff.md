@@ -82,7 +82,7 @@ demo_banner
 @pt:articles(limit=10,as=item)
 ```
 
-第一版每个指令最多声明一个主别名。别名必须全局唯一；与其他插件冲突时注册失败，不能静默移除，也不能通过 `default_addon` 选择默认目标。
+第一版每个指令最多声明一个主别名。当前 Registry 允许多个插件显式声明同一别名；调用歧义别名时抛错并列出可用完整名称，不能静默选择，也不能通过 `default_addon` 选择默认目标。Core 媒体与结构关键字仍保留，插件不能占用。完整名称冲突导致整个批次注册失败。
 
 ### 指令类型
 
@@ -111,7 +111,7 @@ demo_banner
 - 未指定 `as` 时默认变量名为 `field`。
 - `@pt:end` 和 `@pt:empty` 是固定结构关键字，不是插件自定义指令。
 - 嵌套循环有独立变量作用域，内层结束后恢复外层变量。
-- 新协议使用 `as`，不再使用历史 `id`。
+- 推荐 `as`，过渡期兼容历史 `id`；两者同时提供时必须同名。已声明业务参数 id 的指令不做变量名转换。
 
 ### 字段输出
 
@@ -123,7 +123,7 @@ demo_banner
 {$item.title|default="暂无标题"}
 ```
 
-字段读取使用受限的路径访问语义，缺失值输出空字符串，默认自动 HTML 转义。不允许 `->`、函数调用、运算、三元表达式或任意 PHP 代码。
+字段读取使用受限的路径访问语义，缺失值输出空字符串，默认自动 HTML 转义。允许括号内固定格式化参数；不允许 `->`、任意函数调用、运算、三元表达式或任意 PHP 代码。
 
 原始 HTML 需要显式语法，并且必须通过插件注册的安全声明：
 
@@ -280,7 +280,7 @@ final class CmsTemplateDirectives implements TemplateDirectiveProviderInterface
 5. `seo`、`img`、`images`、`file`、`files`、`dump` 内置指令和媒体上下文解析。
 6. Demo 插件的 `demo_banner`、`demo_articles` 注册和真实渲染验收。
 
-原始 HTML 的字段级安全声明、缓存策略和更完整的生产诊断仍是独立行为议题，不属于 Addon 目录结构调整。本次迁移不改变这些语义，也不把它们标记为已解决。
+原始 HTML 字段现在通过 `PTAdmin\Template\Runtime\SafeHtml` 显式声明；普通字符串不能用于 `{: $field}`。CMS 将当前 Schema 的 rich-text 字段及专题富文本包装为 SafeHtml，此包装本身不清洗 HTML。缓存策略和更完整的生产诊断仍为后续议题。
 
 ## 必须覆盖的测试
 
@@ -291,7 +291,7 @@ final class CmsTemplateDirectives implements TemplateDirectiveProviderInterface
 - 完整名称冲突导致插件注册失败且不留下部分定义。
 - 显式 alias 正常调用。
 - 未声明 alias 时短名称不可调用。
-- alias 冲突导致注册失败，并报告两个冲突来源。
+- alias 歧义在调用时报告多个完整名称；完整名称及保留别名冲突在注册时拒绝。
 - 参数类型、必填、默认值、枚举和范围校验。
 - 参数说明和示例可以导出为文档元数据。
 - 字符串、数组、嵌套数组和变量引用参数的 AST 解析与类型校验。
@@ -339,3 +339,25 @@ Registry 可以导出 `demo_banner`、`demo_articles` 的类型、说明、参�
 ## 当前结构调整范围
 
 本轮只调整 Addon/Template 目录、命名空间、服务注册分组和调用方引用，不修改模板协议、生命周期、公开 API 或既有安全行为。
+
+
+## 2026-10-05：CMS 模板联调落点
+
+- 循环变量推荐 `as`，兼容旧 `id`。两者同时出现必须同名；指令已声明业务参数 id 时不转换其含义。
+- 渲染器先解析结构，再按源顺序执行。list 与 pager 共享一次渲染内的状态，跨渲染和嵌套 render 不泄漏；返回数据不会重新解释成模板源码。
+- 当前主题经 `ThemeTemplateEngine` 解释：支持字面名称的 extends、块式 section/endsection、yield、include，及受限 if/elseif/else/endif。条件允许变量、字面量、比较及布尔运算，禁止任意函数/PHP。包含必须位于当前主题，限制循环和深度。
+- 简单 Blade 输出 `{{ $title ?? '默认值' }}` 映射为受控字段输出；宿主非主题 Blade 保持 Laravel 引擎，不向主题暴露 app/__env 等共享服务对象。
+- 部分错误包含模板路径及展开后的行号；目前不提供包含/布局的完整 source map。
+- CMS 完整协议维护在聚合工作区 `ptadmin-docs/reference/cms-directives.md`，本文件仅维护通用运行时与包内接入说明。
+
+
+## 字段格式化接入
+
+`Parsing/FieldOutputParser` 负责带引号的字段边界和受限参数解析，`Runtime/FieldFormatter` 提供 default、limit/pl、format_date、format_before、format_money 与固定 func 白名单；中文金额使用十进制字符串进位。既有 `|default=` 保留，并兼容旧 `|默认文字`。具体协议统一维护在聚合工作区 `ptadmin-docs/reference/template-field-format.md`。
+
+- 保留旧参数名及格式化顺序，默认值不覆盖 0/false；limit 沿用 Str::limit 显示宽度。
+- func 仅允许 trim/strip_tags，不进行动态函数调用。日期/相对时间/金额互斥，非法参数或值报错。
+- 日期按应用时区显示，过去与未来时间分别输出前/后；金额字符串不经过浮点转换。
+- 文本格式化移除 SafeHtml 标记，最终必须按普通文字转义；仅 default 回退时按实际值判断安全声明。
+- 字段默认文字中的布局/条件/指令文本不执行；转义示例与返回数据不再次解释为源码。主题只额外接受日期值对象，不暴露 Laravel 服务对象。
+- 回归入口：Core FieldFormattingTest，Dev CmsTemplateDirectivesTest 的实际 CMS 格式化页面；独立宿主 Blade 不进入该解释器。

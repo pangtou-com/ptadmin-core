@@ -9,7 +9,7 @@ use RuntimeException;
 /**
  * 校验 frontend.json 中声明的本地开发入口；生产环境始终忽略。
  *
- * 开发服务器由插件开发者自行启动，不维护宿主侧注册文件或进程租约。
+ * 开发服务器由应用或插件开发者自行启动，不维护宿主侧注册文件或进程租约。
  */
 final class FrontendDevelopmentStore
 {
@@ -21,7 +21,7 @@ final class FrontendDevelopmentStore
     }
 
     /**
-     * 读取插件 frontend.json 内联的开发入口。
+     * 读取应用或插件 frontend.json 内联的开发入口。
      *
      * 内联入口只在 local/testing 环境生效，不参与正式发布包的入口替换。
      * @param mixed $declaration
@@ -34,13 +34,13 @@ final class FrontendDevelopmentStore
         }
         $this->assertCode($code);
         if (!is_array($declaration) || array_is_list($declaration)) {
-            throw new RuntimeException(sprintf('插件 %s 的前端开发声明无效。', $code));
+            throw new RuntimeException(sprintf('前端模块 %s 的前端开发声明无效。', $code));
         }
 
         $entryUrl = (string) ($declaration['entry_url'] ?? '');
         $sandbox = (string) ($declaration['sandbox'] ?? '');
         if (!in_array($sandbox, ['trusted', 'iframe'], true)) {
-            throw new RuntimeException(sprintf('插件 %s 的前端开发 sandbox 无效。', $code));
+            throw new RuntimeException(sprintf('前端模块 %s 的前端开发 sandbox 无效。', $code));
         }
         $origin = $this->origin($entryUrl);
         $allowedOrigin = (string) ($declaration['allowed_origin'] ?? $origin);
@@ -66,7 +66,7 @@ final class FrontendDevelopmentStore
     private function assertCode(string $code): void
     {
         if (preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1) {
-            throw new RuntimeException('插件编码格式无效。');
+            throw new RuntimeException('前端模块编码格式无效。');
         }
     }
 
@@ -74,16 +74,16 @@ final class FrontendDevelopmentStore
     {
         $parts = parse_url($entryUrl);
         if (!is_array($parts) || !in_array($parts['scheme'] ?? null, ['http', 'https'], true) || !isset($parts['host'])) {
-            throw new RuntimeException('插件前端开发入口必须是有效的 HTTP(S) URL。');
+            throw new RuntimeException('前端模块开发入口必须是有效的 HTTP(S) URL。');
         }
         $origin = $this->origin($entryUrl);
         if ($origin !== $allowedOrigin) {
-            throw new RuntimeException('插件前端开发入口与允许 Origin 不一致。');
+            throw new RuntimeException('前端模块开发入口与允许 Origin 不一致。');
         }
         $host = strtolower((string) $parts['host']);
         $loopback = in_array($host, ['127.0.0.1', 'localhost', '::1'], true);
         if (!$loopback && !in_array($origin, $this->allowedOrigins, true)) {
-            throw new RuntimeException(sprintf('插件前端开发 Origin 未被宿主允许：%s', $origin));
+            throw new RuntimeException(sprintf('前端模块开发 Origin 未被宿主允许：%s', $origin));
         }
     }
 

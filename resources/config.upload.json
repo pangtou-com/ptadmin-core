@@ -3,6 +3,7 @@
     "config_key": "upload",
     "title": "上传策略",
     "description": "控制文件上传开关、类型、大小和分片上传参数。",
+    "icon": "resource",
     "schema": {
         "name": "upload",
         "title": "上传策略",

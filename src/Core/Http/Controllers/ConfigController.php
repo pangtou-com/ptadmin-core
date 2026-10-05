@@ -37,6 +37,7 @@ final class ConfigController extends Controller
                 'group_code' => $payload['group_code'] ?? 'system',
                 'title' => $payload['title'] ?? '',
                 'description' => $payload['description'] ?? '',
+                'icon' => $payload['icon'] ?? 'general',
                 'exposure' => $payload['exposure'] ?? 'internal',
                 'activation_mode' => $payload['activation_mode'] ?? 'immediate',
                 'schema' => $payload['schema'] ?? [],
@@ -75,18 +76,18 @@ final class ConfigController extends Controller
     public function addonDefinitions(string $code, ConfigService $configs): JsonResponse
     {
         return AdminResponse::success('', [
-            'results' => $configs->definitions(['owner_type' => 'addon', 'owner_code' => $code], false),
+            'results' => $configs->definitions(['owner_type' => 'addon', 'owner_code' => strtolower($code)], false),
         ]);
     }
 
     public function addonShow(string $code, string $configKey, Request $request, ConfigService $configs): JsonResponse
     {
-        return $this->show('addon', $code, $configKey, $request, $configs);
+        return $this->show('addon', strtolower($code), $configKey, $request, $configs);
     }
 
     public function addonUpdate(string $code, string $configKey, Request $request, ConfigService $configs): JsonResponse
     {
-        return $this->update('addon', $code, $configKey, $request, $configs);
+        return $this->update('addon', strtolower($code), $configKey, $request, $configs);
     }
 
     public function update(string $ownerType, string $ownerCode, string $configKey, Request $request, ConfigService $configs): JsonResponse

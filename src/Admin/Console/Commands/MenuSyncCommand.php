@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace PTAdmin\Admin\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Schema;
 use PTAdmin\Admin\Navigation\MenuSynchronizer;
 use Throwable;
 
@@ -22,12 +21,6 @@ final class MenuSyncCommand extends Command
 
     public function handle(): int
     {
-        if (!Schema::hasTable('admin_resources')) {
-            $this->error('缺少数据表 admin_resources，请先执行 php artisan migrate。');
-
-            return self::FAILURE;
-        }
-
         try {
             $result = $this->menus->syncAll();
         } catch (Throwable $exception) {

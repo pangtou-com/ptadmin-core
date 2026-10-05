@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PTAdmin\Addon\Manifest;
 
 use Composer\Semver\Semver;
+use Composer\Semver\VersionParser;
 use JsonException;
 use PTAdmin\Addon\Exception\AddonException;
 use RecursiveDirectoryIterator;
@@ -28,15 +29,16 @@ final class ManifestVerifier
 
     /**
      * 验证插件目录及其 manifest；要求签名时同时执行签名校验和 trusted 发布者策略。
+     * 市场入库可关闭当前宿主版本匹配，但约束语法、签名和信任策略仍执行；安装保持默认检查。
      *
      * @return array<string, mixed> 已附加 verified_files 的规范化 manifest 数据
      */
-    public function verify(string $directory, bool $requireSignature = true): array
+    public function verify(string $directory, bool $requireSignature = true, bool $checkBackendCompatibility = true): array
     {
         $loaded = $this->loadManifest($directory);
         $root = $loaded['root'];
         $manifest = $loaded['manifest'];
-        $this->assertHeader($manifest);
+        $this->assertHeader($manifest, $checkBackendCompatibility);
         $files = $this->buildFileList($root, $manifest);
         if ($requireSignature) {
             $this->verifySignature($manifest, $files);
@@ -124,7 +126,7 @@ final class ManifestVerifier
     }
 
     /** @param array<string, mixed> $manifest */
-    private function assertHeader(array $manifest): void
+    private function assertHeader(array $manifest, bool $checkBackendCompatibility = true): void
     {
         $code = (string) ($manifest['code'] ?? '');
         $version = (string) ($manifest['version'] ?? '');
@@ -138,7 +140,8 @@ final class ManifestVerifier
         $compatibility = $compatibilityMap['ptadmin/core'] ?? null;
         if (is_string($compatibility) && '' !== trim($compatibility)) {
             try {
-                if (!Semver::satisfies($this->backendVersion, $compatibility)) {
+                (new VersionParser())->parseConstraints($compatibility);
+                if ($checkBackendCompatibility && !Semver::satisfies($this->backendVersion, $compatibility)) {
                     throw new AddonException('The addon is incompatible with this backend.', 'backend_incompatible');
                 }
             } catch (\UnexpectedValueException $exception) {

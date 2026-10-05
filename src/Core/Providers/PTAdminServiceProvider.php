@@ -35,6 +35,7 @@ use PTAdmin\Core\Install\InstallDatabaseConfigurator;
 use PTAdmin\Core\Install\AdminFrontendManifest;
 use PTAdmin\Core\Install\AdminFrontendPublisher;
 use PTAdmin\Core\Config\ConfigService;
+use PTAdmin\Core\Config\ApplicationConfigSynchronizer;
 use PTAdmin\Core\Config\ConfigValueCodec;
 use PTAdmin\Core\Dictionary\DictionaryResolver;
 use PTAdmin\Core\Dictionary\DictionaryService;
@@ -76,10 +77,13 @@ use PTAdmin\Core\Theme\ThemeDataPackImporter;
 use PTAdmin\Core\Theme\ThemeViewLoader;
 use PTAdmin\Core\Console\Commands\TaskRunCommand;
 use PTAdmin\Core\Console\Commands\TaskRecoverCommand;
+use PTAdmin\Core\Console\Commands\UnifiedSyncCommand;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
 use PTAdmin\Addon\Lifecycle\LifecycleStore;
 use PTAdmin\Addon\Frontend\FrontendPublisher;
 use PTAdmin\Addon\Frontend\FrontendRegistry;
+use PTAdmin\Admin\Frontend\ApplicationFrontendRegistry as AdminApplicationFrontendRegistry;
+use PTAdmin\Admin\Frontend\ApplicationFrontendPublisher;
 use PTAdmin\Addon\Frontend\FrontendDevelopmentStore;
 use PTAdmin\Addon\Console\Commands\AddonSetupCommand;
 use PTAdmin\Addon\Manifest\TrustPolicy;
@@ -123,6 +127,7 @@ final class PTAdminServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../../../config/ptadmin.php', 'ptadmin');
         $this->app->register(SchemaServiceProvider::class);
+        $this->app->register(ServiceProtocolServiceProvider::class);
 
         $this->app->singleton(ApplicationIdentity::class, static function (): ApplicationIdentity {
             return new ApplicationIdentity(storage_path('ptadmin.json'));
@@ -143,6 +148,13 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app->singleton(InstallRequirementService::class);
         $this->app->singleton(ConfigValueCodec::class);
         $this->app->singleton(ConfigService::class);
+        $this->app->singleton(ApplicationConfigSynchronizer::class, static function ($app): ApplicationConfigSynchronizer {
+            return new ApplicationConfigSynchronizer(
+                $app->make(ConfigService::class),
+                $app['db'],
+                base_path(),
+            );
+        });
         $this->app->singleton(\PTAdmin\Core\Config\SystemMailTransport::class, static function ($app): \PTAdmin\Core\Config\SystemMailTransport {
             return new \PTAdmin\Core\Config\SystemMailTransport($app->make(ConfigService::class), $app->make('mail.manager'));
         });
@@ -251,6 +263,7 @@ final class PTAdminServiceProvider extends ServiceProvider
                 $app->make(AddonCatalog::class),
                 __DIR__.'/../../../resources/menu.json',
                 (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
+                base_path(),
             );
         });
         $this->app->singleton(AdminRuntimeHook::class);
@@ -380,6 +393,19 @@ final class PTAdminServiceProvider extends ServiceProvider
                 (array) $app['config']->get('ptadmin.frontend.capabilities', []),
             );
         });
+        $this->app->singleton(AdminApplicationFrontendRegistry::class, static function ($app): AdminApplicationFrontendRegistry {
+            return new AdminApplicationFrontendRegistry(
+                base_path(),
+                public_path(),
+                (string) $app['config']->get('ptadmin.web_prefix', 'admin'),
+                (string) $app['config']->get('ptadmin.api_prefix', 'ptadmin'),
+                (array) $app['config']->get('ptadmin.frontend.host_apis', ['v1']),
+                (array) $app['config']->get('ptadmin.frontend.runtime_profiles', ['admin-v1']),
+                (array) $app['config']->get('ptadmin.frontend.capabilities', []),
+                $app->make(FrontendDevelopmentStore::class),
+            );
+        });
+        $this->app->singleton(ApplicationFrontendPublisher::class);
     }
 
     private function registerAddonRuntimeServices(): void
@@ -428,6 +454,7 @@ final class PTAdminServiceProvider extends ServiceProvider
                 $app->make(RuntimeCacheStore::class),
                 $app->make(RuntimeLifecycleValidator::class),
                 $app->make(LifecycleRegistrar::class),
+                $app->make('migrator'),
             );
         });
         $this->app->singleton(Installer::class, static function ($app): Installer {
@@ -469,12 +496,25 @@ final class PTAdminServiceProvider extends ServiceProvider
 
         $this->loadTranslationsFrom(__DIR__.'/../../../lang', 'ptadmin');
         $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
+        // 插件迁移必须在首次安装执行 migrate 前注册。
+        if ((bool) $this->app['config']->get('ptadmin.addon.runtime.enabled', true)) {
+            $this->app->make(RuntimeRegistrar::class)->registerMigrations();
+        }
         // 安装时也要同步内置 Schema；这里只注册描述符，不解析数据库连接。
         $this->registerAdminRuntimeBindings();
         // 主题加载失败不阻止 Core 启动；没有主题时不注册未命名空间的视图路径。
         $this->app->make(ThemeViewLoader::class)->load(
             $this->app->make(ActiveThemeResolver::class)->resolve(),
         );
+
+        $engines = $this->app['view.engine.resolver'];
+        $blade = $engines->resolve('blade');
+        $engines->register('blade', fn () => new \PTAdmin\Template\Runtime\ThemeTemplateEngine(
+            $blade,
+            $this->app['view']->getFinder(),
+            $this->app->make(ThemeViewLoader::class),
+            $this->app->make(TemplateRenderer::class),
+        ));
 
         if (!$isInstalled) {
             $this->app->make(HttpKernel::class)->prependMiddlewareToGroup('web', InstallStateMiddleware::class);
@@ -504,6 +544,7 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->commands([
             TaskRunCommand::class,
             TaskRecoverCommand::class,
+            UnifiedSyncCommand::class,
             SchemaSyncCommand::class,
             SchemaPublishCommand::class,
             RuntimeCacheCommand::class,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PTAdmin\Core\Theme;
 
 use Composer\Semver\Semver;
+use Composer\Semver\VersionParser;
 use JsonException;
 
 final class ThemeManifestValidator
@@ -14,7 +15,8 @@ final class ThemeManifestValidator
         $this->dataPackValidator ??= new ThemeDataPackValidator();
     }
 
-    public function validateDirectory(string $directory, string $expectedCode, string $expectedVersion, bool $isDefault = false): ThemeDescriptor
+    /** 市场入库可关闭当前宿主版本匹配；主题身份、约束语法及数据包检查始终保留。 */
+    public function validateDirectory(string $directory, string $expectedCode, string $expectedVersion, bool $isDefault = false, bool $checkBackendCompatibility = true): ThemeDescriptor
     {
         $root = realpath($directory);
         if ($root === false || !is_dir($root)) {
@@ -58,7 +60,8 @@ final class ThemeManifestValidator
         $compatibility = $manifest['compatibility'] ?? null;
         if (is_string($compatibility) && $compatibility !== '') {
             try {
-                $compatible = Semver::satisfies($this->backendVersion, $compatibility);
+                (new VersionParser())->parseConstraints($compatibility);
+                $compatible = !$checkBackendCompatibility || Semver::satisfies($this->backendVersion, $compatibility);
             } catch (\UnexpectedValueException $exception) {
                 throw new ThemeException('Theme compatibility constraint is invalid: '.$root, 'invalid_theme_constraint', ['constraint' => $compatibility], $exception);
             }

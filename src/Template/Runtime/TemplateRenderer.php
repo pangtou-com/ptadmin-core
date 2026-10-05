@@ -22,114 +22,182 @@ final class TemplateRenderer
     /** @param array<string,mixed> $context */
     public function render(string $template, array $context = []): string
     {
+        // 状态属于一次渲染，嵌套调用也不能清空外层分页或诊断状态。
+        $previous = $this->renderState;
         $this->renderState = [];
-
-        return $this->renderFragment($template, $context, []);
-    }
-
-    private function renderFragment(string $template, array $context, array $loopStack): string
-    {
-        $template = $this->renderLoops($template, $context, $loopStack);
-        $template = preg_replace_callback('/\{:\s*\$([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}/', fn (array $m): string => $this->stringify($this->readPath($context, explode('.', $m[1])), false), $template) ?? $template;
-        $template = preg_replace_callback('/\{\$([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*))(?:\|default=("[^"]*"|\'[^\']*\'|\$[A-Za-z_][A-Za-z0-9_.]*))?\}/', function (array $m) use ($context): string {
-            $value = $this->readPath($context, explode('.', $m[1]));
-            if ($value === null || $value === '') {
-                $default = $m[2] ?? '';
-                $value = $default !== '' && $default[0] === '$'
-                    ? $this->readPath($context, explode('.', substr($default, 1)))
-                    : ($default === '' ? '' : stripcslashes(substr($default, 1, -1)));
-            }
-
-            return $this->stringify($value, true);
-        }, $template) ?? $template;
-
-        return $this->renderOutputDirectives($template, $context);
-    }
-
-    private function renderLoops(string $template, array $context, array $loopStack): string
-    {
-        while (true) {
+        try {
             $tokens = $this->directiveTokens($template);
-            $match = null;
-            $definition = null;
-            foreach ($tokens as $token) {
-                $candidate = $this->registry->get($token['name']);
-                if ($candidate?->type() === 'loop') {
-                    $match = $token;
-                    $definition = $candidate;
-                    break;
+            $index = 0;
+            $offset = 0;
+            $nodes = $this->parseNodes($template, $tokens, $index, $offset);
+            return $this->renderNodes($nodes, $context, []);
+        } finally {
+            $this->renderState = $previous;
+        }
+    }
+
+    /** 先解析全部结构，再执行；空分支中的错误也不能被静默忽略。 */
+    private function parseNodes(string $template, array $tokens, int &$index, int &$offset, bool $nested = false): array
+    {
+        $nodes = [];
+        while (isset($tokens[$index])) {
+            $token = $tokens[$index];
+            $nodes[] = ['text' => substr($template, $offset, $token['start'] - $offset)];
+            $offset = $token['start'];
+            if (in_array($token['name'], ['empty', 'end', '__elseif', '__else', '__endif'], true)) {
+                if (!$nested) {
+                    throw new InvalidArgumentException('Unexpected template structure directive: '.$token['name']);
+                }
+                return $nodes;
+            }
+            if ($token['name'] === '__if') {
+                $branches = [];
+                do {
+                    $condition = $tokens[$index]['arguments'];
+                    (new \PTAdmin\Template\Parsing\ConditionExpression())->evaluate($condition, []);
+                    $offset = $tokens[$index++]['end'];
+                    $branches[] = ['condition' => $condition, 'body' => $this->parseNodes($template, $tokens, $index, $offset, true)];
+                } while (($tokens[$index]['name'] ?? '') === '__elseif');
+                $otherwise = [];
+                if (($tokens[$index]['name'] ?? '') === '__else') {
+                    $offset = $tokens[$index++]['end'];
+                    $otherwise = $this->parseNodes($template, $tokens, $index, $offset, true);
+                }
+                if (($tokens[$index]['name'] ?? '') !== '__endif') {
+                    throw new InvalidArgumentException('Unclosed template @if condition.');
+                }
+                $offset = $tokens[$index++]['end'];
+                $nodes[] = ['branches' => $branches, 'otherwise' => $otherwise];
+                continue;
+            }
+            $definition = $this->registry->get($token['name']);
+            if ($definition === null) {
+                throw new InvalidArgumentException('第 '.(substr_count(substr($template, 0, $token['start']), "\n") + 1).' 行：Unknown template directive: '.$token['name']);
+            }
+            foreach ($this->arguments->parse($token['arguments']) as $name => $argument) {
+                if (!isset($definition->parameters()[$name]) && !($definition->type() === 'loop' && in_array($name, ['as', 'id'], true))) {
+                    throw new InvalidArgumentException('Template directive "'.$definition->fullName().'" has unknown parameter "'.$name.'".');
                 }
             }
-            if ($match === null || $definition === null) {
-                break;
+            $node = ['definition' => $definition, 'arguments' => $token['arguments'], 'line' => substr_count(substr($template, 0, $token['start']), "\n") + 1];
+            $offset = $token['end'];
+            $index++;
+            if ($definition->type() === 'loop') {
+                $node['body'] = $this->parseNodes($template, $tokens, $index, $offset, true);
+                $node['empty'] = [];
+                if (($tokens[$index]['name'] ?? '') === 'empty') {
+                    $offset = $tokens[$index++]['end'];
+                    $node['empty'] = $this->parseNodes($template, $tokens, $index, $offset, true);
+                }
+                if (($tokens[$index]['name'] ?? '') !== 'end') {
+                    throw new InvalidArgumentException('Unclosed template loop directive: '.$definition->fullName());
+                }
+                $offset = $tokens[$index++]['end'];
             }
-            $start = $match['start'];
-            $openEnd = $match['end'];
-            $end = $this->findEnd($template, $openEnd);
-            if ($end === null) {
-                throw new InvalidArgumentException(sprintf('Unclosed template loop directive "%s".', $definition->fullName()));
+            $nodes[] = $node;
+        }
+        $nodes[] = ['text' => substr($template, $offset)];
+        $offset = strlen($template);
+        return $nodes;
+    }
+
+    private function renderNodes(array $nodes, array $context, array $loopStack): string
+    {
+        $output = '';
+        foreach ($nodes as $node) {
+            if (array_key_exists('text', $node)) {
+                $output .= $this->renderText($node['text'], $context);
+                continue;
             }
-            $inner = substr($template, $openEnd, $end['start'] - $openEnd);
-            [$body, $empty] = $this->splitEmptyBranch($inner);
-            $arguments = $this->arguments->evaluate($match['arguments'], $context);
-            $this->validateArguments($definition, $arguments, true);
-            $items = $definition->invoke($arguments, ['context' => $context, 'loop' => $loopStack]);
-            $items = is_iterable($items) ? $items : [];
-            $variable = (string) ($arguments['as'] ?? 'field');
-            if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $variable)) {
-                throw new InvalidArgumentException('Loop parameter "as" must be a simple variable name.');
+            if (isset($node['branches'])) {
+                $selected = $node['otherwise'];
+                foreach ($node['branches'] as $branch) {
+                    if ((new \PTAdmin\Template\Parsing\ConditionExpression())->evaluate($branch['condition'], $context)) {
+                        $selected = $branch['body'];
+                        break;
+                    }
+                }
+                $output .= $this->renderNodes($selected, $context, $loopStack);
+                continue;
             }
-            $rendered = '';
+            $definition = $node['definition'];
+            try {
+                $arguments = $this->arguments->evaluate($node['arguments'], $context);
+                if ($definition->type() !== 'loop') {
+                    $this->validateArguments($definition, $arguments);
+                }
+            } catch (InvalidArgumentException $exception) {
+                throw new InvalidArgumentException('第 '.$node['line'].' 行：'.$exception->getMessage(), 0, $exception);
+            }
+            if ($definition->type() !== 'loop') {
+                $output .= $this->invoke($definition, $arguments, $context);
+                continue;
+            }
+            if (array_key_exists('id', $arguments) && !isset($definition->parameters()['id'])) {
+                if (isset($arguments['as']) && $arguments['as'] !== $arguments['id']) {
+                    throw new InvalidArgumentException('Loop parameters "as" and "id" must name the same variable.');
+                }
+                $arguments['as'] = $arguments['id'];
+                unset($arguments['id']);
+            }
+            try {
+                $this->validateArguments($definition, $arguments, true);
+            } catch (InvalidArgumentException $exception) {
+                throw new InvalidArgumentException('第 '.$node['line'].' 行：'.$exception->getMessage(), 0, $exception);
+            }
+            $variable = array_key_exists('as', $arguments) ? $arguments['as'] : 'field';
+            if (!is_string($variable) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $variable)
+                || in_array($variable, ['__ptadmin_render_state', 'current_item'], true)) {
+                throw new InvalidArgumentException('Loop parameter "as" must be a simple, non-reserved variable name.');
+            }
+            $context['__ptadmin_render_state'] =& $this->renderState;
+            $callContext = ['context' => $context, 'loop' => $loopStack];
+            $items = $definition->invoke($arguments, $callContext);
+            if (!is_iterable($items)) {
+                throw new InvalidArgumentException('Loop directive must return iterable data: '.$definition->fullName());
+            }
+            $count = 0;
             foreach ($items as $item) {
-                $childContext = array_replace($context, [$variable => $item, 'current_item' => $item]);
-                $rendered .= $this->renderFragment($body, $childContext, array_merge($loopStack, [$item]));
+                $count++;
+                $child = array_replace($context, [$variable => $item, 'current_item' => $item]);
+                $output .= $this->renderNodes($node['body'], $child, [...$loopStack, $item]);
             }
-            if ($rendered === '') {
-                $rendered = $this->renderFragment($empty, $context, $loopStack);
+            if ($count === 0) {
+                $output .= $node['empty'] !== []
+                    ? $this->renderNodes($node['empty'], $context, $loopStack)
+                    : $this->stringify($arguments['empty'] ?? '', true);
             }
-            $template = substr($template, 0, $start).$rendered.substr($template, $end['end']);
         }
-        return $template;
+        return $output;
     }
 
-    /** @return array{start:int,end:int}|null */
-    private function findEnd(string $template, int $offset): ?array
+    /** 数据只替换一次，不将内容中的变量或指令重新作为源码解释。 */
+    private function renderText(string $text, array $context): string
     {
-        $depth = 1;
-        foreach ($this->directiveTokens($template, $offset) as $token) {
-            $name = $token['name'];
-            if ($name === 'end') {
-                if (--$depth === 0) {
-                    return ['start' => $token['start'], 'end' => $token['end']];
+        $text = str_replace('@@pt:', '@pt:', $text);
+        $output = '';
+        $offset = 0;
+        $parser = new \PTAdmin\Template\Parsing\FieldOutputParser();
+        $formatter = new FieldFormatter();
+        foreach ($parser->tokens($text) as $token) {
+            $output .= substr($text, $offset, $token['start'] - $offset);
+            $offset = $token['end'];
+            if ($token['escaped']) {
+                $output .= substr($text, $token['start'] + 1, $token['end'] - $token['start'] - 1);
+                continue;
+            }
+            try {
+                $options = $this->arguments->evaluate($token['arguments'], $context);
+                $value = $formatter->format($this->readPath($context, explode('.', $token['path'])), $options, $token['blade']);
+                if ($token['raw'] && $value !== null && $value !== '' && !$value instanceof SafeHtml) {
+                    throw new InvalidArgumentException('原始 HTML 字段未声明安全输出。');
                 }
-                continue;
-            }
-            if ($name === 'empty') {
-                continue;
-            }
-            if ($this->registry->get($name)?->type() === 'loop') {
-                $depth++;
+                $output .= $this->stringify($value, !$token['raw']);
+            } catch (InvalidArgumentException $exception) {
+                throw new InvalidArgumentException('模板字段 '.$token['path'].'：'.$exception->getMessage(), 0, $exception);
             }
         }
-        return null;
-    }
-
-    /** @return array{0:string,1:string} */
-    private function splitEmptyBranch(string $inner): array
-    {
-        $depth = 0;
-        foreach ($this->directiveTokens($inner) as $token) {
-            $name = $token['name'];
-            if ($name === 'empty' && $depth === 0) {
-                return [substr($inner, 0, $token['start']), substr($inner, $token['end'])];
-            }
-            if ($name === 'end') {
-                $depth = max(0, $depth - 1);
-            } elseif ($name !== 'empty' && $this->registry->get($name)?->type() === 'loop') {
-                $depth++;
-            }
-        }
-        return [$inner, ''];
+        return $output.substr($text, $offset);
     }
 
     private function invoke(DirectiveDefinition $definition, array $arguments, array $context): string
@@ -185,22 +253,44 @@ final class TemplateRenderer
     private function directiveTokens(string $template, int $offset = 0): array
     {
         $tokens = [];
-        for ($index = $offset, $length = strlen($template); $index < $length - 4; $index++) {
-            if (substr($template, $index, 4) !== '@pt:') {
+        $fields = [];
+        foreach ((new \PTAdmin\Template\Parsing\FieldOutputParser())->tokens($template) as $field) {
+            $fields[$field['start']] = $field['end'];
+        }
+        for ($index = $offset, $length = strlen($template); $index < $length; $index++) {
+            if (isset($fields[$index])) {
+                $index = $fields[$index] - 1;
                 continue;
             }
-            $nameStart = $index + 4;
-            if (!isset($template[$nameStart]) || !preg_match('/[a-zA-Z]/', $template[$nameStart])) {
+            if (($template[$index - 1] ?? '') === '@') {
                 continue;
             }
-            $nameEnd = $nameStart + 1;
-            while ($nameEnd < $length && preg_match('/[a-zA-Z0-9_-]/', $template[$nameEnd])) {
-                $nameEnd++;
+            if (substr($template, $index, 4) === '@pt:') {
+                $nameStart = $index + 4;
+                if (!isset($template[$nameStart]) || !preg_match('/[a-zA-Z]/', $template[$nameStart])) {
+                    continue;
+                }
+                $nameEnd = $nameStart + 1;
+                while ($nameEnd < $length && preg_match('/[a-zA-Z0-9_-]/', $template[$nameEnd])) {
+                    $nameEnd++;
+                }
+                $name = substr($template, $nameStart, $nameEnd - $nameStart);
+            } elseif (preg_match('/\G@(if|elseif|else|endif)\b/', $template, $match, 0, $index)) {
+                $name = '__'.$match[1];
+                $nameEnd = $index + strlen($match[0]);
+            } else {
+                continue;
             }
-            $name = substr($template, $nameStart, $nameEnd - $nameStart);
             $end = $nameEnd;
             $arguments = '';
+            while (isset($template[$nameEnd]) && in_array($template[$nameEnd], [' ', "\t"], true)) {
+                $nameEnd++;
+            }
+            if (($template[$nameEnd] ?? '') !== '(') {
+                $nameEnd = $end;
+            }
             if (($template[$nameEnd] ?? '') === '(') {
+                $end = $nameEnd;
                 $depth = 1;
                 $quote = null;
                 for ($cursor = $nameEnd + 1; $cursor < $length; $cursor++) {
@@ -234,34 +324,6 @@ final class TemplateRenderer
         return $tokens;
     }
 
-    private function renderOutputDirectives(string $template, array $context): string
-    {
-        $tokens = $this->directiveTokens($template);
-        if ($tokens === []) {
-            return $template;
-        }
-        $output = '';
-        $cursor = 0;
-        foreach ($tokens as $token) {
-            $output .= substr($template, $cursor, $token['start'] - $cursor);
-            if (in_array($token['name'], ['empty', 'end'], true)) {
-                throw new InvalidArgumentException('Unexpected template structure directive: '.$token['name']);
-            }
-            $definition = $this->registry->get($token['name']);
-            if ($definition === null) {
-                throw new InvalidArgumentException('Unknown template directive: '.$token['name']);
-            }
-            if ($definition->type() === 'loop') {
-                throw new InvalidArgumentException('Unexpected template structure directive: '.$token['name']);
-            }
-            $arguments = $this->arguments->evaluate($token['arguments'], $context);
-            $output .= $this->invoke($definition, $arguments, $context);
-            $cursor = $token['end'];
-        }
-
-        return $output.substr($template, $cursor);
-    }
-
     private function isEscaped(string $value, int $index): bool
     {
         $slashes = 0;
@@ -281,7 +343,7 @@ final class TemplateRenderer
     }
     private function stringify(mixed $value, bool $escape): string
     {
-        $string = is_scalar($value) ? (string) $value : '';
+        $string = is_scalar($value) || $value instanceof SafeHtml ? (string) $value : '';
         return $escape ? htmlspecialchars($string, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') : $string;
     }
 }

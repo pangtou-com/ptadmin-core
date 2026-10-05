@@ -11,6 +11,7 @@ use PTAdmin\Admin\Auth\AdminAuthenticator;
 use PTAdmin\Admin\Auth\AuthorizationService;
 use PTAdmin\Admin\Models\Admin;
 use PTAdmin\Addon\Frontend\FrontendRegistry;
+use PTAdmin\Admin\Frontend\ApplicationFrontendRegistry;
 use PTAdmin\Core\Auth\Exceptions\InvalidSessionException;
 use PTAdmin\Core\Auth\Session\SessionManager;
 use PTAdmin\Core\Http\Responses\AdminResponse;
@@ -22,6 +23,7 @@ final class SessionController extends Controller
         private AdminAuthenticator $authenticator,
         private AuthorizationService $authorization,
         private FrontendRegistry $addonFrontends,
+        private ApplicationFrontendRegistry $applicationFrontends,
     )
     {
     }
@@ -38,6 +40,8 @@ final class SessionController extends Controller
         $permissions = $this->authorization->permissions($admin);
         $menus = $this->authorization->menus($admin);
         $plugins = $this->addonFrontends->resolve($menus);
+        $applications = $this->applicationFrontends->resolve($menus);
+        $modules = array_merge($applications['modules'], $plugins['plugins']);
 
         return AdminResponse::success('', [
             'user' => $this->authenticator->userPayload($admin),
@@ -47,6 +51,7 @@ final class SessionController extends Controller
             'theme' => (array) config('ptadmin.theme', []),
             'layout' => (array) config('ptadmin.layout', []),
             'plugins' => $plugins['plugins'],
+            'modules' => $modules,
             'session' => [
                 'expires_at' => (string) ($session['expires_at'] ?? ''),
                 'absolute_expires_at' => (string) ($session['absolute_expires_at'] ?? ''),
@@ -55,6 +60,7 @@ final class SessionController extends Controller
             'features' => [
                 'task_center' => true,
                 'plugin_runtime' => true,
+                'application_runtime' => true,
             ],
         ])->header('Cache-Control', 'no-store');
     }

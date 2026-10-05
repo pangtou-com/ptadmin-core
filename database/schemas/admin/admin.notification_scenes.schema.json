@@ -35,6 +35,10 @@
                             "label": "系统"
                         },
                         {
+                            "value": "app",
+                            "label": "宿主应用"
+                        },
+                        {
                             "value": "addon",
                             "label": "插件"
                         }

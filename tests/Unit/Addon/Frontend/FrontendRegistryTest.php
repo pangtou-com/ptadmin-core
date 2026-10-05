@@ -204,6 +204,39 @@ final class FrontendRegistryTest extends TestCase
         );
     }
 
+    public function testDesignFlowExtensionDeclarationsSurviveSessionResolution(): void
+    {
+        $this->writeAddon('trusted', 'frontend.mjs', true, true);
+        $path = $this->addonsPath.'/demo-addon/Frontend/frontend.json';
+        $descriptor = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+        $descriptor['design_flows'][0]['extension_namespace'] = 'demo';
+        $descriptor['design_flows'][0]['steps'][0]['extension_paths'] = ['profile', 'map'];
+        file_put_contents($path, json_encode($descriptor, JSON_THROW_ON_ERROR));
+        $registry = $this->registry(new TrustPolicy([], [], true, 'testing'));
+        $flow = $registry->resolve($this->addonMenu())['plugins'][0]['design_flows'][0];
+        self::assertSame('demo', $flow['extension_namespace']);
+        self::assertSame(['profile', 'map'], $flow['steps'][0]['extension_paths']);
+        self::assertSame($flow, $registry->designFlow('demo-addon:demo-addon.schema'));
+        self::assertNull($registry->designFlow('demo-addon:missing'));
+    }
+
+    public function testOverlappingStepExtensionPathsAreRejected(): void
+    {
+        $this->writeAddon('trusted', 'frontend.mjs', true, true);
+        $path = $this->addonsPath.'/demo-addon/Frontend/frontend.json';
+        $descriptor = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+        $flow = &$descriptor['design_flows'][0];
+        $flow['extension_namespace'] = 'demo';
+        $flow['steps'][0]['extension_paths'] = ['mapping'];
+        $flow['steps'][] = ['id' => 'details', 'title' => '详情', 'extension_paths' => ['mapping.title'], 'mount' => $flow['steps'][0]['mount']];
+        file_put_contents($path, json_encode($descriptor, JSON_THROW_ON_ERROR));
+        $registry = $this->registry(new TrustPolicy([], [], true, 'testing'));
+        $resolved = $registry->resolve($this->addonMenu());
+        self::assertSame([], $resolved['plugins']);
+        self::assertSame('frontend_design_flows_invalid', $resolved['errors'][0]['error_code']);
+        self::assertNull($registry->designFlow('demo-addon:demo-addon.schema'));
+    }
+
     public function testPublishedBuildStylesUseContentRevisionsAndRejectUnsafeOrMissingFiles(): void
     {
         $this->writeAddon('trusted', 'frontend.mjs', true);

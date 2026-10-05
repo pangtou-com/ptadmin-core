@@ -34,6 +34,26 @@ final class NoticeSynchronizer
         return $this->sync('addon', $ownerCode);
     }
 
+    /** 宿主声明只返回 Provider 类名，通知来源固定为 app/host。 */
+    public function syncApplication(string $directory): int
+    {
+        $path = rtrim($directory, '/').'/Resources/NoticeProvider.php';
+        $this->registry->beginOwner('app', 'host');
+        try {
+            if (is_file($path)) {
+                $class = require $path;
+                if (!is_string($class) || !is_subclass_of($class, NoticeProviderInterface::class)) {
+                    throw new NoticeDefinitionException('宿主通知声明必须返回 NoticeProviderInterface 类名。', 'notice_provider_invalid');
+                }
+                app()->make($class)->register($this->registry);
+            }
+        } finally {
+            $this->registry->endOwner();
+        }
+
+        return $this->sync('app', 'host');
+    }
+
     public function deactivate(string $sourceType, string $sourceCode): void
     {
         $owner = ['source_type' => $sourceType, 'source_code' => strtolower($sourceCode)];

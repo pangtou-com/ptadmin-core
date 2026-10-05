@@ -18,6 +18,7 @@ final class MenuSynchronizer
         private AddonCatalog $addons,
         private string $coreMenuPath,
         private string $addonsPath,
+        private string $applicationPath = '',
     ) {
     }
 
@@ -44,6 +45,21 @@ final class MenuSynchronizer
         ));
     }
 
+    /** @return array{created:int,updated:int,unchanged:int,disabled:int,resource_keys:list<string>} */
+    public function syncApp(string $directory): array
+    {
+        $path = rtrim($directory, '/').'/Resources/menu.json';
+        if (!is_file($path)) {
+            return $this->database->transaction(fn (): array => $this->deactivateOwner('app', 'host'));
+        }
+
+        return $this->database->transaction(fn (): array => $this->syncFile(
+            $path,
+            'app',
+            'host',
+        ));
+    }
+
     /** @return array{core:array<string,mixed>,addons:array<string,array<string,mixed>>,totals:array<string,int>} */
     public function syncAll(): array
     {
@@ -59,9 +75,11 @@ final class MenuSynchronizer
 
         return $this->database->transaction(function () use ($discovery): array {
             $core = $this->syncFile($this->coreMenuPath, 'core', 'ptadmin');
+            $application = $this->syncAppFile($this->applicationPath);
             $addons = [];
             $totals = $this->emptyCounts();
             $this->mergeCounts($totals, $core);
+            $this->mergeCounts($totals, $application);
 
             foreach ($discovery['addons'] as $addon) {
                 $directoryName = (string) $addon['code'];
@@ -79,8 +97,23 @@ final class MenuSynchronizer
                 $this->mergeCounts($totals, $result);
             }
 
-            return ['core' => $core, 'addons' => $addons, 'totals' => $totals];
+            return ['core' => $core, 'app' => $application, 'addons' => $addons, 'totals' => $totals];
         });
+    }
+
+    /** @return array{created:int,updated:int,unchanged:int,disabled:int,resource_keys:list<string>} */
+    private function syncAppFile(string $directory): array
+    {
+        if ($directory === '') {
+            return $this->deactivateOwner('app', 'host');
+        }
+
+        $path = rtrim($directory, '/').'/Resources/menu.json';
+        if (!is_file($path)) {
+            return $this->deactivateOwner('app', 'host');
+        }
+
+        return $this->syncFile($path, 'app', 'host');
     }
 
     /** @return array{created:int,updated:int,unchanged:int,disabled:int,resource_keys:list<string>} */
@@ -148,7 +181,7 @@ final class MenuSynchronizer
             if ($ownerType === 'addon') {
                 return [];
             }
-            throw new RuntimeException(sprintf('Core 菜单资源文件不存在：%s', $path));
+            throw new RuntimeException(sprintf('菜单资源文件不存在：%s', $path));
         }
 
         try {
@@ -321,7 +354,7 @@ final class MenuSynchronizer
             'is_menu' => $definition['is_menu'],
             'status' => $definition['status'],
             'sort' => $definition['sort'],
-            'module' => $ownerType === 'addon' ? 'addon' : 'admin',
+            'module' => in_array($ownerType, ['addon', 'app'], true) ? $ownerType : 'admin',
             'icon' => $definition['icon'] !== '' ? $definition['icon'] : null,
         ];
     }
@@ -349,12 +382,12 @@ final class MenuSynchronizer
             return '';
         }
 
-        if ($ownerType === 'addon' && in_array($type, ['group', 'schema', 'page'], true)) {
+        if (in_array($ownerType, ['addon', 'app'], true) && in_array($type, ['group', 'schema', 'page'], true)) {
             if (str_starts_with($path, '/') || preg_match('!^[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$!', $path) !== 1) {
-                throw new RuntimeException(sprintf('插件资源 path 必须是相对路由片段：%s', $resourceKey));
+                throw new RuntimeException(sprintf('模块资源 path 必须是相对路由片段：%s', $resourceKey));
             }
 
-            return '/plugins/'.rawurlencode($ownerCode).'/'.$path;
+            return $ownerType === 'app' ? '/app/'.$path : '/plugins/'.rawurlencode($ownerCode).'/'.$path;
         }
 
         if (preg_match('!^/(?:[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*)?$!', $path) !== 1) {

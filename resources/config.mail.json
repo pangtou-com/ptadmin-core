@@ -3,6 +3,7 @@
     "config_key": "mail",
     "title": "邮件配置",
     "description": "SMTP 服务器和发件人信息。",
+    "icon": "notification",
     "schema": {
         "name": "mail",
         "title": "邮件配置",

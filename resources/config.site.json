@@ -3,6 +3,7 @@
     "config_key": "site",
     "title": "站点信息",
     "description": "站点展示、统计及备案信息。",
+    "icon": "general",
     "exposure": "public",
     "schema": {
         "name": "site",
