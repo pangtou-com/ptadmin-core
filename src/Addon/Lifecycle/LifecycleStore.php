@@ -42,7 +42,8 @@ final class LifecycleStore
      */
     public function transition(string $code, string $state, array $meta = []): array
     {
-        if (preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1 || !array_key_exists($state, self::TRANSITIONS)) {
+        $code = strtolower($code);
+        if (preg_match('/^[a-z][a-z0-9._-]{1,63}$/', $code) !== 1 || !array_key_exists($state, self::TRANSITIONS)) {
             throw new AddonException('The addon lifecycle input is invalid.', 'invalid_lifecycle_input');
         }
         $directory = $this->root.'/'.$code;
@@ -79,6 +80,7 @@ final class LifecycleStore
      */
     public function read(string $code): ?array
     {
+        $code = strtolower($code);
         $path = $this->root.'/'.$code.'/state.json';
         if (!is_file($path)) {
             return null;
@@ -98,7 +100,8 @@ final class LifecycleStore
      */
     public function restore(string $code, ?array $snapshot): void
     {
-        if (preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1) {
+        $code = strtolower($code);
+        if (preg_match('/^[a-z][a-z0-9._-]{1,63}$/', $code) !== 1) {
             throw new AddonException('The addon lifecycle input is invalid.', 'invalid_lifecycle_input');
         }
         $directory = $this->root.'/'.$code;

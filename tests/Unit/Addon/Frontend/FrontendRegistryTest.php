@@ -70,17 +70,17 @@ final class FrontendRegistryTest extends TestCase
         }
     }
 
-    public function testRegistryUsesManifestCodeWhenAddonDirectoryUsesDifferentCase(): void
+    public function testRegistryRequiresLowercaseAddonDirectoryMatchingManifestCode(): void
     {
         $this->writeAddon('iframe', 'index.html');
-        rename($this->addonsPath.'/demo-addon', $this->addonsPath.'/Cms');
-        rename($this->publicPath.'/admintest/plugins/demo-addon', $this->publicPath.'/admintest/plugins/Cms');
+        rename($this->addonsPath.'/demo-addon', $this->addonsPath.'/cms');
+        rename($this->publicPath.'/admintest/plugins/demo-addon', $this->publicPath.'/admintest/plugins/cms');
 
-        $manifestPath = $this->addonsPath.'/Cms/manifest.json';
+        $manifestPath = $this->addonsPath.'/cms/manifest.json';
         $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
         $manifest['code'] = 'cms';
         file_put_contents($manifestPath, json_encode($manifest, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
-        $descriptorPath = $this->addonsPath.'/Cms/Frontend/frontend.json';
+        $descriptorPath = $this->addonsPath.'/cms/frontend/frontend.json';
         $descriptor = json_decode((string) file_get_contents($descriptorPath), true, 512, JSON_THROW_ON_ERROR);
         $descriptor['entries'][0]['key'] = 'cms.page';
         file_put_contents($descriptorPath, json_encode($descriptor, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
@@ -94,7 +94,7 @@ final class FrontendRegistryTest extends TestCase
 
         self::assertSame('cms', $plugin['code']);
         self::assertSame('/ptadmin/cms', $plugin['api_base']);
-        self::assertSame('./plugins/Cms/index.html?v=1.0.0', $plugin['entries'][0]['entry']);
+        self::assertSame('./plugins/cms/index.html?v=1.0.0', $plugin['entries'][0]['entry']);
     }
 
     public function testTrustedLocalEntryNeedsExplicitPolicyAndIsNeverDowngraded(): void
@@ -175,7 +175,7 @@ final class FrontendRegistryTest extends TestCase
     public function testInvalidInlineDevelopmentDescriptorIsReportedPerPlugin(): void
     {
         $this->writeAddon('iframe', 'index.html', false, false, true);
-        $path = $this->addonsPath.'/demo-addon/Frontend/frontend.json';
+        $path = $this->addonsPath.'/demo-addon/frontend/frontend.json';
         $descriptor = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
         $descriptor['development'] = 'invalid';
         file_put_contents($path, json_encode($descriptor, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
@@ -207,7 +207,7 @@ final class FrontendRegistryTest extends TestCase
     public function testDesignFlowExtensionDeclarationsSurviveSessionResolution(): void
     {
         $this->writeAddon('trusted', 'frontend.mjs', true, true);
-        $path = $this->addonsPath.'/demo-addon/Frontend/frontend.json';
+        $path = $this->addonsPath.'/demo-addon/frontend/frontend.json';
         $descriptor = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
         $descriptor['design_flows'][0]['extension_namespace'] = 'demo';
         $descriptor['design_flows'][0]['steps'][0]['extension_paths'] = ['profile', 'map'];
@@ -223,7 +223,7 @@ final class FrontendRegistryTest extends TestCase
     public function testOverlappingStepExtensionPathsAreRejected(): void
     {
         $this->writeAddon('trusted', 'frontend.mjs', true, true);
-        $path = $this->addonsPath.'/demo-addon/Frontend/frontend.json';
+        $path = $this->addonsPath.'/demo-addon/frontend/frontend.json';
         $descriptor = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
         $flow = &$descriptor['design_flows'][0];
         $flow['extension_namespace'] = 'demo';
@@ -240,7 +240,7 @@ final class FrontendRegistryTest extends TestCase
     public function testPublishedBuildStylesUseContentRevisionsAndRejectUnsafeOrMissingFiles(): void
     {
         $this->writeAddon('trusted', 'frontend.mjs', true);
-        $source = $this->addonsPath.'/demo-addon/Frontend/dist';
+        $source = $this->addonsPath.'/demo-addon/frontend/dist';
         mkdir($source.'/.vite');
         file_put_contents($source.'/page.css', '.page { color: red }');
         $build = ['schema' => 'sparq.frontend-build/v1', 'entry' => 'frontend.mjs', 'styles' => ['page.css']];
@@ -312,7 +312,7 @@ final class FrontendRegistryTest extends TestCase
     ): void
     {
         $directory = $this->addonsPath.'/demo-addon';
-        mkdir($directory.'/Frontend/dist', 0700, true);
+        mkdir($directory.'/frontend/dist', 0700, true);
         $descriptor = [
             'host_api' => 'v1',
             'runtime_profile' => 'admin-v1',
@@ -350,15 +350,15 @@ final class FrontendRegistryTest extends TestCase
             ]];
         }
         file_put_contents(
-            $directory.'/Frontend/frontend.json',
+            $directory.'/frontend/frontend.json',
             json_encode($descriptor, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)
         );
-        file_put_contents($directory.'/Frontend/dist/'.$entry, $sandbox === 'iframe' ? '<!doctype html>' : 'export default {}');
+        file_put_contents($directory.'/frontend/dist/'.$entry, $sandbox === 'iframe' ? '<!doctype html>' : 'export default {}');
         $manifest = [
             'code' => 'demo-addon',
             'version' => '1.0.0',
             'sandbox' => $sandbox,
-            'files' => ['Frontend/dist/'.$entry, 'Frontend/frontend.json'],
+            'files' => ['frontend/dist/'.$entry, 'frontend/frontend.json'],
         ];
         if ($localTrusted) {
             $manifest['publisher'] = 'local:test';
@@ -368,7 +368,7 @@ final class FrontendRegistryTest extends TestCase
             json_encode($manifest, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)
         );
 
-        (new FrontendPublisher($this->publicPath))->publish('admintest', 'demo-addon', $directory.'/Frontend/dist');
+        (new FrontendPublisher($this->publicPath))->publish('admintest', 'demo-addon', $directory.'/frontend/dist');
     }
 
     private function remove(string $path): void

@@ -29,7 +29,7 @@ final class FrontendPublisher
      */
     public function publish(string $webPrefix, string $code, string $source): array
     {
-        if (preg_match('/^[a-z][a-z0-9_]{5,63}$/', $webPrefix) !== 1 || preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1) {
+        if (preg_match('/^[a-z][a-z0-9_]{5,63}$/', $webPrefix) !== 1 || preg_match('/^[a-z][a-z0-9._-]{1,63}$/', $code) !== 1) {
             throw new AddonException('The addon frontend target is invalid.', 'invalid_target');
         }
         $sourceRoot = realpath($source);
@@ -160,7 +160,7 @@ final class FrontendPublisher
     /** 仅删除指定插件的公开模块目录，不触碰插件源码、配置或业务数据。 */
     public function remove(string $webPrefix, string $code): void
     {
-        if (preg_match('/^[a-z][a-z0-9_]{5,63}$/', $webPrefix) !== 1 || preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1) {
+        if (preg_match('/^[a-z][a-z0-9_]{5,63}$/', $webPrefix) !== 1 || preg_match('/^[a-z][a-z0-9._-]{1,63}$/', $code) !== 1) {
             throw new AddonException('The addon frontend target is invalid.', 'invalid_target');
         }
         $target = rtrim($this->publicRoot, '/').'/'.$webPrefix.'/plugins/'.$code;

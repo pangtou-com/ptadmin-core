@@ -41,7 +41,7 @@ final class AddonCatalog
         }
         foreach (glob($this->addonsPath.'/*', GLOB_ONLYDIR) ?: [] as $directory) {
             $code = basename($directory);
-            if (str_starts_with($code, '.') || preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1) {
+            if (str_starts_with($code, '.') || preg_match('/^[a-z][a-z0-9._-]{1,63}$/', $code) !== 1) {
                 continue;
             }
             try {
@@ -80,6 +80,9 @@ final class AddonCatalog
                     $this->lifecycle->transition($code, 'validating');
                 }
                 $manifest = $this->verifier->verifyRuntime($directory);
+                if (($manifest['code'] ?? null) !== $code) {
+                    throw new AddonException('The addon directory must match its lowercase manifest code.', 'addon_directory_mismatch');
+                }
                 $this->lifecycle->transition($code, 'loading');
                 $this->lifecycle->transition($code, 'ready', [
                     'manifest' => $manifest,

@@ -81,7 +81,7 @@ final class Installer
                 $onProgress('verifying', 30, '正在校验插件清单与签名。');
             }
             $manifest = $this->verifier->verify($package, $this->requireSignature);
-            $code = (string) $manifest['code'];
+            $code = strtolower((string) $manifest['code']);
             if ($expectedCode !== null && strcasecmp($expectedCode, $code) !== 0) {
                 throw new AddonException('The addon code does not match the requested operation.', 'addon_code_mismatch');
             }
@@ -120,7 +120,7 @@ final class Installer
                 }
                 throw new RuntimeException('Unable to activate addon package.');
             }
-            $frontendSource = $target.'/Frontend/dist';
+            $frontendSource = $target.'/frontend/dist';
             // 数据库资源在事务内同步；文件与前端产物由外层 catch 使用目录备份执行补偿回滚。
             $activate = function () use ($target, $code, $manifest, $frontendSource, $webPrefix, $update, $onProgress): array {
                 $this->runMigrations($target);
@@ -160,7 +160,7 @@ final class Installer
             }
             if (isset($code) && ($lifecycleCaptured ?? false)) {
                 $this->lifecycle->restore($code, $previousLifecycle ?? null);
-                $restoredFrontend = isset($target) ? $target.'/Frontend/dist' : '';
+                $restoredFrontend = isset($target) ? $target.'/frontend/dist' : '';
                 if (is_dir($restoredFrontend)) {
                     $this->frontend->publish($webPrefix, $code, $restoredFrontend);
                 } else {
@@ -189,7 +189,8 @@ final class Installer
      */
     public function setup(string $code, string $webPrefix, bool $enable = false): array
     {
-        if (preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1) {
+        $code = strtolower($code);
+        if (preg_match('/^[a-z][a-z0-9._-]{1,63}$/', $code) !== 1) {
             throw new AddonException('The addon code is invalid.', 'invalid_addon_code');
         }
 
@@ -201,11 +202,11 @@ final class Installer
         $previousLifecycle = null;
         $resourcesChanged = false;
         $lockHandle = null;
-        $frontendSource = $target.'/Frontend/dist';
+        $frontendSource = $target.'/frontend/dist';
         try {
             $manifest = $this->verifier->verifyRuntime($target);
             $manifestCode = (string) ($manifest['code'] ?? '');
-            if (strcasecmp($manifestCode, $code) !== 0) {
+            if ($manifestCode !== $code) {
                 throw new AddonException('The addon manifest code does not match the requested operation.', 'addon_code_mismatch');
             }
             $code = $manifestCode;
@@ -317,7 +318,8 @@ final class Installer
      */
     public function uninstall(string $code, string $webPrefix): array
     {
-        if (preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1) {
+        $code = strtolower($code);
+        if (preg_match('/^[a-z][a-z0-9._-]{1,63}$/', $code) !== 1) {
             throw new AddonException('The addon code is invalid.', 'invalid_addon_code');
         }
         $lockHandle = $this->locks?->acquire($code);
@@ -348,7 +350,7 @@ final class Installer
                     @rename($backup, $target);
                 }
                 $this->lifecycle->restore($code, $previousLifecycle);
-                $frontendSource = $target.'/Frontend/dist';
+                $frontendSource = $target.'/frontend/dist';
                 if (is_dir($frontendSource)) {
                     $this->frontend->publish($webPrefix, $code, $frontendSource);
                 }
@@ -409,7 +411,7 @@ final class Installer
     }
 
     /**
-     * 重新发布已安装插件的 Frontend/dist，不改变插件生命周期或后端资源状态。
+     * 重新发布已安装插件的 frontend/dist，不改变插件生命周期或后端资源状态。
      *
      * 此入口只校验 frontend.json 的结构、入口路径和可读性；完整包签名与文件清单由安装流程负责。
      *
@@ -417,12 +419,13 @@ final class Installer
      */
     public function syncFrontend(string $code, string $webPrefix): array
     {
-        if (preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1) {
+        $code = strtolower($code);
+        if (preg_match('/^[a-z][a-z0-9._-]{1,63}$/', $code) !== 1) {
             throw new AddonException('The addon code is invalid.', 'invalid_addon_code');
         }
         $lockHandle = $this->locks?->acquire($code);
         try {
-            $source = $this->addonsPath.'/'.$code.'/Frontend/dist';
+            $source = $this->addonsPath.'/'.$code.'/frontend/dist';
             if (!is_dir($source)) {
                 throw new AddonException('The addon frontend source is unavailable.', 'source_unavailable');
             }
@@ -443,7 +446,7 @@ final class Installer
             throw new AddonException('The addon frontend source is unavailable.', 'source_unavailable');
         }
 
-        $descriptorPath = $addonDirectory.'/Frontend/frontend.json';
+        $descriptorPath = $addonDirectory.'/frontend/frontend.json';
         if (!is_file($descriptorPath)) {
             return;
         }
@@ -521,7 +524,7 @@ final class Installer
         if (is_dir($this->addonsPath)) {
             foreach (glob($this->addonsPath.'/*', GLOB_ONLYDIR) ?: [] as $directory) {
                 $name = basename($directory);
-                if (strcasecmp($name, $code) !== 0) {
+                if ($name !== strtolower($code)) {
                     continue;
                 }
                 $resolved = realpath($directory);
@@ -531,7 +534,7 @@ final class Installer
             }
         }
 
-        $direct = realpath($this->addonsPath.'/'.$code);
+        $direct = realpath($this->addonsPath.'/'.strtolower($code));
         if (is_string($direct) && is_dir($direct)) {
             return $direct;
         }

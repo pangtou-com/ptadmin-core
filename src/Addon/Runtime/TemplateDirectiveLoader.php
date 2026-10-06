@@ -10,7 +10,7 @@ use PTAdmin\Addon\Runtime\Contracts\TemplateDirectiveProviderInterface;
 use PTAdmin\Template\Directive\DirectiveRegistry;
 
 /**
- * 负责发现插件 Directives/*.php 并接入通用 Template Registry。
+ * 负责发现插件 directives/*.php 并接入通用 Template Registry。
  *
  * 文件按路径稳定排序，所有定义先写入插件级临时 Registry；任一文件或冲突校验失败时，全局 Registry 不会
  * 留下该插件的部分指令。Template 模块因此无需了解插件目录、manifest 或 Laravel 容器。
@@ -39,7 +39,7 @@ final class TemplateDirectiveLoader
             }
         }
 
-        $path = $directory.'/Directives';
+        $path = $directory.'/directives';
         if (!is_dir($path)) {
             return;
         }

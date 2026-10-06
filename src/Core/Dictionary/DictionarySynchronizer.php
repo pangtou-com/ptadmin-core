@@ -190,7 +190,7 @@ final class DictionarySynchronizer
 
     private function loadAddonProvider(string $directory): ?DictionaryProviderInterface
     {
-        $path = rtrim($directory, '/').'/Resources/DictionaryProvider.php';
+        $path = rtrim($directory, '/').'/resources/DictionaryProvider.php';
         if (!is_file($path)) {
             return null;
         }

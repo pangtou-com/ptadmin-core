@@ -8,7 +8,7 @@ use Illuminate\Contracts\Foundation\Application;
 use PTAdmin\Addon\Exception\AddonException;
 use PTAdmin\Addon\Lifecycle\Contracts\LifecycleInterface;
 
-/** 按固定 Lifecycle/Handler.php 约定调用插件生命周期回调。 */
+/** 按固定 lifecycle/Handler.php 约定调用插件生命周期回调。 */
 final class LifecycleRegistrar
 {
     public function __construct(private Application $app)
@@ -22,12 +22,14 @@ final class LifecycleRegistrar
             throw new AddonException('Addon lifecycle event is invalid.', 'invalid_lifecycle_event');
         }
 
-        $file = $directory.'/Lifecycle/Handler.php';
+        $file = $directory.'/lifecycle/Handler.php';
         if (!is_file($file)) {
             return;
         }
         $class = $this->addonNamespace($manifest, $code).'\\Lifecycle\\Handler';
-        require_once $file;
+        if (!class_exists($class, false)) {
+            require_once $file;
+        }
         if (!class_exists($class) || !is_a($class, LifecycleInterface::class, true)) {
             throw new AddonException('Addon lifecycle handler is invalid.', 'invalid_lifecycle_handler');
         }

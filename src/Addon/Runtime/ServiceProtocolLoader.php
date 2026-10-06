@@ -32,8 +32,8 @@ final class ServiceProtocolLoader
         if (isset($this->loaded[$addonCode])) {
             return;
         }
-        $paymentPath = $directory.'/Runtime/PaymentProvider.php';
-        $authPath = $directory.'/Runtime/SocialAuthProvider.php';
+        $paymentPath = $directory.'/runtime/PaymentProvider.php';
+        $authPath = $directory.'/runtime/SocialAuthProvider.php';
         if (!is_file($paymentPath) && !is_file($authPath)) {
             return;
         }
@@ -41,7 +41,9 @@ final class ServiceProtocolLoader
         $auth = new SocialAuthRegistration();
         if (is_file($paymentPath)) {
             $class = $namespace.'\\Runtime\\PaymentProvider';
-            require_once $paymentPath;
+            if (!class_exists($class, false)) {
+                require_once $paymentPath;
+            }
             if (!is_a($class, PaymentProviderInterface::class, true)) {
                 throw new ProtocolException('provider_invalid', '插件支付声明类必须实现 PaymentProviderInterface：'.$addonCode);
             }
@@ -49,7 +51,9 @@ final class ServiceProtocolLoader
         }
         if (is_file($authPath)) {
             $class = $namespace.'\\Runtime\\SocialAuthProvider';
-            require_once $authPath;
+            if (!class_exists($class, false)) {
+                require_once $authPath;
+            }
             if (!is_a($class, SocialAuthProviderInterface::class, true)) {
                 throw new ProtocolException('provider_invalid', '插件登录声明类必须实现 SocialAuthProviderInterface：'.$addonCode);
             }

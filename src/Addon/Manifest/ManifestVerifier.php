@@ -130,7 +130,7 @@ final class ManifestVerifier
     {
         $code = (string) ($manifest['code'] ?? '');
         $version = (string) ($manifest['version'] ?? '');
-        if (preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1 || '' === $version || !preg_match('/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/', $version)) {
+        if (preg_match('/^[a-z][a-z0-9._-]{1,63}$/', $code) !== 1 || '' === $version || !preg_match('/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/', $version)) {
             throw new AddonException('The addon code or version is invalid.');
         }
         if ((int) ($manifest['schema_protocol'] ?? $this->schemaProtocol) !== $this->schemaProtocol) {

@@ -25,7 +25,7 @@ final class AddonController extends Controller
                 'publisher' => (string) ($manifest['publisher'] ?? ''),
                 'sandbox' => (string) ($manifest['sandbox'] ?? 'iframe'),
                 'compatibility' => is_array($manifest['compatibility'] ?? null) ? $manifest['compatibility'] : [],
-                'frontend' => is_dir(rtrim((string) config('ptadmin.addon.path', base_path('addons')), '/').'/'.($addon['code'] ?? '').'/Frontend/dist'),
+                'frontend' => is_dir(rtrim((string) config('ptadmin.addon.path', base_path('addons')), '/').'/'.($addon['code'] ?? '').'/frontend/dist'),
             ];
         }, $result['addons']);
         return AdminResponse::success('', $result);

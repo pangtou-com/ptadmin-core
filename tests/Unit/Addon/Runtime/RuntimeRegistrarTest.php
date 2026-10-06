@@ -27,7 +27,7 @@ final class RuntimeRegistrarTest extends TestCase
     {
         $this->root = sys_get_temp_dir().'/ptadmin-addon-runtime-'.bin2hex(random_bytes(5));
         $this->lifecycle = sys_get_temp_dir().'/ptadmin-addon-runtime-state-'.bin2hex(random_bytes(5));
-        mkdir($this->root.'/runtime-addon/Routes', 0700, true);
+        mkdir($this->root.'/runtime-addon/routes', 0700, true);
         mkdir($this->root.'/runtime-addon/Hooks', 0700, true);
         mkdir($this->root.'/runtime-addon/database/migrations', 0700, true);
         file_put_contents($this->root.'/runtime-addon/Bootstrap.php', <<<'PHP'
@@ -43,7 +43,7 @@ final class Bootstrap implements BootstrapInterface
     }
 }
 PHP);
-        file_put_contents($this->root.'/runtime-addon/Routes/admin.php', <<<'PHP'
+        file_put_contents($this->root.'/runtime-addon/routes/admin.php', <<<'PHP'
 <?php
 return static function ($app): void {
     $app->instance('runtime-addon.routes', true);
@@ -72,10 +72,10 @@ PHP);
         file_put_contents($this->root.'/runtime-addon/manifest.json', json_encode([
             'code' => 'runtime-addon', 'version' => '1.0.0',
             'namespace' => 'RuntimeAddon',
-            'routes' => ['Routes/admin.php'],
+            'routes' => ['routes/admin.php'],
             'hooks' => [['file' => 'Hooks/RuntimeHook.php', 'class' => 'RuntimeAddon\\RuntimeHook']],
         ], JSON_THROW_ON_ERROR));
-        file_put_contents($this->root.'/runtime-addon/Routes/.keep', '');
+        file_put_contents($this->root.'/runtime-addon/routes/.keep', '');
         file_put_contents($this->root.'/runtime-addon/database/migrations/2026_09_17_000001_demo.php', '<?php return null;');
     }
 
@@ -130,8 +130,8 @@ PHP);
     /** @runInSeparateProcess */
     public function testActiveAddonRuntimeManifestRegistersWithVerifiedAddonOwner(): void
     {
-        mkdir($this->root.'/runtime-addon/Runtime', 0700, true);
-        file_put_contents($this->root.'/runtime-addon/Runtime/Registrar.php', <<<'PHP'
+        mkdir($this->root.'/runtime-addon/runtime', 0700, true);
+        file_put_contents($this->root.'/runtime-addon/runtime/Registrar.php', <<<'PHP'
 <?php
 namespace RuntimeAddon\Runtime;
 
@@ -169,11 +169,11 @@ PHP);
     }
 
     /** @runInSeparateProcess */
-    public function testRuntimeOwnerUsesVerifiedManifestCodeInsteadOfDirectoryName(): void
+    public function testRuntimeRejectsAddonDirectoryThatDoesNotMatchLowercaseManifestCode(): void
     {
         rename($this->root.'/runtime-addon', $this->root.'/RuntimeAddon');
-        mkdir($this->root.'/RuntimeAddon/Runtime', 0700, true);
-        file_put_contents($this->root.'/RuntimeAddon/Runtime/Registrar.php', <<<'PHP'
+        mkdir($this->root.'/RuntimeAddon/runtime', 0700, true);
+        file_put_contents($this->root.'/RuntimeAddon/runtime/Registrar.php', <<<'PHP'
 <?php
 namespace RuntimeAddon\Runtime;
 use PTAdmin\Addon\Runtime\Contracts\RuntimeRegistrarInterface;
@@ -201,16 +201,17 @@ PHP);
             $registry,
         );
 
-        self::assertSame(['RuntimeAddon'], $registrar->register()['loaded']);
-        $binding = $registry->build()->toArray()['resources']['runtime.posts']['hooks']['create.before'][0];
-        self::assertSame(['code' => 'runtime-addon', 'type' => 'addon'], $binding['owner']);
+        $result = $registrar->register();
+        self::assertSame([], $result['loaded']);
+        self::assertSame([], $result['errors']);
+        self::assertSame([], $registry->build()->toArray()['resources']);
     }
 
     /** @runInSeparateProcess */
     public function testUserDisabledAddonDoesNotLoadRuntimeManifest(): void
     {
-        mkdir($this->root.'/runtime-addon/Runtime', 0700, true);
-        file_put_contents($this->root.'/runtime-addon/Runtime/Registrar.php', <<<'PHP'
+        mkdir($this->root.'/runtime-addon/runtime', 0700, true);
+        file_put_contents($this->root.'/runtime-addon/runtime/Registrar.php', <<<'PHP'
 <?php
 namespace RuntimeAddon\Runtime;
 use PTAdmin\Addon\Runtime\Contracts\RuntimeRegistrarInterface;
@@ -245,8 +246,8 @@ PHP);
     /** @runInSeparateProcess */
     public function testRuntimeRegistrationFailureMakesAddonInactiveWithDiagnostic(): void
     {
-        mkdir($this->root.'/runtime-addon/Runtime', 0700, true);
-        file_put_contents($this->root.'/runtime-addon/Runtime/Registrar.php', <<<'PHP'
+        mkdir($this->root.'/runtime-addon/runtime', 0700, true);
+        file_put_contents($this->root.'/runtime-addon/runtime/Registrar.php', <<<'PHP'
 <?php
 namespace RuntimeAddon\Runtime;
 use PTAdmin\Addon\Runtime\Contracts\RuntimeRegistrarInterface;
@@ -283,8 +284,8 @@ PHP);
     /** @runInSeparateProcess */
     public function testRuntimeManifestRequiresTheSharedRegistry(): void
     {
-        mkdir($this->root.'/runtime-addon/Runtime', 0700, true);
-        file_put_contents($this->root.'/runtime-addon/Runtime/Registrar.php', <<<'PHP'
+        mkdir($this->root.'/runtime-addon/runtime', 0700, true);
+        file_put_contents($this->root.'/runtime-addon/runtime/Registrar.php', <<<'PHP'
 <?php
 namespace RuntimeAddon\Runtime;
 use PTAdmin\Addon\Runtime\Contracts\RuntimeRegistrarInterface;
@@ -335,8 +336,8 @@ PHP);
     {
         $this->remove($this->root.'/runtime-addon');
         $directory = $this->root.'/demo';
-        mkdir($directory.'/Routes', 0700, true);
-        mkdir($directory.'/Providers', 0700, true);
+        mkdir($directory.'/routes', 0700, true);
+        mkdir($directory.'/providers', 0700, true);
         file_put_contents($directory.'/functions.php', "<?php require_once __DIR__.'/Functions.php'; \\DemoAddon\\Functions::load();");
         file_put_contents($directory.'/Bootstrap.php', <<<'PHP'
 <?php
@@ -362,13 +363,13 @@ final class Functions
     }
 }
 PHP);
-        file_put_contents($directory.'/Routes/demo.php', <<<'PHP'
+        file_put_contents($directory.'/routes/demo.php', <<<'PHP'
 <?php
 return static function ($app): void {
     $app->instance('demo.route', true);
 };
 PHP);
-        file_put_contents($directory.'/Providers/ServiceProvider.php', <<<'PHP'
+        file_put_contents($directory.'/providers/ServiceProvider.php', <<<'PHP'
 <?php
 namespace DemoAddon\Providers;
 use Illuminate\Support\ServiceProvider as LaravelServiceProvider;
@@ -410,8 +411,8 @@ PHP);
     {
         $this->remove($this->root.'/runtime-addon');
         $directory = $this->root.'/demo';
-        mkdir($directory.'/Providers', 0700, true);
-        file_put_contents($directory.'/Providers/ServiceProvider.php', <<<'PHP'
+        mkdir($directory.'/providers', 0700, true);
+        file_put_contents($directory.'/providers/ServiceProvider.php', <<<'PHP'
 <?php
 namespace InvalidDemo\Providers;
 use Illuminate\Support\ServiceProvider as LaravelServiceProvider;
@@ -465,8 +466,8 @@ PHP);
     {
         $this->remove($this->root.'/runtime-addon');
         $directory = $this->root.'/demo';
-        mkdir($directory.'/Directives', 0700, true);
-        file_put_contents($directory.'/Directives/DemoDirective.php', <<<'PHP'
+        mkdir($directory.'/directives', 0700, true);
+        file_put_contents($directory.'/directives/DemoDirective.php', <<<'PHP'
 <?php
 namespace InvalidDemo;
 final class DemoDirective {}
@@ -493,7 +494,7 @@ PHP);
     {
         $this->remove($this->root.'/runtime-addon');
         foreach (['first', 'second'] as $code) {
-            $directory = $this->root.'/'.$code.'/Directives';
+            $directory = $this->root.'/'.$code.'/directives';
             mkdir($directory, 0700, true);
             file_put_contents($directory.'/DemoDirective.php', <<<PHP
 <?php
@@ -537,7 +538,7 @@ PHP);
     }
 
     /** @runInSeparateProcess */
-    public function testLowercaseResourcesDirectoryIsRejected(): void
+    public function testLowercaseResourcesDirectoryIsAccepted(): void
     {
         $this->remove($this->root.'/runtime-addon');
         $directory = $this->root.'/demo';
@@ -557,9 +558,8 @@ PHP);
 
         $result = $registrar->register();
 
-        self::assertSame([], $result['loaded']);
-        self::assertSame('noncanonical_resource_path', $result['errors'][0]['error_code']);
-        self::assertSame('inactive', (new LifecycleStore($this->lifecycle))->read('demo')['state']);
+        self::assertSame(['demo'], $result['loaded']);
+        self::assertSame([], $result['errors']);
     }
 
     private function remove(string $path): void

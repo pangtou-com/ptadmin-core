@@ -70,7 +70,8 @@ final class StateManager
      */
     private function change(string $code, bool $enabled): array
     {
-        if (preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1) {
+        $code = strtolower($code);
+        if (preg_match('/^[a-z][a-z0-9._-]{1,63}$/', $code) !== 1) {
             throw new AddonException('The addon code is invalid.', 'invalid_addon_code');
         }
         $directory = $this->resolveInstalledAddonDirectory($code);
@@ -174,7 +175,7 @@ final class StateManager
     {
         if (is_dir($this->addonsPath)) {
             foreach (glob($this->addonsPath.'/*', GLOB_ONLYDIR) ?: [] as $directory) {
-                if (strcasecmp(basename($directory), $code) !== 0) {
+                if (basename($directory) !== strtolower($code)) {
                     continue;
                 }
                 $resolved = realpath($directory);
@@ -184,7 +185,7 @@ final class StateManager
             }
         }
 
-        $direct = realpath($this->addonsPath.'/'.$code);
+        $direct = realpath($this->addonsPath.'/'.strtolower($code));
 
         return is_string($direct) && is_dir($direct) ? $direct : null;
     }

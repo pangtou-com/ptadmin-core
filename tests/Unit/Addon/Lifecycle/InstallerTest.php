@@ -34,10 +34,10 @@ final class InstallerTest extends TestCase
     public function testInstallPublishesPackageAndFrontendAtomically(): void
     {
         $source = $this->root.'/source';
-        mkdir($source.'/Frontend/dist', 0700, true);
+        mkdir($source.'/frontend/dist', 0700, true);
         file_put_contents($source.'/manifest.json', json_encode(['code' => 'demo-addon', 'version' => '1.0.0'], JSON_THROW_ON_ERROR));
         file_put_contents($source.'/Bootstrap.php', '<?php');
-        file_put_contents($source.'/Frontend/dist/entry.js', 'export default {}');
+        file_put_contents($source.'/frontend/dist/entry.js', 'export default {}');
 
         $public = $this->root.'/public';
         $installer = new Installer(
@@ -191,9 +191,9 @@ final class InstallerTest extends TestCase
     public function testSyncFrontendValidatesDescriptorAndPublishesWithoutTrustVerification(): void
     {
         $addon = $this->root.'/addons/demo-addon';
-        mkdir($addon.'/Frontend/dist', 0700, true);
-        file_put_contents($addon.'/Frontend/dist/entry.js', 'export default {}');
-        file_put_contents($addon.'/Frontend/frontend.json', json_encode([
+        mkdir($addon.'/frontend/dist', 0700, true);
+        file_put_contents($addon.'/frontend/dist/entry.js', 'export default {}');
+        file_put_contents($addon.'/frontend/frontend.json', json_encode([
             'host_api' => 'admin-v1',
             'entries' => [[
                 'entry' => 'entry.js',
@@ -220,9 +220,9 @@ final class InstallerTest extends TestCase
     public function testSyncFrontendRejectsInvalidDescriptorJson(): void
     {
         $addon = $this->root.'/addons/demo-addon';
-        mkdir($addon.'/Frontend/dist', 0700, true);
-        file_put_contents($addon.'/Frontend/dist/entry.js', 'export default {}');
-        file_put_contents($addon.'/Frontend/frontend.json', '{invalid');
+        mkdir($addon.'/frontend/dist', 0700, true);
+        file_put_contents($addon.'/frontend/dist/entry.js', 'export default {}');
+        file_put_contents($addon.'/frontend/frontend.json', '{invalid');
         $installer = $this->frontendSyncInstaller();
 
         try {
@@ -249,7 +249,7 @@ final class InstallerTest extends TestCase
     public function testSyncFrontendRejectsEntryTypeThatDoesNotMatchSandbox(): void
     {
         $this->writeFrontendDescriptor('entry.html', 'trusted');
-        file_put_contents($this->root.'/addons/demo-addon/Frontend/dist/entry.html', '<!doctype html>');
+        file_put_contents($this->root.'/addons/demo-addon/frontend/dist/entry.html', '<!doctype html>');
         $installer = $this->frontendSyncInstaller();
 
         try {
@@ -276,8 +276,8 @@ final class InstallerTest extends TestCase
     private function writeFrontendDescriptor(string $entry, string $sandbox): void
     {
         $addon = $this->root.'/addons/demo-addon';
-        mkdir($addon.'/Frontend/dist', 0700, true);
-        file_put_contents($addon.'/Frontend/frontend.json', json_encode([
+        mkdir($addon.'/frontend/dist', 0700, true);
+        file_put_contents($addon.'/frontend/frontend.json', json_encode([
             'host_api' => 'admin-v1',
             'entries' => [[
                 'entry' => $entry,
@@ -289,9 +289,9 @@ final class InstallerTest extends TestCase
     private function package(string $name, string $version, string $backend, string $frontend): string
     {
         $source = $this->root.'/'.$name;
-        mkdir($source.'/Frontend/dist', 0700, true);
+        mkdir($source.'/frontend/dist', 0700, true);
         file_put_contents($source.'/backend.txt', $backend);
-        file_put_contents($source.'/Frontend/dist/entry.js', $frontend);
+        file_put_contents($source.'/frontend/dist/entry.js', $frontend);
         file_put_contents($source.'/manifest.json', json_encode(['code' => 'demo-addon', 'version' => $version], JSON_THROW_ON_ERROR));
         return $source;
     }

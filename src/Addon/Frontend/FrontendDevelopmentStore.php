@@ -65,7 +65,7 @@ final class FrontendDevelopmentStore
 
     private function assertCode(string $code): void
     {
-        if (preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1) {
+        if (preg_match('/^[a-z][a-z0-9._-]{1,63}$/', $code) !== 1) {
             throw new RuntimeException('前端模块编码格式无效。');
         }
     }

@@ -431,7 +431,7 @@ final class FrontendRegistry
     /** @return array<string, mixed>|null */
     private function descriptor(string $code): ?array
     {
-        $path = $this->addonsPath.'/'.$code.'/Frontend/frontend.json';
+        $path = $this->addonsPath.'/'.$code.'/frontend/frontend.json';
         if (!is_file($path)) {
             return null;
         }

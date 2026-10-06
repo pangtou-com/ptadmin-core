@@ -28,7 +28,7 @@ final class OperationLock
      */
     public function acquire(string $code)
     {
-        if (preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1) {
+        if (preg_match('/^[a-z][a-z0-9._-]{1,63}$/', $code) !== 1) {
             throw new AddonException('The addon code is invalid.', 'invalid_addon_code');
         }
         $handle = fopen($this->root.'/'.strtolower($code).'.lock', 'c+');

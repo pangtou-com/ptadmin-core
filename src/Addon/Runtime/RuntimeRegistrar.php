@@ -48,7 +48,7 @@ final class RuntimeRegistrar
         $loaded = [];
         $errors = $scan['errors'];
         foreach ($scan['addons'] as $addon) {
-            $code = (string) ($addon['code'] ?? '');
+            $code = strtolower((string) ($addon['code'] ?? ''));
             if (($addon['state'] ?? 'active') !== 'active') {
                 continue;
             }
@@ -56,7 +56,7 @@ final class RuntimeRegistrar
             try {
                 $manifest = is_array($addon['manifest'] ?? null) ? $addon['manifest'] : [];
                 $verifiedCode = (string) ($manifest['code'] ?? '');
-                $this->assertCanonicalDirectories($directory);
+                $this->registerAddonAutoloader($directory, $manifest, $verifiedCode);
                 $this->registerMigrationPath($directory);
                 $this->registerFunctions($directory, $manifest);
                 $this->registerBootstrap($directory, $verifiedCode, $manifest);
@@ -74,7 +74,7 @@ final class RuntimeRegistrar
                     }
                     $this->contributeRuntime($directory, $verifiedCode, $manifest, $registry);
                 }
-                if (is_file($directory.'/Runtime/PaymentProvider.php') || is_file($directory.'/Runtime/SocialAuthProvider.php')) {
+                if (is_file($directory.'/runtime/PaymentProvider.php') || is_file($directory.'/runtime/SocialAuthProvider.php')) {
                     if (!$this->app->bound(ServiceProtocolLoader::class)) {
                         throw new AddonException('支付与登录协议加载器未注册。', 'service_protocol_loader_unavailable');
                     }
@@ -113,7 +113,7 @@ final class RuntimeRegistrar
             if (($addon['state'] ?? 'active') !== 'active') {
                 continue;
             }
-            $code = (string) ($addon['code'] ?? '');
+            $code = strtolower((string) ($addon['code'] ?? ''));
             if ($code !== '') {
                 $this->registerMigrationPath($this->addonsPath.'/'.$code);
             }
@@ -139,22 +139,13 @@ final class RuntimeRegistrar
         if (!is_file($path)) {
             throw new AddonException('Addon runtime file is unavailable.', 'runtime_unavailable');
         }
-        require_once $path;
+        if (!class_exists($class, false)) {
+            require_once $path;
+        }
         if (!class_exists($class) || !is_a($class, RuntimeRegistrarInterface::class, true)) {
             throw new AddonException('Addon runtime class is invalid.', 'runtime_class_invalid');
         }
         $this->app->make($class)->registerRuntime($registry->forOwner('addon', $code), $manifest);
-    }
-
-    private function assertCanonicalDirectories(string $directory): void
-    {
-        $entries = scandir($directory) ?: [];
-        foreach (['Resources'] as $name) {
-            $legacy = $directory.'/'.strtolower($name);
-            if (is_dir($legacy) && !in_array($name, $entries, true)) {
-                throw new AddonException("Addon directory must use {$name}/: {$legacy}", 'noncanonical_resource_path');
-            }
-        }
     }
 
     /** @param array<string,mixed> $manifest */
@@ -180,6 +171,31 @@ final class RuntimeRegistrar
             }
             require_once $path;
         }
+    }
+
+    /** Register a case-independent PSR-4 loader for the active plugin's actual directory. */
+    private function registerAddonAutoloader(string $directory, array $manifest, string $code): void
+    {
+        $namespace = trim((string) ($manifest['namespace'] ?? $this->addonNamespace($manifest, $code)), '\\').'\\';
+        spl_autoload_register(static function (string $class) use ($namespace, $directory): void {
+            if (!str_starts_with($class, $namespace)) {
+                return;
+            }
+            $relative = substr($class, strlen($namespace));
+            $segments = explode('\\', $relative);
+            $file = $directory;
+            $last = count($segments) - 1;
+            foreach ($segments as $index => $segment) {
+                if ($segment === '') {
+                    return;
+                }
+                $file .= '/'.($index === $last ? $segment : lcfirst($segment));
+            }
+            $file .= '.php';
+            if (is_file($file)) {
+                require_once $file;
+            }
+        });
     }
 
     private function registerMigrationPath(string $directory): void
@@ -210,7 +226,9 @@ final class RuntimeRegistrar
         if (!is_file($path)) {
             throw new AddonException('Addon bootstrap file is unavailable.', 'bootstrap_unavailable');
         }
-        require_once $path;
+        if (!class_exists($class, false)) {
+            require_once $path;
+        }
         if (!class_exists($class)) {
             throw new AddonException('Addon bootstrap class is unavailable.', 'bootstrap_class_unavailable');
         }
@@ -226,9 +244,9 @@ final class RuntimeRegistrar
     {
         $routes = $manifest['routes'] ?? null;
         if ($routes === null) {
-            $paths = glob($directory.'/Routes/*.php') ?: [];
+            $paths = glob($directory.'/routes/*.php') ?: [];
             sort($paths, SORT_STRING);
-            $routes = array_map(static fn (string $path): string => 'Routes/'.basename($path), $paths);
+            $routes = array_map(static fn (string $path): string => 'routes/'.basename($path), $paths);
         }
         if (is_string($routes)) {
             $routes = [$routes];
@@ -266,7 +284,7 @@ final class RuntimeRegistrar
     private function registerProvider(string $directory, string $code, array $manifest): void
     {
         $providerValue = $manifest['provider'] ?? ($manifest['providers'] ?? null);
-        if ($providerValue === null && !is_file($directory.'/Providers/ServiceProvider.php')) {
+        if ($providerValue === null && !is_file($directory.'/providers/ServiceProvider.php')) {
             return;
         }
         if (is_array($providerValue) && array_is_list($providerValue)) {
@@ -283,7 +301,7 @@ final class RuntimeRegistrar
     private function registerProviderDeclaration(string $directory, string $code, array $manifest, mixed $declaration): void
     {
         $provider = is_string($declaration) ? ['file' => $declaration] : (is_array($declaration) ? $declaration : []);
-        $file = $this->safeRelative((string) ($provider['file'] ?? 'Providers/ServiceProvider.php'));
+        $file = $this->safeRelative((string) ($provider['file'] ?? 'providers/ServiceProvider.php'));
         $class = trim((string) ($provider['class'] ?? ''));
         if ($class === '') {
             $class = $this->addonNamespace($manifest, $code).'\\Providers\\ServiceProvider';
@@ -295,7 +313,9 @@ final class RuntimeRegistrar
         if (!is_file($path)) {
             throw new AddonException('Addon provider file is unavailable.', 'provider_unavailable');
         }
-        require_once $path;
+        if (!class_exists($class, false)) {
+            require_once $path;
+        }
         if (!class_exists($class)) {
             throw new AddonException('Addon provider class is unavailable.', 'provider_class_unavailable');
         }
@@ -308,7 +328,7 @@ final class RuntimeRegistrar
     /** @param array<string,mixed> $manifest */
     private function registerConfig(string $directory, string $code, array $manifest): void
     {
-        $declared = $manifest['config'] ?? 'Config/config.php';
+        $declared = $manifest['config'] ?? 'config/config.php';
         $relative = is_string($declared) ? $this->safeRelative($declared) : '';
         if ($relative === '') {
             throw new AddonException('Addon config declaration is invalid.', 'invalid_config');
@@ -326,14 +346,14 @@ final class RuntimeRegistrar
 
     private function registerViewsAndTranslations(string $directory, string $code): void
     {
-        $views = $directory.'/Resources/Views';
+        $views = $directory.'/resources/views';
         if (is_dir($views)) {
             $callback = static function ($factory) use ($views, $code): void {
                 $factory->addNamespace(strtolower($code), $views);
             };
             $this->app->resolved('view') ? $callback($this->app->make('view')) : $this->app->afterResolving('view', $callback);
         }
-        $lang = $directory.'/Resources/Lang';
+        $lang = $directory.'/resources/lang';
         if (is_dir($lang)) {
             $callback = static function ($translator) use ($lang, $code): void {
                 $translator->addNamespace(strtolower($code), $lang);
@@ -403,7 +423,7 @@ final class RuntimeRegistrar
     /** @return array{file:string,class:string}|null */
     private function runtimeDeclaration(string $directory, string $code, array $manifest): ?array
     {
-        $file = 'Runtime/Registrar.php';
+        $file = 'runtime/Registrar.php';
         if (!is_file($directory.'/'.$file)) {
             return null;
         }
