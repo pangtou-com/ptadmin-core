@@ -8,7 +8,8 @@ use InvalidArgumentException;
 
 final class ThemeAssetResolver
 {
-    public function __construct(private ActiveThemeResolver $themes)
+    /** @param array{enabled?:bool,code?:string,version?:string,prefix?:string} $development */
+    public function __construct(private ActiveThemeResolver $themes, private array $development = [])
     {
     }
 
@@ -27,6 +28,14 @@ final class ThemeAssetResolver
         }
         if (is_link($asset)) {
             throw new ThemeException('Theme asset cannot be a symbolic link: '.$normalized, 'unsafe_theme_path', ['path' => $normalized]);
+        }
+
+        $development = $this->development;
+        if (($development['enabled'] ?? false) === true
+            && ($development['code'] ?? '') === $theme->code
+            && ($development['version'] ?? '') === $theme->version) {
+            $prefix = trim((string) ($development['prefix'] ?? '__dev_theme__'), '/');
+            return '/'.$prefix.'/'.$theme->identifier().'/assets/'.$normalized;
         }
 
         return '/themes/'.$theme->identifier().'/assets/'.$normalized;

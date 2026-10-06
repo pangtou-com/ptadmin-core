@@ -66,6 +66,7 @@ use PTAdmin\Core\Theme\ActiveThemeResolver;
 use PTAdmin\Core\Theme\ThemeCatalog;
 use PTAdmin\Core\Theme\ThemeManifestValidator;
 use PTAdmin\Core\Theme\ThemeAssetResolver;
+use PTAdmin\Core\Http\Controllers\ThemeDevelopmentAssetController;
 use PTAdmin\Core\Theme\ThemeDirectiveProvider;
 use PTAdmin\Core\Theme\ThemeStateStore;
 use PTAdmin\Core\Theme\ThemePackageExtractor;
@@ -309,7 +310,12 @@ final class PTAdminServiceProvider extends ServiceProvider
                 (string) ($default['version'] ?? '1.0.0'),
             );
         });
-        $this->app->singleton(ThemeAssetResolver::class);
+        $this->app->singleton(ThemeAssetResolver::class, static function ($app): ThemeAssetResolver {
+            return new ThemeAssetResolver(
+                $app->make(ActiveThemeResolver::class),
+                (array) $app['config']->get('ptadmin.site_theme.development_assets', []),
+            );
+        });
         $this->app->singleton(ThemeViewLoader::class, static function ($app): ThemeViewLoader {
             return new ThemeViewLoader($app['view']->getFinder());
         });

@@ -20,6 +20,7 @@ use PTAdmin\Core\Http\Controllers\ConfigController;
 use PTAdmin\Core\Http\Controllers\SessionController;
 use PTAdmin\Core\Http\Controllers\TaskController;
 use PTAdmin\Core\Http\Controllers\ThemeController;
+use PTAdmin\Core\Http\Controllers\ThemeDevelopmentAssetController;
 use PTAdmin\Cloud\Http\Controllers\CloudController;
 use PTAdmin\Schema\Http\Controllers\PublishController;
 use PTAdmin\Schema\Http\Controllers\ResourceController;
@@ -41,6 +42,13 @@ Route::middleware('ptadmin.request-id')
     ->get($apiPrefix.'/public/site/themes/{code}/{version}/cover', [ThemeController::class, 'cover'])
     ->where(['code' => '[A-Za-z][A-Za-z0-9._-]{1,63}', 'version' => '\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?'])
     ->name('ptadmin.public.site.themes.cover');
+
+if ((bool) config('ptadmin.site_theme.development_assets.enabled', false)) {
+    $developmentPrefix = trim((string) config('ptadmin.site_theme.development_assets.prefix', '__dev_theme__'), '/');
+    Route::get($developmentPrefix.'/{identifier}/{path}', ThemeDevelopmentAssetController::class)
+        ->where(['identifier' => '[A-Za-z][A-Za-z0-9._-]{1,63}@\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?', 'path' => '.+'])
+        ->name('ptadmin.dev.theme.asset');
+}
 
 Route::middleware('ptadmin.request-id')
     ->post($apiPrefix.'/login', LoginController::class)

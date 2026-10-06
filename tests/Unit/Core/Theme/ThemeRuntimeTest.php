@@ -126,6 +126,23 @@ final class ThemeRuntimeTest extends TestCase
         self::assertSame('/themes/classic@1.0.0/assets/css/site.css', $resolver->url('css/site.css'));
     }
 
+    public function testThemeAssetUrlUsesDevelopmentPrefixOnlyForConfiguredActiveTheme(): void
+    {
+        $this->theme('classic@1.0.0', ['code' => 'classic', 'version' => '1.0.0', 'name' => 'Classic']);
+        mkdir($this->root.'/classic@1.0.0/assets/css', 0700, true);
+        file_put_contents($this->root.'/classic@1.0.0/assets/css/site.css', 'body {}');
+        file_put_contents($this->stateFile, json_encode(['code' => 'classic', 'version' => '1.0.0'], JSON_THROW_ON_ERROR));
+
+        $resolver = new ThemeAssetResolver($this->resolver(), [
+            'enabled' => true, 'code' => 'classic', 'version' => '1.0.0', 'prefix' => '__dev_theme__',
+        ]);
+
+        self::assertSame('/__dev_theme__/classic@1.0.0/assets/css/site.css', $resolver->url('css/site.css'));
+        self::assertSame('/themes/classic@1.0.0/assets/css/site.css', (new ThemeAssetResolver($this->resolver(), [
+            'enabled' => true, 'code' => 'other', 'version' => '1.0.0',
+        ]))->url('css/site.css'));
+    }
+
     public function testThemeAssetPathCannotEscapeTheActiveTheme(): void
     {
         $this->theme('classic@1.0.0', ['code' => 'classic', 'version' => '1.0.0', 'name' => 'Classic']);

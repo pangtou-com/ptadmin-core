@@ -49,6 +49,12 @@ return [
         'state_file' => env('PTADMIN_SITE_THEME_STATE_FILE', storage_path('theme.json')),
         'public_directory' => env('PTADMIN_SITE_THEME_PUBLIC_DIRECTORY', public_path('themes')),
         'staging_directory' => env('PTADMIN_SITE_THEME_STAGING_DIRECTORY', storage_path('app/ptadmin/themes/staging')),
+        'development_assets' => [
+            'enabled' => (bool) env('PTADMIN_THEME_DEV_ASSETS', false),
+            'code' => env('PTADMIN_THEME_DEV_CODE', ''),
+            'version' => env('PTADMIN_THEME_DEV_VERSION', ''),
+            'prefix' => '__dev_theme__',
+        ],
         'default' => [
             'code' => env('PTADMIN_SITE_THEME_DEFAULT_CODE', 'default'),
             'version' => env('PTADMIN_SITE_THEME_DEFAULT_VERSION', '1.0.0'),
