@@ -189,7 +189,13 @@ final class RuntimeRegistrar
                 if ($segment === '') {
                     return;
                 }
-                $file .= '/'.($index === $last ? $segment : lcfirst($segment));
+                if ($index === $last) {
+                    $file .= '/'.$segment;
+                    continue;
+                }
+                $camelCaseDirectory = lcfirst($segment);
+                $kebabCaseDirectory = strtolower((string) preg_replace('/(?<!^)[A-Z]/', '-$0', $segment));
+                $file .= '/'.(is_dir($file.'/'.$camelCaseDirectory) ? $camelCaseDirectory : $kebabCaseDirectory);
             }
             $file .= '.php';
             if (is_file($file)) {

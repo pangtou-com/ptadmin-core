@@ -9,7 +9,7 @@ use PTAdmin\Core\Config\Models\ConfigDefinition;
 use RuntimeException;
 
 /**
- * 同步项目二次开发应用根目录 Resources/config.*.json 声明。
+ * 同步项目二次开发应用根目录 resources/config.*.json 声明。
  *
  * 宿主应用只有一个稳定归属 app/host；文件格式和插件配置声明一致，配置值与定义生命周期仍由 Core 管理。
  */
@@ -55,7 +55,7 @@ final class ApplicationConfigSynchronizer
     /** @return list<string> */
     private function files(): array
     {
-        $paths = glob($this->applicationPath.'/Resources/config.*.json') ?: [];
+        $paths = glob($this->applicationPath.'/resources/config.*.json') ?: [];
         sort($paths, SORT_STRING);
 
         return $paths;

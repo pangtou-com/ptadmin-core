@@ -128,6 +128,42 @@ PHP);
     }
 
     /** @runInSeparateProcess */
+    public function testNamespaceAutoloaderResolvesLowercaseKebabCaseDirectories(): void
+    {
+        mkdir($this->root.'/runtime-addon/services/search-push', 0700, true);
+        mkdir($this->root.'/runtime-addon/providers', 0700, true);
+        file_put_contents($this->root.'/runtime-addon/services/search-push/Probe.php', <<<'PHP'
+<?php
+namespace RuntimeAddon\Services\SearchPush;
+final class Probe {}
+PHP);
+        file_put_contents($this->root.'/runtime-addon/providers/ServiceProvider.php', <<<'PHP'
+<?php
+namespace RuntimeAddon\Providers;
+use Illuminate\Support\ServiceProvider as LaravelServiceProvider;
+use PTAdmin\Addon\Runtime\Contracts\ProviderInterface;
+final class ServiceProvider extends LaravelServiceProvider implements ProviderInterface
+{
+    public function register(): void
+    {
+        $this->app->instance('runtime-addon.kebab-directory-loaded', class_exists(\RuntimeAddon\Services\SearchPush\Probe::class));
+    }
+}
+PHP);
+
+        $app = new Application($this->root);
+        $registrar = new RuntimeRegistrar(
+            $app,
+            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle), false),
+            new LifecycleStore($this->lifecycle),
+            $this->root,
+        );
+
+        self::assertSame(['runtime-addon'], $registrar->register()['loaded']);
+        self::assertTrue($app->make('runtime-addon.kebab-directory-loaded'));
+    }
+
+    /** @runInSeparateProcess */
     public function testActiveAddonRuntimeManifestRegistersWithVerifiedAddonOwner(): void
     {
         mkdir($this->root.'/runtime-addon/runtime', 0700, true);

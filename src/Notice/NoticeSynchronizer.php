@@ -37,7 +37,7 @@ final class NoticeSynchronizer
     /** 宿主声明只返回 Provider 类名，通知来源固定为 app/host。 */
     public function syncApplication(string $directory): int
     {
-        $path = rtrim($directory, '/').'/Resources/NoticeProvider.php';
+        $path = rtrim($directory, '/').'/resources/NoticeProvider.php';
         $this->registry->beginOwner('app', 'host');
         try {
             if (is_file($path)) {
@@ -196,7 +196,7 @@ final class NoticeSynchronizer
     private function loadAddonProvider(string $directory): ?NoticeProviderInterface
     {
         $directory = rtrim($directory, '/');
-        $path = $directory.'/Resources/NoticeProvider.php';
+        $path = $directory.'/resources/NoticeProvider.php';
         if (!is_file($path)) {
             return null;
         }

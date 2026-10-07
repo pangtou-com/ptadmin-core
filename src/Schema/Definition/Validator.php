@@ -170,7 +170,7 @@ final class Validator
             }
         }
         $constraints = is_array($schema['constraints'] ?? null) ? $schema['constraints'] : (array) ($schema['constraints'] ?? []);
-        // Runtime/publish always provide these physical columns even when a Schema omits them.
+        // runtime/publish always provide these physical columns even when a Schema omits them.
         $constraintFields = $names + [
             'id' => true,
             'created_at' => true,

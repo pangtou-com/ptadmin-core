@@ -34,7 +34,7 @@ final class NoticeSynchronizerTest extends TestCase
             'code' => 'demo-addon',
             'namespace' => 'NoticeTestAddon',
         ], JSON_THROW_ON_ERROR));
-        file_put_contents($this->root.'/Resources/NoticeProvider.php', <<<'PHP'
+        file_put_contents($this->root.'/resources/NoticeProvider.php', <<<'PHP'
 <?php
 namespace NoticeTestAddon;
 use PTAdmin\Notice\Contracts\NoticeProviderInterface;

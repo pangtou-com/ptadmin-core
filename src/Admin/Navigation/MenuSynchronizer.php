@@ -32,10 +32,10 @@ final class MenuSynchronizer
     public function syncAddon(string $directory, string $code): array
     {
         $normalizedCode = strtolower($code);
-        $canonical = rtrim($directory, '/').'/Resources/menu.json';
+        $canonical = rtrim($directory, '/').'/resources/menu.json';
         $legacy = rtrim($directory, '/').'/resources/menu.json';
         if (!is_file($canonical) && is_file($legacy)) {
-            throw new RuntimeException(sprintf('插件 %s 菜单资源必须使用 Resources/menu.json：%s', $code, $legacy));
+            throw new RuntimeException(sprintf('插件 %s 菜单资源必须使用 resources/menu.json：%s', $code, $legacy));
         }
 
         return $this->database->transaction(fn (): array => $this->syncFile(
@@ -48,7 +48,7 @@ final class MenuSynchronizer
     /** @return array{created:int,updated:int,unchanged:int,disabled:int,resource_keys:list<string>} */
     public function syncApp(string $directory): array
     {
-        $path = rtrim($directory, '/').'/Resources/menu.json';
+        $path = rtrim($directory, '/').'/resources/menu.json';
         if (!is_file($path)) {
             return $this->database->transaction(fn (): array => $this->deactivateOwner('app', 'host'));
         }
@@ -86,10 +86,10 @@ final class MenuSynchronizer
                 $code = strtolower($directoryName);
                 $directory = rtrim($this->addonsPath, '/').'/'.$directoryName;
                 if (($addon['state'] ?? null) === 'active') {
-                    if (!is_file($directory.'/Resources/menu.json') && is_file($directory.'/resources/menu.json')) {
-                        throw new RuntimeException(sprintf('插件 %s 菜单资源必须使用 Resources/menu.json：%s', $directoryName, $directory.'/resources/menu.json'));
+                    if (!is_file($directory.'/resources/menu.json') && is_file($directory.'/resources/menu.json')) {
+                        throw new RuntimeException(sprintf('插件 %s 菜单资源必须使用 resources/menu.json：%s', $directoryName, $directory.'/resources/menu.json'));
                     }
-                    $result = $this->syncFile($directory.'/Resources/menu.json', 'addon', $code);
+                    $result = $this->syncFile($directory.'/resources/menu.json', 'addon', $code);
                 } else {
                     $result = $this->deactivateOwner('addon', $code);
                 }
@@ -108,7 +108,7 @@ final class MenuSynchronizer
             return $this->deactivateOwner('app', 'host');
         }
 
-        $path = rtrim($directory, '/').'/Resources/menu.json';
+        $path = rtrim($directory, '/').'/resources/menu.json';
         if (!is_file($path)) {
             return $this->deactivateOwner('app', 'host');
         }
