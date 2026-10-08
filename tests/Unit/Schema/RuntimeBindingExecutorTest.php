@@ -68,10 +68,28 @@ final class RuntimeBindingExecutorTest extends TestCase
         $this->expectExceptionMessage('binding is unavailable');
         $executor->action($snapshot, new RuntimeHookContext('cms.articles', 'action', actionKey: 'missing'), []);
     }
+
+    public function testListTransformReceivesTheCurrentPageAsOneBatch(): void
+    {
+        $registry = new RuntimeRegistry();
+        $registry->forOwner('app', 'host')->resource('site.developers')
+            ->hook('list.transform', RuntimeBindingHandler::class, 'summarize');
+        $executor = new RuntimeBindingExecutor(new Container());
+        $context = new RuntimeHookContext('site.developers', 'list.transform', input: ['page' => 2]);
+        self::assertSame([['id' => 7, 'page_size' => 2], ['id' => 9, 'page_size' => 2]], $executor->transform(
+            $registry->build(), $context, [['id' => 7], ['id' => 9]],
+        ));
+        self::assertSame([], $executor->transform($registry->build(), $context, []));
+    }
 }
 
 final class RuntimeBindingHandler
 {
+    public function summarize(RuntimeHookContext $context, array $rows): array
+    {
+        return array_map(static fn (array $row): array => $row + ['page_size' => count($rows)], $rows);
+    }
+
     public function prepareFirst(RuntimeHookContext $context, array $data): array
     {
         return $data + ['first' => true];

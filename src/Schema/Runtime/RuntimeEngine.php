@@ -115,6 +115,10 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         $limit = max(1, min(500, (int) ($query['limit'] ?? 20)));
         $total = (clone $builder)->count();
         $rows = $builder->forPage($page, $limit)->get()->map(fn ($row): array => $this->output((array) $row, $schema, $resource->resource_key))->all();
+        $context = new RuntimeHookContext($resource->resource_key, 'list.transform', $schema, input: $query);
+        if ($snapshot !== null && $this->hasHookBinding($snapshot, $context)) {
+            $rows = $this->runtimeExecutor?->transform($snapshot, $context, $rows) ?? $rows;
+        }
         return ['results' => $rows, 'total' => $total, 'page' => $page, 'limit' => $limit];
     }
 

@@ -15,6 +15,7 @@ final class RuntimeRegistry
 
     private const HOOK_STAGES = [
         'list.prepare',
+        'list.transform',
         'create.prepare', 'create.before', 'create.after',
         'update.prepare', 'update.before', 'update.after',
         'delete.before', 'delete.after',
