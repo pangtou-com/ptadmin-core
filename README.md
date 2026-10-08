@@ -44,7 +44,7 @@ database/schemas/**/*.schema.json
 database/schemas/**/*.schema.jsonc
 ```
 
-宿主目录为 `database/schemas/`，插件目录为 `addons/{Code}/database/schemas/`。`.schema.json` 使用严格 JSON，`.schema.jsonc` 可以使用行注释、块注释和尾逗号。每个文件只声明一个资源，文件名必须与 `resource` 一致，例如 `cms.article.schema.jsonc` 必须声明 `cms.article`。
+宿主目录为 `database/schemas/`，插件目录为 `addons/{code}/database/schemas/`。`.schema.json` 使用严格 JSON，`.schema.jsonc` 可以使用行注释、块注释和尾逗号。每个文件只声明一个资源，文件名必须与 `resource` 一致，例如 `cms.article.schema.jsonc` 必须声明 `cms.article`。
 
 执行 `php artisan schema:sync` 会先扫描并校验所有文件，再将发生变化的资源同步到草稿。迁移计划为 `safe` 时会自动发布；`guarded` 或 `destructive` 变更会保留为草稿并返回失败状态。使用 `php artisan schema:sync --draft` 可以让所有变化只进入草稿。发布指定资源使用：
 
@@ -55,7 +55,7 @@ php artisan schema:publish cms.article --force
 
 `--force` 只用于批准指定资源的破坏性变更，不提供批量强制发布。代码资源文件被删除时不会自动删除数据库资源、表或业务数据。
 
-Laravel 迁移统一放在 `database/migrations/`；插件使用 `addons/{Code}/database/migrations/`。`migration_owner: schema` 由 Schema 发布流程维护表结构，`migration_owner: domain` 则由开发者编写并通过 Laravel `migrate` 命令执行迁移，`schema:sync` 不代替应用迁移。
+Laravel 迁移统一放在 `database/migrations/`；插件使用 `addons/{code}/database/migrations/`。`migration_owner: schema` 由 Schema 发布流程维护表结构，`migration_owner: domain` 则由开发者编写并通过 Laravel `migrate` 命令执行迁移，`schema:sync` 不代替应用迁移。
 
 更新 `ptadmin/core` 后先执行 Laravel 迁移，再同步后台内置 Schema、菜单资源和配置：
 
@@ -65,11 +65,11 @@ php artisan ptadmin:menu:sync
 php artisan ptadmin:admin:sync
 ```
 
-`ptadmin:menu:sync` 负责读取 Core 和已安装插件的 `Resources/menu.json` 并幂等同步 `admin_resources`。安装流程和插件生命周期直接调用相同的同步服务，不在进程内嵌套调用 Artisan 命令。`ptadmin:admin:sync` 负责 Admin 内置 Schema、权限关联、配置定义和 Core 字典；应用与插件代码型 Schema 仍由 `schema:sync` 或插件安装流程维护。
+`ptadmin:menu:sync` 负责读取 Core 和已安装插件的 `resources/menu.json` 并幂等同步 `admin_resources`。安装流程和插件生命周期直接调用相同的同步服务，不在进程内嵌套调用 Artisan 命令。`ptadmin:admin:sync` 负责 Admin 内置 Schema、权限关联、配置定义和 Core 字典；应用与插件代码型 Schema 仍由 `schema:sync` 或插件安装流程维护。
 
-Core 内置配置定义位于 `resources/config.site.json`、`resources/config.mail.json` 和 `resources/config.upload.json`，与插件的 `Resources/config.*.json` 使用相同的配置协议。配置同步以 JSON 文件为定义来源，并在同步时注入当前 Laravel 配置中的运行时默认值。
+Core 内置配置定义位于 `resources/config.site.json`、`resources/config.mail.json` 和 `resources/config.upload.json`，与插件的 `resources/config.*.json` 使用相同的配置协议。配置同步以 JSON 文件为定义来源，并在同步时注入当前 Laravel 配置中的运行时默认值。
 
-后台 Admin 资源和导航统一存储在 `admin_resources`。Core 资源声明位于 `resources/menu.json`，宿主插件资源声明位于 `addons/{Code}/Resources/menu.json`；两个文件使用相同的严格 JSON 数组格式，声明完整资源集合，不再使用 `Admin/resources.json`。资源类型为 `group`、`schema`、`page`、`external`、`action`，其中 `action` 只参与授权，其他类型通过 `is_menu` 决定是否进入 Session 菜单。安装、`ptadmin:admin:sync` 和插件生命周期共用幂等资源同步逻辑。
+后台 Admin 资源和导航统一存储在 `admin_resources`。Core 资源声明位于 `resources/menu.json`，宿主插件资源声明位于 `addons/{code}/resources/menu.json`；两个文件使用相同的严格 JSON 数组格式，声明完整资源集合，不再使用 `Admin/resources.json`。资源类型为 `group`、`schema`、`page`、`external`、`action`，其中 `action` 只参与授权，其他类型通过 `is_menu` 决定是否进入 Session 菜单。安装、`ptadmin:admin:sync` 和插件生命周期共用幂等资源同步逻辑。
 
 授权的数据范围位于 `admin_grants.scope_type` 和 `admin_grants.scope_value_json`，角色本身不保存全局范围。`all` 表示不附加记录条件；`self` 要求活动 Schema 在 `extensions.authorization.owner_field` 中显式指定持久化所有者字段。未知范围、非法范围参数、缺少活动 Schema 或缺少所有者声明时，Scope Resolver 返回空记录约束。多个同优先级允许授权以 OR 合并；同优先级拒绝授权仍优先。业务模块注册的范围处理器只能返回结构化 `ServerConstraint`，客户端筛选不能覆盖该约束。
 
@@ -77,7 +77,7 @@ Core 内置配置定义位于 `resources/config.site.json`、`resources/config.m
 
 数据字典定义和条目分别存储在 `admin_dicts`、`admin_dict_items`。后台管理接口保持业务语义明确的 `/ptadmin/dictionaries`，读取、创建、更新、删除分别使用 `admin.dictionaries.view/create/update/delete` 权限。自定义字典固定采用 `editable` 策略；字典编码和值类型、字典项的选项值创建后不可修改。字典项不再单独保存条目编码，`value` 同时承担字典内唯一稳定值。删除使用软删除，已经使用过的字典编码和选项值不再复用。
 
-Core 和插件字典通过 `DictionaryProviderInterface` 使用 PHP 链式 API 声明，不再使用 JSON 配置文件。Core 在 `CoreDictionaryProvider` 中注册，插件约定提供 `Resources/DictionaryProvider.php`，类名为插件 manifest namespace 下的 `DictionaryProvider`。声明包含 `code`、`title`、`valueType()`、`closed()/appendable()` 和 `addItem()/item()/items()`。安装、插件安装/升级以及 `ptadmin:admin:sync` 会调用同一个幂等同步器；插件停用或声明移除只停用相应字典，不删除业务历史值。
+Core 和插件字典通过 `DictionaryProviderInterface` 使用 PHP 链式 API 声明，不再使用 JSON 配置文件。Core 在 `CoreDictionaryProvider` 中注册，插件约定提供 `resources/DictionaryProvider.php`，类名为插件 manifest namespace 下的 `DictionaryProvider`。声明包含 `code`、`title`、`valueType()`、`closed()/appendable()` 和 `addItem()/item()/items()`。安装、插件安装/升级以及 `ptadmin:admin:sync` 会调用同一个幂等同步器；插件停用或声明移除只停用相应字典，不删除业务历史值。
 
 Core 默认声明数字型 `system.status` 通用状态字典，包含选项值 `1`（启用）和 `0`（禁用）。Schema 的 boolean 字段继续使用布尔组件；需要引用该字典的业务字段应使用 `integer` 或 `number` 类型。
 
