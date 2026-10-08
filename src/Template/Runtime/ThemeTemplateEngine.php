@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace PTAdmin\Template\Runtime;
 
 use Illuminate\Contracts\View\Engine;
+use Illuminate\View\Compilers\CompilerInterface;
+use Illuminate\View\Engines\CompilerEngine;
 use Illuminate\View\FileViewFinder;
 use InvalidArgumentException;
 use PTAdmin\Core\Theme\ThemeViewLoader;
@@ -12,8 +14,20 @@ use PTAdmin\Core\Theme\ThemeViewLoader;
 /** 仅当前主题使用受限模板解释器；宿主命名空间视图保留原 Blade 引擎。 */
 final class ThemeTemplateEngine implements Engine
 {
-    public function __construct(private Engine $blade, private FileViewFinder $finder, private ThemeViewLoader $themes, private TemplateRenderer $renderer)
+    public function __construct(private CompilerEngine $blade, private FileViewFinder $finder, private ThemeViewLoader $themes, private TemplateRenderer $renderer)
     {
+    }
+
+    /** Laravel view:clear 需要清理被包装 Blade 引擎的编译状态，安装收尾也使用该命令。 */
+    public function forgetCompiledOrNotExpired(): void
+    {
+        $this->blade->forgetCompiledOrNotExpired();
+    }
+
+    /** Laravel view:cache 通过同一引擎取得宿主 Blade 编译器。 */
+    public function getCompiler(): CompilerInterface
+    {
+        return $this->blade->getCompiler();
     }
 
     public function get($path, array $data = [])

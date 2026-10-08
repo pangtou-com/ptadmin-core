@@ -515,12 +515,15 @@ final class PTAdminServiceProvider extends ServiceProvider
 
         $engines = $this->app['view.engine.resolver'];
         $blade = $engines->resolve('blade');
-        $engines->register('blade', fn () => new \PTAdmin\Template\Runtime\ThemeTemplateEngine(
-            $blade,
-            $this->app['view']->getFinder(),
-            $this->app->make(ThemeViewLoader::class),
-            $this->app->make(TemplateRenderer::class),
-        ));
+        // Console 与 HTTP 内核可能在同一进程重复 boot，主题引擎只能包装一次 Blade 编译器。
+        if (!$blade instanceof \PTAdmin\Template\Runtime\ThemeTemplateEngine) {
+            $engines->register('blade', fn () => new \PTAdmin\Template\Runtime\ThemeTemplateEngine(
+                $blade,
+                $this->app['view']->getFinder(),
+                $this->app->make(ThemeViewLoader::class),
+                $this->app->make(TemplateRenderer::class),
+            ));
+        }
 
         if (!$isInstalled) {
             $this->app->make(HttpKernel::class)->prependMiddlewareToGroup('web', InstallStateMiddleware::class);
