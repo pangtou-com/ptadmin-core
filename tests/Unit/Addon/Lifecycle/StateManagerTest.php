@@ -24,9 +24,9 @@ final class StateManagerTest extends TestCase
     protected function setUp(): void
     {
         $this->root = sys_get_temp_dir().'/ptadmin-addon-state-'.bin2hex(random_bytes(5));
-        mkdir($this->root.'/source', 0700, true);
+        mkdir($this->root.'/source/src', 0700, true);
         file_put_contents($this->root.'/source/manifest.json', json_encode(['code' => 'state-addon', 'version' => '1.0.0'], JSON_THROW_ON_ERROR));
-        file_put_contents($this->root.'/source/Bootstrap.php', '<?php');
+        file_put_contents($this->root.'/source/src/Bootstrap.php', '<?php');
     }
 
     protected function tearDown(): void

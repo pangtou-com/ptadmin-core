@@ -4,12 +4,19 @@ declare(strict_types=1);
 
 namespace PTAdmin\Notice;
 
+use PTAdmin\Addon\Manifest\ManifestVerifier;
+use PTAdmin\Addon\Runtime\AddonAutoloader;
 use Illuminate\Database\DatabaseManager;
 use PTAdmin\Notice\Contracts\NoticeProviderInterface;
 
 final class NoticeSynchronizer
 {
-    public function __construct(private DatabaseManager $database, private NoticeRegistry $registry)
+    public function __construct(
+        private DatabaseManager $database,
+        private NoticeRegistry $registry,
+        private ?AddonAutoloader $autoloader = null,
+        private ?ManifestVerifier $manifestVerifier = null,
+    )
     {
     }
 
@@ -195,19 +202,15 @@ final class NoticeSynchronizer
 
     private function loadAddonProvider(string $directory): ?NoticeProviderInterface
     {
-        $directory = rtrim($directory, '/');
-        $path = $directory.'/resources/NoticeProvider.php';
+        $path = rtrim($directory, '/').'/src/NoticeProvider.php';
         if (!is_file($path)) {
             return null;
         }
-        $manifest = json_decode((string) file_get_contents($directory.'/manifest.json'), true);
-        $namespace = is_array($manifest) ? trim((string) ($manifest['namespace'] ?? ''), '\\') : '';
-        $class = $namespace !== '' ? $namespace.'\\NoticeProvider' : '';
-        if ($class === '' || !class_exists($class)) {
-            require_once $path;
-        }
-        if ($class === '' || !class_exists($class)) {
-            throw new NoticeDefinitionException('插件通知 Provider 类不存在。', 'notice_provider_invalid');
+        $manifest = ($this->manifestVerifier ??= new ManifestVerifier())->verifyRuntime($directory);
+        $namespace = ($this->autoloader ??= new AddonAutoloader())->register($directory, $manifest);
+        $class = $namespace.'\\NoticeProvider';
+        if (!class_exists($class)) {
+            throw new NoticeDefinitionException('插件通知 Provider 类不存在：'.$manifest['code'], 'notice_provider_invalid');
         }
         $provider = app()->make($class);
         if (!$provider instanceof NoticeProviderInterface) {

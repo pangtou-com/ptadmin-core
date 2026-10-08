@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PTAdmin\Addon\Frontend;
 
+use Closure;
 use JsonException;
 use PTAdmin\Addon\Catalog\AddonCatalog;
 use PTAdmin\Addon\Exception\AddonException;
@@ -20,6 +21,9 @@ use RuntimeException;
  */
 final class FrontendRegistry
 {
+    /** @var array<string, array<string, array<string, mixed>>> 资源同步期间的已验证声明，操作结束即恢复。 */
+    private array $synchronizingFlows = [];
+
     /**
      * @param array<int, string> $supportedHostApis 当前后台宿主可以提供的 Host API 版本
      * @param array<int, string> $supportedRuntimeProfiles trusted 模块允许使用的 Runtime Profile
@@ -51,11 +55,14 @@ final class FrontendRegistry
             return null;
         }
         [$plugin, $id] = explode(':', $reference, 2);
+        if (array_key_exists($plugin, $this->synchronizingFlows)) {
+            return $this->synchronizingFlows[$plugin][$id] ?? null;
+        }
         foreach ($this->discovery->scan()['addons'] as $addon) {
             if (strtolower((string) ($addon['manifest']['code'] ?? $addon['code'])) !== $plugin || $addon['state'] !== 'active') {
                 continue;
             }
-            $descriptor = $this->descriptor($addon['code']);
+            $descriptor = $this->descriptor($this->addonsPath.'/'.$addon['code']);
             if ($descriptor === null) {
                 return null;
             }
@@ -71,6 +78,26 @@ final class FrontendRegistry
             }
         }
         return null;
+    }
+
+    /**
+     * 只在资源同步内读取候选声明，不以临时启用插件绕过停用状态；支持嵌套与异常恢复。
+     *
+     * @internal directory 和 manifest 必须来自已验证的插件同步入口。
+     * @param array<string, mixed> $manifest
+     */
+    public function withAddonDesignFlows(string $directory, array $manifest, Closure $synchronize): mixed
+    {
+        $code = $manifest['code'];
+        $descriptor = $this->descriptor($directory) ?? [];
+        $flows = $this->designFlows($code, $this->declaredDesignFlows($manifest, $descriptor), $descriptor['entries'] ?? []);
+        $previous = $this->synchronizingFlows;
+        $this->synchronizingFlows[$code] = array_column($flows, null, 'id');
+        try {
+            return $synchronize();
+        } finally {
+            $this->synchronizingFlows = $previous;
+        }
     }
 
     /**
@@ -150,7 +177,7 @@ final class FrontendRegistry
         if (!$referencedByMenu) {
             return ['entries' => [], 'design_flows' => []];
         }
-        $descriptor = $this->descriptor($code);
+        $descriptor = $this->descriptor($this->addonsPath.'/'.$code);
         if (null === $descriptor) {
             return ['entries' => [], 'design_flows' => []];
         }
@@ -429,9 +456,9 @@ final class FrontendRegistry
     }
 
     /** @return array<string, mixed>|null */
-    private function descriptor(string $code): ?array
+    private function descriptor(string $directory): ?array
     {
-        $path = $this->addonsPath.'/'.$code.'/frontend/frontend.json';
+        $path = $directory.'/frontend/frontend.json';
         if (!is_file($path)) {
             return null;
         }

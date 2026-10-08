@@ -10,7 +10,7 @@ use PTAdmin\Addon\Runtime\Contracts\TemplateDirectiveProviderInterface;
 use PTAdmin\Template\Directive\DirectiveRegistry;
 
 /**
- * 负责发现插件 directives/*.php 并接入通用 Template Registry。
+ * 负责发现插件 src/Directives/*.php 并接入通用 Template Registry。
  *
  * 文件按路径稳定排序，所有定义先写入插件级临时 Registry；任一文件或冲突校验失败时，全局 Registry 不会
  * 留下该插件的部分指令。Template 模块因此无需了解插件目录、manifest 或 Laravel 容器。
@@ -20,9 +20,10 @@ final class TemplateDirectiveLoader
     public function __construct(
         private Application $app,
         private DirectiveRegistry $registry,
+        private ?AddonAutoloader $autoloader = null,
     ) {
     }
-    
+
     /**
      * 注册一个插件的全部模板指令；同一插件已存在定义时跳过重复加载。
      *
@@ -33,13 +34,14 @@ final class TemplateDirectiveLoader
      */
     public function register(string $directory, string $code, array $manifest): void
     {
+        ($this->autoloader ??= new AddonAutoloader())->register($directory, $manifest);
         foreach ($this->registry->all() as $definition) {
             if ($definition->namespace() === $code) {
                 return;
             }
         }
 
-        $path = $directory.'/directives';
+        $path = $directory.'/src/Directives';
         if (!is_dir($path)) {
             return;
         }

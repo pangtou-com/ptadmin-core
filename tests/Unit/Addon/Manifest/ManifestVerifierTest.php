@@ -24,6 +24,10 @@ final class ManifestVerifierTest extends TestCase
             if (in_array($name, ['.', '..'], true)) {
                 continue;
             }
+            if (is_dir($this->directory.'/'.$name)) {
+                rmdir($this->directory.'/'.$name);
+                continue;
+            }
             unlink($this->directory.'/'.$name);
         }
         @rmdir($this->directory);
@@ -47,6 +51,56 @@ final class ManifestVerifierTest extends TestCase
         file_put_contents($this->directory.'/manifest.json', json_encode(['code' => 'demo-addon', 'version' => '1.0.0'], JSON_THROW_ON_ERROR));
         $this->expectException(AddonException::class);
         (new ManifestVerifier())->verify($this->directory);
+    }
+
+    public function testPluginComposerMappingMustMatchTheRuntimeNamespace(): void
+    {
+        mkdir($this->directory.'/src');
+        file_put_contents($this->directory.'/manifest.json', json_encode([
+            'code' => 'demo-addon', 'version' => '1.0.0', 'namespace' => 'Vendor\\Demo',
+        ], JSON_THROW_ON_ERROR));
+        file_put_contents($this->directory.'/composer.json', json_encode([
+            'autoload' => ['psr-4' => ['Vendor\\Demo\\' => 'src/']],
+        ], JSON_THROW_ON_ERROR));
+        self::assertSame('Vendor\\Demo', (new ManifestVerifier())->verifyRuntime($this->directory)['namespace']);
+        file_put_contents($this->directory.'/composer.json', json_encode([
+            'autoload' => ['psr-4' => ['Vendor\\Demo\\' => 'services/']],
+        ], JSON_THROW_ON_ERROR));
+        try {
+            (new ManifestVerifier())->verifyRuntime($this->directory);
+            self::fail('插件静态映射和运行时目录必须一致。');
+        } catch (AddonException $exception) {
+            self::assertSame('addon_composer_mapping_mismatch', $exception->errorCode);
+        }
+    }
+
+    /** @dataProvider invalidNamespaces */
+    public function testInvalidOrReservedNamespacesAreRejected(mixed $namespace, string $error): void
+    {
+        file_put_contents($this->directory.'/manifest.json', json_encode([
+            'code' => 'demo-addon', 'version' => '1.0.0', 'namespace' => $namespace,
+        ], JSON_THROW_ON_ERROR));
+        try {
+            (new ManifestVerifier())->verifyRuntime($this->directory);
+            self::fail('非法 namespace 必须在类加载之前拒绝。');
+        } catch (AddonException $exception) {
+            self::assertSame($error, $exception->errorCode);
+        }
+    }
+
+    public static function invalidNamespaces(): array
+    {
+        return [
+            ['', 'invalid_addon_namespace'],
+            [false, 'invalid_addon_namespace'],
+            ['Vendor\\bad-name', 'invalid_addon_namespace'],
+            ['Vendor\\1Demo', 'invalid_addon_namespace'],
+            ['App\\Demo', 'addon_namespace_reserved'],
+            ['Composer\\Demo', 'addon_namespace_reserved'],
+            ['Illuminate\\Demo', 'addon_namespace_reserved'],
+            ['PTAdmin\\Core\\Demo', 'addon_namespace_reserved'],
+            ['PTAdmin\\Addons', 'addon_namespace_reserved'],
+        ];
     }
 
     public function testRuntimeVerificationOnlyReadsManifestMetadata(): void

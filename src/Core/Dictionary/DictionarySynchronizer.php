@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace PTAdmin\Core\Dictionary;
 
+use PTAdmin\Addon\Manifest\ManifestVerifier;
+use PTAdmin\Addon\Runtime\AddonAutoloader;
 use Illuminate\Support\Facades\DB;
 use PTAdmin\Core\Dictionary\Contracts\DictionaryProviderInterface;
 use PTAdmin\Core\Dictionary\Models\DictionaryDefinition;
@@ -15,6 +17,8 @@ final class DictionarySynchronizer
     public function __construct(
         private DictionaryService $dictionaries,
         private CoreDictionaryProvider $coreProvider,
+        private ?AddonAutoloader $autoloader = null,
+        private ?ManifestVerifier $manifestVerifier = null,
     ) {
     }
 
@@ -190,18 +194,15 @@ final class DictionarySynchronizer
 
     private function loadAddonProvider(string $directory): ?DictionaryProviderInterface
     {
-        $path = rtrim($directory, '/').'/resources/DictionaryProvider.php';
+        $path = rtrim($directory, '/').'/src/DictionaryProvider.php';
         if (!is_file($path)) {
             return null;
         }
-        $manifest = json_decode((string) @file_get_contents(rtrim($directory, '/').'/manifest.json'), true);
-        $namespace = is_array($manifest) ? trim((string) ($manifest['namespace'] ?? ''), '\\') : '';
-        $class = $namespace !== '' ? $namespace.'\\DictionaryProvider' : '';
-        if ($class === '' || !class_exists($class)) {
-            require_once $path;
-        }
-        if ($class === '' || !class_exists($class)) {
-            throw new DictionaryException('插件字典 Provider 类不存在。', 'dictionary_provider_invalid');
+        $manifest = ($this->manifestVerifier ??= new ManifestVerifier())->verifyRuntime($directory);
+        $namespace = ($this->autoloader ??= new AddonAutoloader())->register($directory, $manifest);
+        $class = $namespace.'\\DictionaryProvider';
+        if (!class_exists($class)) {
+            throw new DictionaryException('插件字典 Provider 类不存在：'.$manifest['code'], 'dictionary_provider_invalid');
         }
         $provider = app()->make($class);
         if (!$provider instanceof DictionaryProviderInterface) {

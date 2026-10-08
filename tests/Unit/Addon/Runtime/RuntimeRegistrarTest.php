@@ -28,9 +28,9 @@ final class RuntimeRegistrarTest extends TestCase
         $this->root = sys_get_temp_dir().'/ptadmin-addon-runtime-'.bin2hex(random_bytes(5));
         $this->lifecycle = sys_get_temp_dir().'/ptadmin-addon-runtime-state-'.bin2hex(random_bytes(5));
         mkdir($this->root.'/runtime-addon/routes', 0700, true);
-        mkdir($this->root.'/runtime-addon/Hooks', 0700, true);
+        mkdir($this->root.'/runtime-addon/src', 0700, true);
         mkdir($this->root.'/runtime-addon/database/migrations', 0700, true);
-        file_put_contents($this->root.'/runtime-addon/Bootstrap.php', <<<'PHP'
+        file_put_contents($this->root.'/runtime-addon/src/Bootstrap.php', <<<'PHP'
 <?php
 namespace RuntimeAddon;
 use Illuminate\Contracts\Foundation\Application;
@@ -50,7 +50,7 @@ return static function ($app): void {
     $app->make('router')->middleware('ptadmin.permission:runtime')->get('/runtime-addon', static fn (): string => 'ok');
 };
 PHP);
-        file_put_contents($this->root.'/runtime-addon/Hooks/RuntimeHook.php', <<<'PHP'
+        file_put_contents($this->root.'/runtime-addon/src/RuntimeHook.php', <<<'PHP'
 <?php
 namespace RuntimeAddon;
 
@@ -73,7 +73,7 @@ PHP);
             'code' => 'runtime-addon', 'version' => '1.0.0',
             'namespace' => 'RuntimeAddon',
             'routes' => ['routes/admin.php'],
-            'hooks' => [['file' => 'Hooks/RuntimeHook.php', 'class' => 'RuntimeAddon\\RuntimeHook']],
+            'hooks' => [['file' => 'src/RuntimeHook.php', 'class' => 'RuntimeAddon\\RuntimeHook']],
         ], JSON_THROW_ON_ERROR));
         file_put_contents($this->root.'/runtime-addon/routes/.keep', '');
         file_put_contents($this->root.'/runtime-addon/database/migrations/2026_09_17_000001_demo.php', '<?php return null;');
@@ -128,16 +128,16 @@ PHP);
     }
 
     /** @runInSeparateProcess */
-    public function testNamespaceAutoloaderResolvesLowercaseKebabCaseDirectories(): void
+    public function testNamespaceAutoloaderResolvesStandardSourceDirectories(): void
     {
-        mkdir($this->root.'/runtime-addon/services/search-push', 0700, true);
-        mkdir($this->root.'/runtime-addon/providers', 0700, true);
-        file_put_contents($this->root.'/runtime-addon/services/search-push/Probe.php', <<<'PHP'
+        mkdir($this->root.'/runtime-addon/src/Services/SearchPush', 0700, true);
+        mkdir($this->root.'/runtime-addon/src/Providers', 0700, true);
+        file_put_contents($this->root.'/runtime-addon/src/Services/SearchPush/Probe.php', <<<'PHP'
 <?php
 namespace RuntimeAddon\Services\SearchPush;
 final class Probe {}
 PHP);
-        file_put_contents($this->root.'/runtime-addon/providers/ServiceProvider.php', <<<'PHP'
+        file_put_contents($this->root.'/runtime-addon/src/Providers/ServiceProvider.php', <<<'PHP'
 <?php
 namespace RuntimeAddon\Providers;
 use Illuminate\Support\ServiceProvider as LaravelServiceProvider;
@@ -146,7 +146,7 @@ final class ServiceProvider extends LaravelServiceProvider implements ProviderIn
 {
     public function register(): void
     {
-        $this->app->instance('runtime-addon.kebab-directory-loaded', class_exists(\RuntimeAddon\Services\SearchPush\Probe::class));
+        $this->app->instance('runtime-addon.standard-directory-loaded', class_exists(\RuntimeAddon\Services\SearchPush\Probe::class));
     }
 }
 PHP);
@@ -160,14 +160,97 @@ PHP);
         );
 
         self::assertSame(['runtime-addon'], $registrar->register()['loaded']);
-        self::assertTrue($app->make('runtime-addon.kebab-directory-loaded'));
+        self::assertTrue($app->make('runtime-addon.standard-directory-loaded'));
+    }
+
+    /** @runInSeparateProcess */
+    public function testServicePreparationResolvesInactiveDependenciesWithoutActivatingRuntime(): void
+    {
+        mkdir($this->root.'/runtime-addon/src/Services', 0700, true);
+        mkdir($this->root.'/runtime-addon/src/Providers', 0700, true);
+        file_put_contents($this->root.'/runtime-addon/src/Services/Probe.php', <<<'PHP'
+<?php
+namespace RuntimeAddon\Services;
+final class Probe
+{
+    public function __construct(public string $value) {}
+}
+PHP);
+        file_put_contents($this->root.'/runtime-addon/src/Providers/ServiceProvider.php', <<<'PHP'
+<?php
+namespace RuntimeAddon\Providers;
+use Illuminate\Support\ServiceProvider as LaravelServiceProvider;
+use PTAdmin\Addon\Runtime\Contracts\ProviderInterface;
+final class ServiceProvider extends LaravelServiceProvider implements ProviderInterface
+{
+    public function register(): void
+    {
+        $this->app->singleton(\RuntimeAddon\Services\Probe::class, static fn () => new \RuntimeAddon\Services\Probe('可同步'));
+    }
+}
+PHP);
+        $lifecycle = new LifecycleStore($this->lifecycle);
+        $lifecycle->restore('runtime-addon', ['state' => 'inactive', 'disabled_by_user' => true]);
+        $stateBefore = $lifecycle->read('runtime-addon');
+        $app = new Application($this->root);
+        $registrar = new RuntimeRegistrar(
+            $app,
+            new AddonCatalog($this->root, new ManifestVerifier(), $lifecycle, false),
+            $lifecycle,
+            $this->root,
+        );
+        self::assertFalse($app->bound('RuntimeAddon\\Services\\Probe'));
+        $manifest = (new ManifestVerifier())->verifyRuntime($this->root.'/runtime-addon');
+        $registrar->prepareServices($this->root.'/runtime-addon', $manifest);
+        $service = $app->make('RuntimeAddon\\Services\\Probe');
+        self::assertSame('可同步', $service->value);
+        $registrar->prepareServices($this->root.'/runtime-addon', $manifest);
+        self::assertSame($service, $app->make('RuntimeAddon\\Services\\Probe'));
+        self::assertSame($stateBefore, $lifecycle->read('runtime-addon'));
+        self::assertFalse($app->bound('runtime-addon.loaded'));
+        self::assertFalse($app->bound('runtime-addon.routes'));
+        self::assertFalse(class_exists('RuntimeAddon\\RuntimeHook', false));
+    }
+
+    /** @runInSeparateProcess */
+    public function testAllActiveMappingsExistBeforeTheFirstBootstrapRuns(): void
+    {
+        mkdir($this->root.'/a-first/src', 0700, true);
+        mkdir($this->root.'/runtime-addon/src/Services', 0700, true);
+        file_put_contents($this->root.'/runtime-addon/src/Services/Dependency.php', '<?php namespace RuntimeAddon\\Services; final class Dependency {}');
+        file_put_contents($this->root.'/a-first/manifest.json', json_encode([
+            'code' => 'a-first', 'version' => '1.0.0', 'namespace' => 'FirstRuntimeAddon',
+        ], JSON_THROW_ON_ERROR));
+        file_put_contents($this->root.'/a-first/src/Bootstrap.php', <<<'PHP'
+<?php
+namespace FirstRuntimeAddon;
+use Illuminate\Contracts\Foundation\Application;
+use PTAdmin\Addon\Runtime\Contracts\BootstrapInterface;
+final class Bootstrap implements BootstrapInterface
+{
+    public function register(Application $app, string $code, array $manifest): void
+    {
+        $app->instance('first.dependency', new \RuntimeAddon\Services\Dependency());
+    }
+}
+PHP);
+        $app = new Application($this->root);
+        $registrar = new RuntimeRegistrar(
+            $app,
+            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle), false),
+            new LifecycleStore($this->lifecycle),
+            $this->root,
+        );
+
+        self::assertSame(['a-first', 'runtime-addon'], $registrar->register()['loaded']);
+        self::assertInstanceOf(\RuntimeAddon\Services\Dependency::class, $app->make('first.dependency'));
     }
 
     /** @runInSeparateProcess */
     public function testActiveAddonRuntimeManifestRegistersWithVerifiedAddonOwner(): void
     {
-        mkdir($this->root.'/runtime-addon/runtime', 0700, true);
-        file_put_contents($this->root.'/runtime-addon/runtime/Registrar.php', <<<'PHP'
+        mkdir($this->root.'/runtime-addon/src/Runtime', 0700, true);
+        file_put_contents($this->root.'/runtime-addon/src/Runtime/Registrar.php', <<<'PHP'
 <?php
 namespace RuntimeAddon\Runtime;
 
@@ -208,8 +291,8 @@ PHP);
     public function testRuntimeRejectsAddonDirectoryThatDoesNotMatchLowercaseManifestCode(): void
     {
         rename($this->root.'/runtime-addon', $this->root.'/RuntimeAddon');
-        mkdir($this->root.'/RuntimeAddon/runtime', 0700, true);
-        file_put_contents($this->root.'/RuntimeAddon/runtime/Registrar.php', <<<'PHP'
+        mkdir($this->root.'/RuntimeAddon/src/Runtime', 0700, true);
+        file_put_contents($this->root.'/RuntimeAddon/src/Runtime/Registrar.php', <<<'PHP'
 <?php
 namespace RuntimeAddon\Runtime;
 use PTAdmin\Addon\Runtime\Contracts\RuntimeRegistrarInterface;
@@ -246,8 +329,8 @@ PHP);
     /** @runInSeparateProcess */
     public function testUserDisabledAddonDoesNotLoadRuntimeManifest(): void
     {
-        mkdir($this->root.'/runtime-addon/runtime', 0700, true);
-        file_put_contents($this->root.'/runtime-addon/runtime/Registrar.php', <<<'PHP'
+        mkdir($this->root.'/runtime-addon/src/Runtime', 0700, true);
+        file_put_contents($this->root.'/runtime-addon/src/Runtime/Registrar.php', <<<'PHP'
 <?php
 namespace RuntimeAddon\Runtime;
 use PTAdmin\Addon\Runtime\Contracts\RuntimeRegistrarInterface;
@@ -282,8 +365,8 @@ PHP);
     /** @runInSeparateProcess */
     public function testRuntimeRegistrationFailureMakesAddonInactiveWithDiagnostic(): void
     {
-        mkdir($this->root.'/runtime-addon/runtime', 0700, true);
-        file_put_contents($this->root.'/runtime-addon/runtime/Registrar.php', <<<'PHP'
+        mkdir($this->root.'/runtime-addon/src/Runtime', 0700, true);
+        file_put_contents($this->root.'/runtime-addon/src/Runtime/Registrar.php', <<<'PHP'
 <?php
 namespace RuntimeAddon\Runtime;
 use PTAdmin\Addon\Runtime\Contracts\RuntimeRegistrarInterface;
@@ -320,8 +403,8 @@ PHP);
     /** @runInSeparateProcess */
     public function testRuntimeManifestRequiresTheSharedRegistry(): void
     {
-        mkdir($this->root.'/runtime-addon/runtime', 0700, true);
-        file_put_contents($this->root.'/runtime-addon/runtime/Registrar.php', <<<'PHP'
+        mkdir($this->root.'/runtime-addon/src/Runtime', 0700, true);
+        file_put_contents($this->root.'/runtime-addon/src/Runtime/Registrar.php', <<<'PHP'
 <?php
 namespace RuntimeAddon\Runtime;
 use PTAdmin\Addon\Runtime\Contracts\RuntimeRegistrarInterface;
@@ -373,9 +456,9 @@ PHP);
         $this->remove($this->root.'/runtime-addon');
         $directory = $this->root.'/demo';
         mkdir($directory.'/routes', 0700, true);
-        mkdir($directory.'/providers', 0700, true);
-        file_put_contents($directory.'/functions.php', "<?php require_once __DIR__.'/Functions.php'; \\DemoAddon\\Functions::load();");
-        file_put_contents($directory.'/Bootstrap.php', <<<'PHP'
+        mkdir($directory.'/src/Providers', 0700, true);
+        file_put_contents($directory.'/functions.php', "<?php \\DemoAddon\\Functions::load();");
+        file_put_contents($directory.'/src/Bootstrap.php', <<<'PHP'
 <?php
 namespace DemoAddon;
 use Illuminate\Contracts\Foundation\Application;
@@ -388,7 +471,7 @@ final class Bootstrap implements BootstrapInterface
     }
 }
 PHP);
-        file_put_contents($directory.'/Functions.php', <<<'PHP'
+        file_put_contents($directory.'/src/Functions.php', <<<'PHP'
 <?php
 namespace DemoAddon;
 final class Functions
@@ -405,7 +488,7 @@ return static function ($app): void {
     $app->instance('demo.route', true);
 };
 PHP);
-        file_put_contents($directory.'/providers/ServiceProvider.php', <<<'PHP'
+        file_put_contents($directory.'/src/Providers/ServiceProvider.php', <<<'PHP'
 <?php
 namespace DemoAddon\Providers;
 use Illuminate\Support\ServiceProvider as LaravelServiceProvider;
@@ -447,8 +530,8 @@ PHP);
     {
         $this->remove($this->root.'/runtime-addon');
         $directory = $this->root.'/demo';
-        mkdir($directory.'/providers', 0700, true);
-        file_put_contents($directory.'/providers/ServiceProvider.php', <<<'PHP'
+        mkdir($directory.'/src/Providers', 0700, true);
+        file_put_contents($directory.'/src/Providers/ServiceProvider.php', <<<'PHP'
 <?php
 namespace InvalidDemo\Providers;
 use Illuminate\Support\ServiceProvider as LaravelServiceProvider;
@@ -502,8 +585,8 @@ PHP);
     {
         $this->remove($this->root.'/runtime-addon');
         $directory = $this->root.'/demo';
-        mkdir($directory.'/directives', 0700, true);
-        file_put_contents($directory.'/directives/DemoDirective.php', <<<'PHP'
+        mkdir($directory.'/src/Directives', 0700, true);
+        file_put_contents($directory.'/src/Directives/DemoDirective.php', <<<'PHP'
 <?php
 namespace InvalidDemo;
 final class DemoDirective {}
@@ -530,7 +613,7 @@ PHP);
     {
         $this->remove($this->root.'/runtime-addon');
         foreach (['first', 'second'] as $code) {
-            $directory = $this->root.'/'.$code.'/directives';
+            $directory = $this->root.'/'.$code.'/src/Directives';
             mkdir($directory, 0700, true);
             file_put_contents($directory.'/DemoDirective.php', <<<PHP
 <?php

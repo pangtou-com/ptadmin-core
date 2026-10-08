@@ -21,7 +21,8 @@ final class AddonCatalogTest extends TestCase
         mkdir($this->root.'/valid-addon', 0700, true);
         mkdir($this->root.'/.staging', 0700, true);
         file_put_contents($this->root.'/valid-addon/manifest.json', json_encode(['code' => 'valid-addon', 'version' => '1.0.0'], JSON_THROW_ON_ERROR));
-        file_put_contents($this->root.'/valid-addon/Bootstrap.php', '<?php');
+        mkdir($this->root.'/valid-addon/src', 0700, true);
+        file_put_contents($this->root.'/valid-addon/src/Bootstrap.php', '<?php');
     }
 
     protected function tearDown(): void

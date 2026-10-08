@@ -18,7 +18,7 @@ final class NoticeSynchronizerTest extends TestCase
     protected function setUp(): void
     {
         $this->root = sys_get_temp_dir().'/ptadmin-notice-'.bin2hex(random_bytes(5));
-        mkdir($this->root.'/Resources', 0700, true);
+        mkdir($this->root.'/src', 0700, true);
     }
 
     protected function tearDown(): void
@@ -31,10 +31,10 @@ final class NoticeSynchronizerTest extends TestCase
     public function testAddonProviderDefinitionsAreSynchronizedWithStableOwner(): void
     {
         file_put_contents($this->root.'/manifest.json', json_encode([
-            'code' => 'demo-addon',
+            'code' => 'demo-addon', 'version' => '1.0.0',
             'namespace' => 'NoticeTestAddon',
         ], JSON_THROW_ON_ERROR));
-        file_put_contents($this->root.'/resources/NoticeProvider.php', <<<'PHP'
+        file_put_contents($this->root.'/src/NoticeProvider.php', <<<'PHP'
 <?php
 namespace NoticeTestAddon;
 use PTAdmin\Notice\Contracts\NoticeProviderInterface;

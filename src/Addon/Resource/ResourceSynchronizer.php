@@ -7,6 +7,10 @@ namespace PTAdmin\Addon\Resource;
 use Illuminate\Database\ConnectionInterface;
 use PTAdmin\Admin\Navigation\MenuSynchronizer;
 use PTAdmin\Addon\Exception\AddonException;
+use PTAdmin\Addon\Frontend\FrontendRegistry;
+use PTAdmin\Addon\Manifest\ManifestVerifier;
+use PTAdmin\Addon\Runtime\AddonAutoloader;
+use PTAdmin\Addon\Runtime\RuntimeRegistrar;
 use PTAdmin\Core\Config\ConfigService;
 use PTAdmin\Core\Config\Models\ConfigDefinition;
 use PTAdmin\Core\Dictionary\DictionarySynchronizer;
@@ -32,6 +36,10 @@ final class ResourceSynchronizer implements ResourceSynchronizerInterface
         private MenuSynchronizer $menus,
         private DictionarySynchronizer $dictionaries,
         private NoticeSynchronizer $notices,
+        private FrontendRegistry $frontend,
+        private RuntimeRegistrar $runtime,
+        private ?AddonAutoloader $autoloader = null,
+        private ?ManifestVerifier $manifestVerifier = null,
     ) {
     }
 
@@ -42,7 +50,10 @@ final class ResourceSynchronizer implements ResourceSynchronizerInterface
      */
     public function sync(string $directory, string $code): array
     {
-        return $this->database->transaction(function () use ($directory, $code): array {
+        $manifest = ($this->manifestVerifier ??= new ManifestVerifier())->verifyRuntime($directory);
+        ($this->autoloader ??= new AddonAutoloader())->register($directory, $manifest);
+        $this->runtime->prepareServices($directory, $manifest);
+        return $this->frontend->withAddonDesignFlows($directory, $manifest, fn (): array => $this->database->transaction(function () use ($directory, $code): array {
             $counts = ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'notices' => 0, 'admin_resources' => 0];
             $ownerCode = strtolower($code);
             $schemaKeys = [];
@@ -76,7 +87,7 @@ final class ResourceSynchronizer implements ResourceSynchronizerInterface
                 'addon:'.$code
             );
             $counts['schemas'] += $this->schemaSynchronizer->syncCustomPresets($presetFiles);
-            foreach ($this->jsonFiles($directory.'/Resources', 'config.') as $path) {
+            foreach ($this->jsonFiles($directory.'/resources', 'config.') as $path) {
                 $definitions = $this->objectOrList($path);
                 foreach ($definitions as $definition) {
                     $definition['owner_type'] = 'addon';
@@ -106,7 +117,7 @@ final class ResourceSynchronizer implements ResourceSynchronizerInterface
             $configQuery->update(['status' => false]);
 
             return $counts;
-        });
+        }));
     }
 
     /** 停用插件的资源定义和菜单可见性，不删除配置值、Schema 版本或业务数据。 */

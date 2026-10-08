@@ -6,6 +6,7 @@ namespace PTAdmin\Core\Tests\Unit\Addon\Frontend;
 
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Addon\Catalog\AddonCatalog;
+use PTAdmin\Addon\Exception\AddonException;
 use PTAdmin\Addon\Frontend\FrontendPublisher;
 use PTAdmin\Addon\Frontend\FrontendRegistry;
 use PTAdmin\Addon\Frontend\FrontendDevelopmentStore;
@@ -234,6 +235,80 @@ final class FrontendRegistryTest extends TestCase
         $resolved = $registry->resolve($this->addonMenu());
         self::assertSame([], $resolved['plugins']);
         self::assertSame('frontend_design_flows_invalid', $resolved['errors'][0]['error_code']);
+        self::assertNull($registry->designFlow('demo-addon:demo-addon.schema'));
+    }
+
+    public function testSynchronizationUsesInactiveDesignFlowsWithoutExposingSessionEntries(): void
+    {
+        $this->writeAddon('trusted', 'frontend.mjs', true, true);
+        $directory = $this->addonsPath.'/demo-addon';
+        $manifest = (new ManifestVerifier())->verifyRuntime($directory);
+        $lifecycle = new LifecycleStore($this->lifecyclePath);
+        $lifecycle->restore('demo-addon', ['state' => 'inactive', 'disabled_by_user' => true]);
+        $registry = $this->registry(new TrustPolicy([], [], true, 'testing'));
+        self::assertNull($registry->designFlow('demo-addon:demo-addon.schema'));
+
+        $result = $registry->withAddonDesignFlows($directory, $manifest, function () use ($registry): string {
+            self::assertSame('demo-addon.schema', $registry->designFlow('demo-addon:demo-addon.schema')['id']);
+            self::assertNull($registry->designFlow('demo-addon:missing'));
+            self::assertSame([], $registry->resolve($this->addonMenu())['plugins']);
+            return '已同步';
+        });
+
+        self::assertSame('已同步', $result);
+        self::assertNull($registry->designFlow('demo-addon:demo-addon.schema'));
+        self::assertSame('inactive', $lifecycle->read('demo-addon')['state']);
+        self::assertTrue($lifecycle->read('demo-addon')['disabled_by_user']);
+    }
+
+    public function testNestedSynchronizationRestoresDeclarationsAfterFailure(): void
+    {
+        $this->writeAddon('trusted', 'frontend.mjs', true, true);
+        $directory = $this->addonsPath.'/demo-addon';
+        $manifest = (new ManifestVerifier())->verifyRuntime($directory);
+        (new LifecycleStore($this->lifecyclePath))->restore('demo-addon', ['state' => 'inactive']);
+        $registry = $this->registry(new TrustPolicy([], [], true, 'testing'));
+        $registry->withAddonDesignFlows($directory, $manifest, function () use ($registry, $directory, $manifest): void {
+            $path = $directory.'/frontend/frontend.json';
+            $descriptor = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+            $descriptor['design_flows'][0]['id'] = 'demo-addon.changed';
+            file_put_contents($path, json_encode($descriptor, JSON_THROW_ON_ERROR));
+            try {
+                $registry->withAddonDesignFlows($directory, $manifest, function () use ($registry): void {
+                    self::assertNotNull($registry->designFlow('demo-addon:demo-addon.changed'));
+                    self::assertNull($registry->designFlow('demo-addon:demo-addon.schema'));
+                    throw new \RuntimeException('同步失败');
+                });
+                self::fail('同步异常必须向调用方传播。');
+            } catch (\RuntimeException $exception) {
+                self::assertSame('同步失败', $exception->getMessage());
+            }
+            self::assertNotNull($registry->designFlow('demo-addon:demo-addon.schema'));
+            self::assertNull($registry->designFlow('demo-addon:demo-addon.changed'));
+        });
+        self::assertNull($registry->designFlow('demo-addon:demo-addon.schema'));
+        self::assertNull($registry->designFlow('demo-addon:demo-addon.changed'));
+    }
+
+    public function testInvalidSynchronizationDeclarationCannotRunOrLeak(): void
+    {
+        $this->writeAddon('trusted', 'frontend.mjs', true, true);
+        $directory = $this->addonsPath.'/demo-addon';
+        $manifest = (new ManifestVerifier())->verifyRuntime($directory);
+        (new LifecycleStore($this->lifecyclePath))->restore('demo-addon', ['state' => 'inactive']);
+        $path = $directory.'/frontend/frontend.json';
+        $descriptor = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+        $descriptor['design_flows'][0]['steps'][0]['mount'] = ['frontend_contribution' => ['contribution' => 'another-addon.invalid']];
+        file_put_contents($path, json_encode($descriptor, JSON_THROW_ON_ERROR));
+        $registry = $this->registry(new TrustPolicy([], [], true, 'testing'));
+        try {
+            $registry->withAddonDesignFlows($directory, $manifest, static function (): void {
+                self::fail('无效声明不能开始资源同步。');
+            });
+            self::fail('无效声明必须拒绝。');
+        } catch (AddonException $exception) {
+            self::assertSame('frontend_design_flows_invalid', $exception->errorCode);
+        }
         self::assertNull($registry->designFlow('demo-addon:demo-addon.schema'));
     }
 

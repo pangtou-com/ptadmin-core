@@ -22,6 +22,7 @@ final class ServiceProtocolLoader
         private PaymentRegistry $payments,
         private SocialAuthRegistry $socialAuth,
         private AddonAvailability $availability,
+        private ?AddonAutoloader $autoloader = null,
     ) {
     }
 
@@ -29,11 +30,12 @@ final class ServiceProtocolLoader
     public function register(string $directory, string $addonCode, string $namespace): void
     {
         $this->availability->assertActive($addonCode);
+        ($this->autoloader ??= new AddonAutoloader())->register($directory, ['code' => $addonCode, 'namespace' => $namespace]);
         if (isset($this->loaded[$addonCode])) {
             return;
         }
-        $paymentPath = $directory.'/runtime/PaymentProvider.php';
-        $authPath = $directory.'/runtime/SocialAuthProvider.php';
+        $paymentPath = $directory.'/src/Runtime/PaymentProvider.php';
+        $authPath = $directory.'/src/Runtime/SocialAuthProvider.php';
         if (!is_file($paymentPath) && !is_file($authPath)) {
             return;
         }
@@ -44,7 +46,7 @@ final class ServiceProtocolLoader
             if (!class_exists($class, false)) {
                 require_once $paymentPath;
             }
-            if (!is_a($class, PaymentProviderInterface::class, true)) {
+            if (!class_exists($class, false) || !is_a($class, PaymentProviderInterface::class, true)) {
                 throw new ProtocolException('provider_invalid', '插件支付声明类必须实现 PaymentProviderInterface：'.$addonCode);
             }
             $this->container->make($class)->register($payments);
@@ -54,7 +56,7 @@ final class ServiceProtocolLoader
             if (!class_exists($class, false)) {
                 require_once $authPath;
             }
-            if (!is_a($class, SocialAuthProviderInterface::class, true)) {
+            if (!class_exists($class, false) || !is_a($class, SocialAuthProviderInterface::class, true)) {
                 throw new ProtocolException('provider_invalid', '插件登录声明类必须实现 SocialAuthProviderInterface：'.$addonCode);
             }
             $this->container->make($class)->register($auth);

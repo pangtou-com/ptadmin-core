@@ -16,8 +16,8 @@ final class LifecycleRegistrarTest extends TestCase
     protected function setUp(): void
     {
         $this->root = sys_get_temp_dir().'/ptadmin-addon-lifecycle-handler-'.bin2hex(random_bytes(5));
-        mkdir($this->root.'/demo/lifecycle', 0700, true);
-        file_put_contents($this->root.'/demo/lifecycle/Handler.php', <<<'PHP'
+        mkdir($this->root.'/demo/src/Lifecycle', 0700, true);
+        file_put_contents($this->root.'/demo/src/Lifecycle/Handler.php', <<<'PHP'
 <?php
 namespace DemoLifecycle\Lifecycle;
 

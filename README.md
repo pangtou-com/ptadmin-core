@@ -35,6 +35,10 @@
 
 Schema Hook、Action、Resource Event、Owner、校验和缓存规则见 [Schema Runtime 扩展](docs/schema-runtime-extensions.md)。
 
+## 插件 PHP 加载
+
+插件根目录使用小写 code，PHP 类放在与 namespace 大小写一致的 `src/` 中。Core 通过共享独立 Composer ClassLoader 注册标准 PSR-4 映射，在启动、安装、迁移、启停、资源同步及 Runtime 预检使用类之前准备映射；插件操作不修改宿主 Composer、vendor 或 IDE 配置。插件 `composer.json` 提供静态映射供开发工具使用。完整约定见聚合工作区 `ptadmin-docs/reference/plugin-php-loading.md`。
+
 ## 代码型 Schema 文件
 
 宿主应用、Core 和插件使用相同的目录结构维护代码型 Schema：
@@ -77,7 +81,7 @@ Core 内置配置定义位于 `resources/config.site.json`、`resources/config.m
 
 数据字典定义和条目分别存储在 `admin_dicts`、`admin_dict_items`。后台管理接口保持业务语义明确的 `/ptadmin/dictionaries`，读取、创建、更新、删除分别使用 `admin.dictionaries.view/create/update/delete` 权限。自定义字典固定采用 `editable` 策略；字典编码和值类型、字典项的选项值创建后不可修改。字典项不再单独保存条目编码，`value` 同时承担字典内唯一稳定值。删除使用软删除，已经使用过的字典编码和选项值不再复用。
 
-Core 和插件字典通过 `DictionaryProviderInterface` 使用 PHP 链式 API 声明，不再使用 JSON 配置文件。Core 在 `CoreDictionaryProvider` 中注册，插件约定提供 `resources/DictionaryProvider.php`，类名为插件 manifest namespace 下的 `DictionaryProvider`。声明包含 `code`、`title`、`valueType()`、`closed()/appendable()` 和 `addItem()/item()/items()`。安装、插件安装/升级以及 `ptadmin:admin:sync` 会调用同一个幂等同步器；插件停用或声明移除只停用相应字典，不删除业务历史值。
+Core 和插件字典通过 `DictionaryProviderInterface` 使用 PHP 链式 API 声明，不再使用 JSON 配置文件。Core 在 `CoreDictionaryProvider` 中注册，插件约定提供 `src/DictionaryProvider.php`，类名为插件 manifest namespace 下的 `DictionaryProvider`。声明包含 `code`、`title`、`valueType()`、`closed()/appendable()` 和 `addItem()/item()/items()`。安装、插件安装/升级以及 `ptadmin:admin:sync` 会调用同一个幂等同步器；插件停用或声明移除只停用相应字典，不删除业务历史值。
 
 Core 默认声明数字型 `system.status` 通用状态字典，包含选项值 `1`（启用）和 `0`（禁用）。Schema 的 boolean 字段继续使用布尔组件；需要引用该字典的业务字段应使用 `integer` 或 `number` 类型。
 

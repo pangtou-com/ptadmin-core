@@ -39,6 +39,7 @@ final class ManifestVerifier
         $root = $loaded['root'];
         $manifest = $loaded['manifest'];
         $this->assertHeader($manifest, $checkBackendCompatibility);
+        $this->assertComposerMapping($root, $manifest);
         $files = $this->buildFileList($root, $manifest);
         if ($requireSignature) {
             $this->verifySignature($manifest, $files);
@@ -58,8 +59,10 @@ final class ManifestVerifier
      */
     public function verifyRuntime(string $directory): array
     {
-        $manifest = $this->loadManifest($directory)['manifest'];
+        $loaded = $this->loadManifest($directory);
+        $manifest = $loaded['manifest'];
         $this->assertHeader($manifest);
+        $this->assertComposerMapping($loaded['root'], $manifest);
 
         return $manifest;
     }
@@ -133,6 +136,7 @@ final class ManifestVerifier
         if (preg_match('/^[a-z][a-z0-9._-]{1,63}$/', $code) !== 1 || '' === $version || !preg_match('/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/', $version)) {
             throw new AddonException('The addon code or version is invalid.');
         }
+        AddonNamespace::fromManifest($manifest);
         if ((int) ($manifest['schema_protocol'] ?? $this->schemaProtocol) !== $this->schemaProtocol) {
             throw new AddonException('The addon schema protocol is incompatible.', 'protocol_incompatible');
         }
@@ -147,6 +151,23 @@ final class ManifestVerifier
             } catch (\UnexpectedValueException $exception) {
                 throw new AddonException('The addon compatibility constraint is invalid.', 'invalid_constraint');
             }
+        }
+    }
+
+    /** 开发用静态映射与运行时 manifest 保持一致，避免 IDE 与实际加载使用不同目录。 */
+    private function assertComposerMapping(string $root, array $manifest): void
+    {
+        if (!is_dir($root.'/src') || !is_file($root.'/composer.json')) {
+            return;
+        }
+        try {
+            $composer = json_decode((string) file_get_contents($root.'/composer.json'), true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            throw new AddonException('插件 composer.json 无效：'.$manifest['code'], 'invalid_addon_composer');
+        }
+        $namespace = AddonNamespace::fromManifest($manifest).'\\';
+        if (($composer['autoload']['psr-4'][$namespace] ?? null) !== 'src/') {
+            throw new AddonException('插件 Composer 映射必须与 manifest 一致并指向 src/：'.$manifest['code'], 'addon_composer_mapping_mismatch');
         }
     }
 

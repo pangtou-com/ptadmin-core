@@ -12,6 +12,7 @@ use PTAdmin\Addon\Manifest\ManifestVerifier;
 use PTAdmin\Addon\Package\PackageExtractor;
 use PTAdmin\Addon\Resource\ResourceSynchronizerInterface;
 use PTAdmin\Addon\Runtime\RuntimeLifecycleValidator;
+use PTAdmin\Addon\Runtime\AddonAutoloader;
 use PTAdmin\Schema\Runtime\RuntimeCacheStore;
 use RuntimeException;
 
@@ -38,9 +39,11 @@ final class Installer
         private ?RuntimeLifecycleValidator $runtimeValidator = null,
         private ?LifecycleRegistrar $lifecycleRegistrar = null,
         private ?Migrator $migrator = null,
+        private ?AddonAutoloader $autoloader = null,
     ) {
         $this->addonsPath = rtrim($addonsPath, '/');
         $this->stagingPath = rtrim($stagingPath, '/');
+        $this->autoloader ??= new AddonAutoloader();
     }
 
     /**
@@ -72,6 +75,8 @@ final class Installer
         if (!is_dir($stage) && !mkdir($stage, 0700, true) && !is_dir($stage)) {
             throw new RuntimeException('Unable to create addon task staging directory.');
         }
+        $mappingCaptured = false;
+        $previousMapping = null;
         try {
             if ($onProgress !== null) {
                 $onProgress('extracting', 20, '正在解压插件包。');
@@ -88,6 +93,8 @@ final class Installer
             $lockHandle = $this->locks?->acquire($code);
             $this->runtimeCache?->clear();
             $target = $this->addonsPath.'/'.$code;
+            $previousMapping = $this->autoloader->snapshot($code);
+            $mappingCaptured = true;
             $previousLifecycle = $this->lifecycle->read($code);
             $lifecycleCaptured = true;
             if (!$update && is_dir($target)) {
@@ -123,6 +130,7 @@ final class Installer
             $frontendSource = $target.'/frontend/dist';
             // 数据库资源在事务内同步；文件与前端产物由外层 catch 使用目录备份执行补偿回滚。
             $activate = function () use ($target, $code, $manifest, $frontendSource, $webPrefix, $update, $onProgress): array {
+                $this->autoloader->register($target, $manifest, $update);
                 $this->runMigrations($target);
                 if ($onProgress !== null) {
                     $onProgress('sync_resources', 60, '正在同步插件资源。');
@@ -157,6 +165,9 @@ final class Installer
                 @rename($backup, $target);
             } elseif (isset($target, $replacement) && is_dir($target) && !is_dir($replacement)) {
                 $this->deleteDirectory($target);
+            }
+            if ($mappingCaptured && isset($code)) {
+                $this->autoloader->restore($code, $previousMapping);
             }
             if (isset($code) && ($lifecycleCaptured ?? false)) {
                 $this->lifecycle->restore($code, $previousLifecycle ?? null);
@@ -200,6 +211,8 @@ final class Installer
         }
 
         $previousLifecycle = null;
+        $previousMapping = null;
+        $mappingCaptured = false;
         $resourcesChanged = false;
         $lockHandle = null;
         $frontendSource = $target.'/frontend/dist';
@@ -213,6 +226,9 @@ final class Installer
             $lockHandle = $this->locks?->acquire($code);
             $previousLifecycle = $this->lifecycle->read($code);
             $previousState = (string) ($previousLifecycle['state'] ?? 'discovered');
+            $previousMapping = $this->autoloader->snapshot($code);
+            $mappingCaptured = true;
+            $this->autoloader->register($target, $manifest);
             $disabledByUser = $previousState === 'inactive'
                 && ($previousLifecycle['disabled_by_user'] ?? false) === true;
             $activate = $enable || !$disabledByUser;
@@ -303,6 +319,9 @@ final class Installer
             } catch (\Throwable) {
                 // 前端补偿失败不能覆盖触发回滚的原始错误；下一次 Setup 会重新发布。
             }
+            if ($mappingCaptured) {
+                $this->autoloader->restore($code, $previousMapping);
+            }
             throw $exception;
         } finally {
             if (is_resource($lockHandle)) {
@@ -330,13 +349,16 @@ final class Installer
                 throw new AddonException('The addon is not installed.', 'addon_not_installed');
             }
             $previousLifecycle = $this->lifecycle->read($code);
+            $manifest = $this->verifier->verifyRuntime($target);
+            $previousMapping = $this->autoloader->snapshot($code);
             $backup = $target.'.uninstall-'.bin2hex(random_bytes(5));
             if (!rename($target, $backup)) {
                 throw new RuntimeException('Unable to stage addon for uninstall.');
             }
             try {
-                $dispose = function () use ($code, $webPrefix, $backup, $previousLifecycle): void {
-                    $this->lifecycleRegistrar?->invoke('uninstall', $backup, $code, (array) ($previousLifecycle['manifest'] ?? []));
+                $this->autoloader->register($backup, $manifest);
+                $dispose = function () use ($code, $webPrefix, $backup, $manifest): void {
+                    $this->lifecycleRegistrar?->invoke('uninstall', $backup, $code, $manifest);
                     $this->lifecycle->transition($code, 'disposing');
                     $this->resourceSynchronizer?->deactivate($code);
                     $this->frontend->remove($webPrefix, $code);
@@ -345,10 +367,12 @@ final class Installer
                 };
                 null !== $this->database ? $this->database->transaction($dispose) : $dispose();
                 $this->deleteDirectory($backup);
+                $this->autoloader->restore($code, null);
             } catch (\Throwable $exception) {
                 if (is_dir($backup)) {
                     @rename($backup, $target);
                 }
+                $this->autoloader->restore($code, $previousMapping);
                 $this->lifecycle->restore($code, $previousLifecycle);
                 $frontendSource = $target.'/frontend/dist';
                 if (is_dir($frontendSource)) {

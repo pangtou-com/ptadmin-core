@@ -11,6 +11,7 @@ use Illuminate\Support\ServiceProvider;
 use PTAdmin\Addon\Catalog\AddonCatalog;
 use PTAdmin\Addon\Exception\AddonException;
 use PTAdmin\Addon\Lifecycle\LifecycleStore;
+use PTAdmin\Addon\Manifest\AddonNamespace;
 use PTAdmin\Addon\Runtime\Contracts\BootstrapInterface;
 use PTAdmin\Addon\Runtime\Contracts\HookInterface;
 use PTAdmin\Addon\Runtime\Contracts\ProviderInterface;
@@ -26,6 +27,9 @@ use PTAdmin\Template\Directive\DirectiveRegistry;
  */
 final class RuntimeRegistrar
 {
+    /** @var array<string, mixed>|null 同一次启动复用迁移阶段的发现结果。 */
+    private ?array $startupScan = null;
+
     public function __construct(
         private Application $app,
         private AddonCatalog $discovery,
@@ -33,8 +37,10 @@ final class RuntimeRegistrar
         private string $addonsPath,
         private ?TemplateDirectiveLoader $templateDirectives = null,
         private ?RuntimeRegistry $runtimeRegistry = null,
+        private ?AddonAutoloader $autoloader = null,
     ) {
         $this->addonsPath = rtrim($addonsPath, '/');
+        $this->autoloader ??= new AddonAutoloader();
     }
 
     /**
@@ -44,7 +50,8 @@ final class RuntimeRegistrar
      */
     public function register(): array
     {
-        $scan = $this->discovery->scan(true);
+        $scan = $this->startupScan ?? $this->prepareAutoload($this->discovery->scan(true));
+        $this->startupScan = null;
         $loaded = [];
         $errors = $scan['errors'];
         foreach ($scan['addons'] as $addon) {
@@ -56,7 +63,6 @@ final class RuntimeRegistrar
             try {
                 $manifest = is_array($addon['manifest'] ?? null) ? $addon['manifest'] : [];
                 $verifiedCode = (string) ($manifest['code'] ?? '');
-                $this->registerAddonAutoloader($directory, $manifest, $verifiedCode);
                 $this->registerMigrationPath($directory);
                 $this->registerFunctions($directory, $manifest);
                 $this->registerBootstrap($directory, $verifiedCode, $manifest);
@@ -74,12 +80,12 @@ final class RuntimeRegistrar
                     }
                     $this->contributeRuntime($directory, $verifiedCode, $manifest, $registry);
                 }
-                if (is_file($directory.'/runtime/PaymentProvider.php') || is_file($directory.'/runtime/SocialAuthProvider.php')) {
+                if (is_file($directory.'/src/Runtime/PaymentProvider.php') || is_file($directory.'/src/Runtime/SocialAuthProvider.php')) {
                     if (!$this->app->bound(ServiceProtocolLoader::class)) {
                         throw new AddonException('支付与登录协议加载器未注册。', 'service_protocol_loader_unavailable');
                     }
                     $this->app->make(ServiceProtocolLoader::class)->register(
-                        $directory, $verifiedCode, $this->addonNamespace($manifest, $verifiedCode),
+                        $directory, $verifiedCode, AddonNamespace::fromManifest($manifest),
                     );
                 }
                 $loaded[] = $code;
@@ -108,7 +114,7 @@ final class RuntimeRegistrar
     /** Register active addon migration paths before the application's migration run. */
     public function registerMigrations(): void
     {
-        $scan = $this->discovery->scan(true);
+        $scan = $this->startupScan = $this->prepareAutoload($this->discovery->scan(true));
         foreach ($scan['addons'] as $addon) {
             if (($addon['state'] ?? 'active') !== 'active') {
                 continue;
@@ -129,6 +135,7 @@ final class RuntimeRegistrar
      */
     public function contributeRuntime(string $directory, string $code, array $manifest, RuntimeRegistry $registry): void
     {
+        $this->autoloader->register($directory, $manifest);
         $runtime = $this->runtimeDeclaration($directory, $code, $manifest);
         if ($runtime === null) {
             return;
@@ -142,10 +149,22 @@ final class RuntimeRegistrar
         if (!class_exists($class, false)) {
             require_once $path;
         }
-        if (!class_exists($class) || !is_a($class, RuntimeRegistrarInterface::class, true)) {
+        if (!class_exists($class, false) || !is_a($class, RuntimeRegistrarInterface::class, true)) {
             throw new AddonException('Addon runtime class is invalid.', 'runtime_class_invalid');
         }
         $this->app->make($class)->registerRuntime($registry->forOwner('addon', $code), $manifest);
+    }
+
+    /**
+     * 资源同步使用插件服务与扩展校验器；首次安装和停用插件不能依赖启动阶段已加载 Provider。
+     * 此入口不注册插件路由、指令或协议，也不推进生命周期状态。
+     *
+     * @param array<string, mixed> $manifest 已验证的 manifest
+     */
+    public function prepareServices(string $directory, array $manifest): void
+    {
+        $this->autoloader->register($directory, $manifest);
+        $this->registerProvider($directory, $manifest['code'], $manifest);
     }
 
     /** @param array<string,mixed> $manifest */
@@ -173,35 +192,33 @@ final class RuntimeRegistrar
         }
     }
 
-    /** Register a case-independent PSR-4 loader for the active plugin's actual directory. */
-    private function registerAddonAutoloader(string $directory, array $manifest, string $code): void
+    /** 映射先于所有插件入口，包含停用插件的身份占用但不加载其类。 */
+    private function prepareAutoload(array $scan): array
     {
-        $namespace = trim((string) ($manifest['namespace'] ?? $this->addonNamespace($manifest, $code)), '\\').'\\';
-        spl_autoload_register(static function (string $class) use ($namespace, $directory): void {
-            if (!str_starts_with($class, $namespace)) {
-                return;
-            }
-            $relative = substr($class, strlen($namespace));
-            $segments = explode('\\', $relative);
-            $file = $directory;
-            $last = count($segments) - 1;
-            foreach ($segments as $index => $segment) {
-                if ($segment === '') {
-                    return;
+        $addons = [];
+        foreach ($scan['addons'] as $addon) {
+            $code = (string) $addon['code'];
+            try {
+                $this->autoloader->reserve($addon['manifest']);
+                if (($addon['state'] ?? 'active') === 'active') {
+                    $this->autoloader->register($this->addonsPath.'/'.$code, $addon['manifest']);
                 }
-                if ($index === $last) {
-                    $file .= '/'.$segment;
-                    continue;
+                $addons[] = $addon;
+            } catch (\Throwable $exception) {
+                $errorCode = $exception instanceof AddonException ? $exception->errorCode : 'addon_autoload_failed';
+                try {
+                    $this->lifecycle->transition($code, 'inactive', [
+                        'runtime_error_code' => $errorCode, 'runtime_error' => $exception->getMessage(),
+                    ]);
+                } catch (\Throwable) {
+                    // 诊断文件写入失败时仍返回最初的映射异常，不阻断其他插件启动。
                 }
-                $camelCaseDirectory = lcfirst($segment);
-                $kebabCaseDirectory = strtolower((string) preg_replace('/(?<!^)[A-Z]/', '-$0', $segment));
-                $file .= '/'.(is_dir($file.'/'.$camelCaseDirectory) ? $camelCaseDirectory : $kebabCaseDirectory);
+                $scan['errors'][] = ['code' => $code, 'error_code' => $errorCode, 'message' => $exception->getMessage()];
             }
-            $file .= '.php';
-            if (is_file($file)) {
-                require_once $file;
-            }
-        });
+        }
+        $scan['addons'] = $addons;
+
+        return $scan;
     }
 
     private function registerMigrationPath(string $directory): void
@@ -223,11 +240,11 @@ final class RuntimeRegistrar
     /** @param array<string,mixed> $manifest */
     private function registerBootstrap(string $directory, string $code, array $manifest): void
     {
-        $file = 'Bootstrap.php';
+        $file = 'src/Bootstrap.php';
         if (!is_file($directory.'/'.$file)) {
             return;
         }
-        $class = $this->addonNamespace($manifest, $code).'\\Bootstrap';
+        $class = AddonNamespace::fromManifest($manifest).'\\Bootstrap';
         $path = $directory.'/'.$file;
         if (!is_file($path)) {
             throw new AddonException('Addon bootstrap file is unavailable.', 'bootstrap_unavailable');
@@ -235,7 +252,7 @@ final class RuntimeRegistrar
         if (!class_exists($class, false)) {
             require_once $path;
         }
-        if (!class_exists($class)) {
+        if (!class_exists($class, false)) {
             throw new AddonException('Addon bootstrap class is unavailable.', 'bootstrap_class_unavailable');
         }
         $instance = $this->app->make($class);
@@ -290,7 +307,7 @@ final class RuntimeRegistrar
     private function registerProvider(string $directory, string $code, array $manifest): void
     {
         $providerValue = $manifest['provider'] ?? ($manifest['providers'] ?? null);
-        if ($providerValue === null && !is_file($directory.'/providers/ServiceProvider.php')) {
+        if ($providerValue === null && !is_file($directory.'/src/Providers/ServiceProvider.php')) {
             return;
         }
         if (is_array($providerValue) && array_is_list($providerValue)) {
@@ -307,10 +324,10 @@ final class RuntimeRegistrar
     private function registerProviderDeclaration(string $directory, string $code, array $manifest, mixed $declaration): void
     {
         $provider = is_string($declaration) ? ['file' => $declaration] : (is_array($declaration) ? $declaration : []);
-        $file = $this->safeRelative((string) ($provider['file'] ?? 'providers/ServiceProvider.php'));
+        $file = $this->safeRelative((string) ($provider['file'] ?? 'src/Providers/ServiceProvider.php'));
         $class = trim((string) ($provider['class'] ?? ''));
         if ($class === '') {
-            $class = $this->addonNamespace($manifest, $code).'\\Providers\\ServiceProvider';
+            $class = AddonNamespace::fromManifest($manifest).'\\Providers\\ServiceProvider';
         }
         if ($file === '') {
             throw new AddonException('Addon provider declaration is invalid.', 'invalid_provider');
@@ -322,7 +339,7 @@ final class RuntimeRegistrar
         if (!class_exists($class, false)) {
             require_once $path;
         }
-        if (!class_exists($class)) {
+        if (!class_exists($class, false)) {
             throw new AddonException('Addon provider class is unavailable.', 'provider_class_unavailable');
         }
         if (!is_a($class, ProviderInterface::class, true) || !is_a($class, ServiceProvider::class, true)) {
@@ -371,7 +388,7 @@ final class RuntimeRegistrar
     /** 允许直接构造 Registrar 的测试或精简宿主延迟创建隔离的指令 Loader。 */
     private function templateDirectiveLoader(): TemplateDirectiveLoader
     {
-        return $this->templateDirectives ??= new TemplateDirectiveLoader($this->app, new DirectiveRegistry());
+        return $this->templateDirectives ??= new TemplateDirectiveLoader($this->app, new DirectiveRegistry(), $this->autoloader);
     }
 
     /** @param array<string,mixed> $manifest */
@@ -405,7 +422,7 @@ final class RuntimeRegistrar
                 throw new AddonException('Addon hook file is unavailable.', 'hooks_unavailable');
             }
             require_once $path;
-            if (!class_exists($class)) {
+            if (!class_exists($class, false)) {
                 throw new AddonException('Addon hook class is unavailable.', 'hook_class_unavailable');
             }
             $instance = $this->app->make($class);
@@ -429,30 +446,15 @@ final class RuntimeRegistrar
     /** @return array{file:string,class:string}|null */
     private function runtimeDeclaration(string $directory, string $code, array $manifest): ?array
     {
-        $file = 'runtime/Registrar.php';
+        $file = 'src/Runtime/Registrar.php';
         if (!is_file($directory.'/'.$file)) {
             return null;
         }
 
         return [
             'file' => $file,
-            'class' => $this->addonNamespace($manifest, $code).'\\Runtime\\Registrar',
+            'class' => AddonNamespace::fromManifest($manifest).'\\Runtime\\Registrar',
         ];
     }
 
-    private function addonNamespace(array $manifest, string $code): string
-    {
-        $namespace = trim((string) ($manifest['namespace'] ?? ''), "\\");
-        if ($namespace !== '') {
-            return $namespace;
-        }
-
-        $parts = preg_split('/[^A-Za-z0-9]+/', $code, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-        $studly = implode('', array_map(
-            static fn (string $part): string => ucfirst(strtolower($part)),
-            $parts,
-        ));
-
-        return 'PTAdmin\\Addons\\'.$studly;
-    }
 }

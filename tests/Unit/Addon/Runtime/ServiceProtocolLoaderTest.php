@@ -34,7 +34,7 @@ final class ServiceProtocolLoaderTest extends ProtocolTestCase
     {
         $namespace = 'FixtureProtocol'.bin2hex(random_bytes(6));
         $directory = $this->temporary.'/addons/provider-plugin';
-        mkdir($directory.'/runtime', 0700, true);
+        mkdir($directory.'/src/Runtime', 0700, true);
         $payment = <<<'PHP'
 <?php
 namespace NAMESPACE\Runtime;
@@ -79,8 +79,8 @@ final class SocialAuthProvider implements SocialAuthProviderInterface
     }
 }
 PHP;
-        file_put_contents($directory.'/runtime/PaymentProvider.php', str_replace('NAMESPACE', $namespace, $payment));
-        file_put_contents($directory.'/runtime/SocialAuthProvider.php', str_replace('NAMESPACE', $namespace, $auth));
+        file_put_contents($directory.'/src/Runtime/PaymentProvider.php', str_replace('NAMESPACE', $namespace, $payment));
+        file_put_contents($directory.'/src/Runtime/SocialAuthProvider.php', str_replace('NAMESPACE', $namespace, $auth));
         file_put_contents($directory.'/manifest.json', json_encode([
             'code' => 'provider-plugin', 'version' => '1.0.0', 'namespace' => $namespace,
         ], JSON_THROW_ON_ERROR));
@@ -114,7 +114,7 @@ PHP;
     {
         [$directory, $namespace] = $this->providers();
         $this->lifecycle->transition('provider-plugin', 'inactive');
-        file_put_contents($directory.'/runtime/PaymentProvider.php', '<?php throw new \\LogicException("不应加载停用插件");');
+        file_put_contents($directory.'/src/Runtime/PaymentProvider.php', '<?php throw new \\LogicException("不应加载停用插件");');
         $this->assertProtocolError('addon_unavailable', fn () => $this->loader->register($directory, 'provider-plugin', $namespace));
         self::assertSame([], $this->payments->definitions());
     }

@@ -8,6 +8,7 @@ use PTAdmin\Addon\Exception\AddonException;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
 use PTAdmin\Addon\Resource\ResourceSynchronizerInterface;
 use PTAdmin\Addon\Runtime\RuntimeLifecycleValidator;
+use PTAdmin\Addon\Runtime\AddonAutoloader;
 use PTAdmin\Schema\Runtime\RuntimeCacheStore;
 use RuntimeException;
 
@@ -29,8 +30,10 @@ final class StateManager
         private ?RuntimeCacheStore $runtimeCache = null,
         private ?RuntimeLifecycleValidator $runtimeValidator = null,
         private ?LifecycleRegistrar $lifecycleRegistrar = null,
+        private ?AddonAutoloader $autoloader = null,
     ) {
         $this->addonsPath = rtrim($addonsPath, '/');
+        $this->autoloader ??= new AddonAutoloader();
     }
 
     /**
@@ -79,12 +82,17 @@ final class StateManager
             throw new AddonException('The addon is not installed.', 'addon_not_installed');
         }
         $lock = $this->locks->acquire($code);
+        $previousMapping = null;
+        $mappingCaptured = false;
+        $runtimeValidationStarted = false;
+        $resourcesChanged = false;
         try {
             $manifest = $this->verifier->verifyRuntime($directory);
+            $previousMapping = $this->autoloader->snapshot($code);
+            $mappingCaptured = true;
+            $this->autoloader->register($directory, $manifest);
             $this->runtimeCache?->clear();
             $current = $this->lifecycle->read($code);
-            $runtimeValidationStarted = false;
-            $resourcesChanged = false;
             if (!$enabled) {
                 $this->lifecycleRegistrar?->invoke('disable', $directory, $code, $manifest);
                 $this->resourceSynchronizer?->deactivate($code);
@@ -148,7 +156,7 @@ final class StateManager
             }
             return ['code' => $code, 'enabled' => $enabled, 'state' => $result['state'], 'version' => $manifest['version']];
         } catch (\Throwable $exception) {
-            if (($runtimeValidationStarted ?? false) || $resourcesChanged) {
+            if ($runtimeValidationStarted || $resourcesChanged) {
                 try {
                     if ($enabled) {
                         $this->resourceSynchronizer?->deactivate($code);
@@ -163,6 +171,9 @@ final class StateManager
                 } catch (\Throwable) {
                     // 生命周期快照恢复失败不能覆盖触发回滚的原始 Runtime 异常。
                 }
+            }
+            if ($mappingCaptured) {
+                $this->autoloader->restore($code, $previousMapping);
             }
             throw $exception;
         } finally {

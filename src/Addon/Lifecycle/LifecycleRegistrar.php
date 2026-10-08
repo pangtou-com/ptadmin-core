@@ -6,12 +6,14 @@ namespace PTAdmin\Addon\Lifecycle;
 
 use Illuminate\Contracts\Foundation\Application;
 use PTAdmin\Addon\Exception\AddonException;
+use PTAdmin\Addon\Manifest\AddonNamespace;
+use PTAdmin\Addon\Runtime\AddonAutoloader;
 use PTAdmin\Addon\Lifecycle\Contracts\LifecycleInterface;
 
-/** 按固定 lifecycle/Handler.php 约定调用插件生命周期回调。 */
+/** 按固定 src/Lifecycle/Handler.php 约定调用插件生命周期回调。 */
 final class LifecycleRegistrar
 {
-    public function __construct(private Application $app)
+    public function __construct(private Application $app, private ?AddonAutoloader $autoloader = null)
     {
     }
 
@@ -22,15 +24,16 @@ final class LifecycleRegistrar
             throw new AddonException('Addon lifecycle event is invalid.', 'invalid_lifecycle_event');
         }
 
-        $file = $directory.'/lifecycle/Handler.php';
+        ($this->autoloader ??= new AddonAutoloader())->register($directory, $manifest);
+        $file = $directory.'/src/Lifecycle/Handler.php';
         if (!is_file($file)) {
             return;
         }
-        $class = $this->addonNamespace($manifest, $code).'\\Lifecycle\\Handler';
+        $class = AddonNamespace::fromManifest($manifest).'\\Lifecycle\\Handler';
         if (!class_exists($class, false)) {
             require_once $file;
         }
-        if (!class_exists($class) || !is_a($class, LifecycleInterface::class, true)) {
+        if (!class_exists($class, false) || !is_a($class, LifecycleInterface::class, true)) {
             throw new AddonException('Addon lifecycle handler is invalid.', 'invalid_lifecycle_handler');
         }
 
@@ -38,20 +41,4 @@ final class LifecycleRegistrar
         $handler->{$event}(new LifecycleContext($code, $directory, $manifest));
     }
 
-    /** @param array<string,mixed> $manifest */
-    private function addonNamespace(array $manifest, string $code): string
-    {
-        $namespace = trim((string) ($manifest['namespace'] ?? ''), "\\");
-        if ($namespace !== '') {
-            return $namespace;
-        }
-
-        $parts = preg_split('/[^A-Za-z0-9]+/', $code, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-        $studly = implode('', array_map(
-            static fn (string $part): string => ucfirst(strtolower($part)),
-            $parts,
-        ));
-
-        return 'PTAdmin\\Addons\\'.$studly;
-    }
 }

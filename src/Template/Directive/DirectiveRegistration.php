@@ -14,8 +14,8 @@ final class DirectiveRegistration
     private bool $committed = false;
 
     public function __construct(
-        private DirectiveRegistry $registry,
-        private string $namespace,
+        private readonly DirectiveRegistry $registry,
+        private readonly string            $namespace,
     ) {}
 
     public function define(string $name): DirectiveBuilder

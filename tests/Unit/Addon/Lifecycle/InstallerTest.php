@@ -12,6 +12,7 @@ use PTAdmin\Addon\Exception\AddonException;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
 use PTAdmin\Addon\Package\PackageExtractor;
 use PTAdmin\Addon\Resource\ResourceSynchronizerInterface;
+use PTAdmin\Addon\Runtime\AddonAutoloader;
 use PTAdmin\Schema\Runtime\RuntimeCacheStore;
 use PTAdmin\Schema\Runtime\RuntimeRegistry;
 use RuntimeException;
@@ -36,7 +37,8 @@ final class InstallerTest extends TestCase
         $source = $this->root.'/source';
         mkdir($source.'/frontend/dist', 0700, true);
         file_put_contents($source.'/manifest.json', json_encode(['code' => 'demo-addon', 'version' => '1.0.0'], JSON_THROW_ON_ERROR));
-        file_put_contents($source.'/Bootstrap.php', '<?php');
+        mkdir($source.'/src', 0700, true);
+        file_put_contents($source.'/src/Bootstrap.php', '<?php');
         file_put_contents($source.'/frontend/dist/entry.js', 'export default {}');
 
         $public = $this->root.'/public';
@@ -52,7 +54,7 @@ final class InstallerTest extends TestCase
         $result = $installer->install($source, 'admintest');
 
         self::assertSame('demo-addon', $result['code']);
-        self::assertFileExists($this->root.'/addons/demo-addon/Bootstrap.php');
+        self::assertFileExists($this->root.'/addons/demo-addon/src/Bootstrap.php');
         self::assertFileExists($public.'/admintest/plugins/demo-addon/entry.js');
     }
 
@@ -105,9 +107,12 @@ final class InstallerTest extends TestCase
     {
         $state = new LifecycleStore($this->root.'/state');
         $publisher = new FrontendPublisher($this->root.'/public');
-        $installer = new Installer(new ManifestVerifier(), new PackageExtractor(), $state, $publisher, $this->root.'/addons', $this->root.'/staging', false);
+        $autoloader = new AddonAutoloader();
+        $installer = new Installer(new ManifestVerifier(), new PackageExtractor(), $state, $publisher, $this->root.'/addons', $this->root.'/staging', false, autoloader: $autoloader);
         $versionOne = $this->package('v1', '1.0.0', 'backend-v1', 'frontend-v1');
+        mkdir($versionOne.'/src');
         $installer->install($versionOne, 'admintest');
+        $previousMapping = $autoloader->snapshot('demo-addon');
 
         $failingSync = new class implements ResourceSynchronizerInterface {
             public function sync(string $directory, string $code): array
@@ -119,7 +124,7 @@ final class InstallerTest extends TestCase
             {
             }
         };
-        $updater = new Installer(new ManifestVerifier(), new PackageExtractor(), $state, $publisher, $this->root.'/addons', $this->root.'/staging', false, $failingSync);
+        $updater = new Installer(new ManifestVerifier(), new PackageExtractor(), $state, $publisher, $this->root.'/addons', $this->root.'/staging', false, $failingSync, autoloader: $autoloader);
 
         try {
             $updater->install($this->package('v2', '2.0.0', 'backend-v2', 'frontend-v2'), 'admintest', true);
@@ -132,6 +137,32 @@ final class InstallerTest extends TestCase
         self::assertSame('frontend-v1', file_get_contents($this->root.'/public/admintest/plugins/demo-addon/entry.js'));
         self::assertSame('1.0.0', $state->read('demo-addon')['version']);
         self::assertSame('active', $state->read('demo-addon')['state']);
+        self::assertSame($previousMapping, $autoloader->snapshot('demo-addon'));
+    }
+
+    public function testUpdatingTheSameDirectoryLoadsAPreviouslyMissingNewClass(): void
+    {
+        $namespace = 'UpdatedAddon'.bin2hex(random_bytes(5));
+        $autoloader = new AddonAutoloader();
+        $installer = new Installer(
+            new ManifestVerifier(), new PackageExtractor(), new LifecycleStore($this->root.'/state'),
+            new FrontendPublisher($this->root.'/public'), $this->root.'/addons', $this->root.'/staging', false,
+            autoloader: $autoloader,
+        );
+        foreach (['v1' => '1.0.0', 'v2' => '2.0.0'] as $folder => $version) {
+            $source = $this->package($folder, $version, $folder, $folder);
+            mkdir($source.'/src');
+            file_put_contents($source.'/manifest.json', json_encode([
+                'code' => 'demo-addon', 'version' => $version, 'namespace' => $namespace,
+            ], JSON_THROW_ON_ERROR));
+        }
+        $installer->install($this->root.'/v1', 'admintest');
+        self::assertFalse(class_exists($namespace.'\\Added'));
+        file_put_contents($this->root.'/v2/src/Added.php', '<?php namespace '.$namespace.'; final class Added {}');
+        $installer->install($this->root.'/v2', 'admintest', true);
+
+        self::assertTrue(class_exists($namespace.'\\Added'));
+        self::assertSame(realpath($this->root.'/addons/demo-addon/src/Added.php'), (new \ReflectionClass($namespace.'\\Added'))->getFileName());
     }
 
     public function testDisposedAddonCanBeInstalledAgain(): void

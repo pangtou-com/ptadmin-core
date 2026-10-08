@@ -97,6 +97,7 @@ use PTAdmin\Addon\Resource\ResourceSynchronizerInterface;
 use PTAdmin\Addon\Lifecycle\OperationLock;
 use PTAdmin\Addon\Catalog\AddonCatalog;
 use PTAdmin\Addon\Runtime\RuntimeRegistrar;
+use PTAdmin\Addon\Runtime\AddonAutoloader;
 use PTAdmin\Addon\Runtime\RuntimeLifecycleValidator;
 use PTAdmin\Addon\Runtime\TemplateDirectiveLoader;
 use PTAdmin\Template\Builtin\BuiltinDirectiveProvider;
@@ -416,6 +417,7 @@ final class PTAdminServiceProvider extends ServiceProvider
 
     private function registerAddonRuntimeServices(): void
     {
+        $this->app->singleton(AddonAutoloader::class);
         $this->app->singleton(ResourceSynchronizer::class);
         $this->app->alias(ResourceSynchronizer::class, ResourceSynchronizerInterface::class);
         $this->app->singleton(AddonCatalog::class, static function ($app): AddonCatalog {
@@ -435,6 +437,7 @@ final class PTAdminServiceProvider extends ServiceProvider
                 (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
                 $app->make(TemplateDirectiveLoader::class),
                 $app->make(RuntimeRegistry::class),
+                $app->make(AddonAutoloader::class),
             );
         });
         $this->app->singleton(RuntimeLifecycleValidator::class);
@@ -460,7 +463,7 @@ final class PTAdminServiceProvider extends ServiceProvider
                 $app->make(RuntimeCacheStore::class),
                 $app->make(RuntimeLifecycleValidator::class),
                 $app->make(LifecycleRegistrar::class),
-                $app->make('migrator'),
+                $app->make(AddonAutoloader::class),
             );
         });
         $this->app->singleton(Installer::class, static function ($app): Installer {
@@ -478,6 +481,8 @@ final class PTAdminServiceProvider extends ServiceProvider
                 $app->make(RuntimeCacheStore::class),
                 $app->make(RuntimeLifecycleValidator::class),
                 $app->make(LifecycleRegistrar::class),
+                $app->make('migrator'),
+                $app->make(AddonAutoloader::class),
             );
         });
     }
