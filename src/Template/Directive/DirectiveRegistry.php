@@ -91,7 +91,7 @@ final class DirectiveRegistry
     /** @return array<string,bool> */
     public static function builtinAliases(): array
     {
-        return array_fill_keys(['seo', 'img', 'images', 'file', 'files', 'dump'], true);
+        return array_fill_keys(['seo', 'img', 'images', 'file', 'files', 'dump', 'crumb', 'crumb_data', 'pager', 'pager_data'], true);
     }
     /** @return array<string,bool> */
     public static function structuralAliases(): array

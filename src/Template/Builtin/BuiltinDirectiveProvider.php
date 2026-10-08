@@ -10,6 +10,7 @@ final class BuiltinDirectiveProvider
 {
     public function register(DirectiveRegistration $registry): void
     {
+        (new PageNavigationDirectiveProvider())->register($registry);
         $registry->define('seo')->output([$this, 'seo'])->alias('seo')->safeHtml()
             ->description('输出当前页面 SEO 头部。')
             ->parameter('only', type: 'array', description: '要输出的 SEO 字段。')
