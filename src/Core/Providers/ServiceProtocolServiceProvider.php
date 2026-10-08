@@ -8,7 +8,6 @@ use Illuminate\Support\ServiceProvider;
 use PTAdmin\Core\ServiceProtocol\AddonAvailability;
 use PTAdmin\Payment\{PaymentRegistry, PaymentGateway};
 use PTAdmin\SocialAuth\{SocialAuthRegistry, SocialAuthGateway};
-use PTAdmin\Addon\Runtime\ServiceProtocolLoader;
 
 final class ServiceProtocolServiceProvider extends ServiceProvider
 {
@@ -19,6 +18,5 @@ final class ServiceProtocolServiceProvider extends ServiceProvider
         $this->app->singleton(PaymentGateway::class);
         $this->app->singleton(SocialAuthRegistry::class);
         $this->app->singleton(SocialAuthGateway::class);
-        $this->app->singleton(ServiceProtocolLoader::class);
     }
 }

@@ -5,19 +5,40 @@ declare(strict_types=1);
 namespace PTAdmin\Payment;
 
 use Illuminate\Contracts\Container\Container;
+use PTAdmin\Addon\Runtime\AddonRegistration;
 use PTAdmin\Core\ServiceProtocol\{AddonAvailability, Input, ProtocolException};
 use PTAdmin\Payment\Contracts\PaymentAdapterInterface;
+use PTAdmin\Payment\Contracts\PaymentProviderInterface;
 
 final class PaymentRegistry
 {
     /** @var array<string,array<string,RegisteredPaymentChannel>> */
     private array $channels = [];
 
-    public function __construct(private Container $container, private AddonAvailability $availability)
+    public function __construct(private Container $container, private AddonAvailability $availability, private ?AddonRegistration $registration = null)
     {
     }
 
-    /** @internal 只能由插件加载器提交已验证的插件归属。 */
+    /** 插件 Provider 主动提交支付声明，当前启动作用域绑定插件归属。 */
+    public function register(string $addonCode, PaymentProviderInterface $provider): void
+    {
+        $this->availability->assertActive($addonCode);
+        $scope = $this->registration ??= $this->container->make(AddonRegistration::class);
+        $scope->assertOwner($addonCode);
+        $this->assertCanCommit($addonCode);
+        $channels = new PaymentRegistration();
+        $provider->register($channels);
+        $scope->stage($addonCode, self::class.':'.spl_object_id($this),
+            fn () => $this->commit($addonCode, $channels->channels()),
+            function () use ($addonCode, $channels): void {
+                if (($this->channels[$addonCode] ?? null) === $channels->channels()) {
+                    unset($this->channels[$addonCode]);
+                }
+            },
+        );
+    }
+
+    /** @internal 提交前检查，业务插件使用 register()。 */
     public function assertCanCommit(string $addonCode): void
     {
         Input::code($addonCode, 'addon_code');

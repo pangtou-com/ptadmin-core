@@ -13,6 +13,7 @@ use PTAdmin\Addon\Exception\AddonException;
 use PTAdmin\Addon\Lifecycle\LifecycleStore;
 use PTAdmin\Addon\Manifest\AddonNamespace;
 use PTAdmin\Addon\Runtime\Contracts\BootstrapInterface;
+use PTAdmin\Addon\Runtime\Contracts\CapabilityProviderInterface;
 use PTAdmin\Addon\Runtime\Contracts\HookInterface;
 use PTAdmin\Addon\Runtime\Contracts\ProviderInterface;
 use PTAdmin\Addon\Runtime\Contracts\RuntimeRegistrarInterface;
@@ -23,7 +24,8 @@ use PTAdmin\Template\Directive\DirectiveRegistry;
  * 将 active 插件接入当前 Laravel 应用生命周期。
  *
  * 入口按固定顺序注册 migration、函数、Bootstrap、路由、Provider、配置、视图语言、模板指令、Hook 和
- * Schema Runtime 贡献。单个插件失败时会被标记为 inactive 并记录诊断，但不会阻断核心或其他插件启动。
+ * Schema Runtime 贡献，最后调用 Provider 的能力注册入口。单个插件失败时会被标记为 inactive 并记录诊断，
+ * 本次能力注册不生效，但不会阻断核心或其他插件启动。
  */
 final class RuntimeRegistrar
 {
@@ -67,7 +69,7 @@ final class RuntimeRegistrar
                 $this->registerFunctions($directory, $manifest);
                 $this->registerBootstrap($directory, $verifiedCode, $manifest);
                 $this->registerRoutes($directory, $manifest);
-                $this->registerProvider($directory, $verifiedCode, $manifest);
+                $providers = $this->registerProvider($directory, $verifiedCode, $manifest);
                 $this->registerConfig($directory, $verifiedCode, $manifest);
                 $this->registerViewsAndTranslations($directory, $verifiedCode);
                 $this->templateDirectiveLoader()->register($directory, $verifiedCode, $manifest);
@@ -80,13 +82,16 @@ final class RuntimeRegistrar
                     }
                     $this->contributeRuntime($directory, $verifiedCode, $manifest, $registry);
                 }
-                if (is_file($directory.'/src/Runtime/PaymentProvider.php') || is_file($directory.'/src/Runtime/SocialAuthProvider.php')) {
-                    if (!$this->app->bound(ServiceProtocolLoader::class)) {
-                        throw new AddonException('支付与登录协议加载器未注册。', 'service_protocol_loader_unavailable');
+                $capabilityProviders = array_filter($providers, static fn (ServiceProvider $provider): bool => $provider instanceof CapabilityProviderInterface);
+                if ($capabilityProviders !== []) {
+                    if (!$this->app->bound(AddonRegistration::class)) {
+                        $this->app->singleton(AddonRegistration::class);
                     }
-                    $this->app->make(ServiceProtocolLoader::class)->register(
-                        $directory, $verifiedCode, AddonNamespace::fromManifest($manifest),
-                    );
+                    $this->app->make(AddonRegistration::class)->run($verifiedCode, static function () use ($capabilityProviders, $verifiedCode): void {
+                        foreach ($capabilityProviders as $provider) {
+                            $provider->registerCapabilities($verifiedCode);
+                        }
+                    });
                 }
                 $loaded[] = $code;
             } catch (\Throwable $exception) {
@@ -303,25 +308,29 @@ final class RuntimeRegistrar
         }
     }
 
-    /** @param array<string,mixed> $manifest */
-    private function registerProvider(string $directory, string $code, array $manifest): void
+    /**
+     * @param array<string,mixed> $manifest
+     * @return list<ServiceProvider>
+     */
+    private function registerProvider(string $directory, string $code, array $manifest): array
     {
         $providerValue = $manifest['provider'] ?? ($manifest['providers'] ?? null);
         if ($providerValue === null && !is_file($directory.'/src/Providers/ServiceProvider.php')) {
-            return;
+            return [];
         }
         if (is_array($providerValue) && array_is_list($providerValue)) {
+            $providers = [];
             foreach ($providerValue as $entry) {
-                $this->registerProviderDeclaration($directory, $code, $manifest, $entry);
+                $providers[] = $this->registerProviderDeclaration($directory, $code, $manifest, $entry);
             }
-            return;
+            return $providers;
         }
         $provider = is_string($providerValue) ? ['file' => $providerValue] : (is_array($providerValue) ? $providerValue : []);
-        $this->registerProviderDeclaration($directory, $code, $manifest, $provider);
+        return [$this->registerProviderDeclaration($directory, $code, $manifest, $provider)];
     }
 
     /** @param array<string,mixed> $manifest */
-    private function registerProviderDeclaration(string $directory, string $code, array $manifest, mixed $declaration): void
+    private function registerProviderDeclaration(string $directory, string $code, array $manifest, mixed $declaration): ServiceProvider
     {
         $provider = is_string($declaration) ? ['file' => $declaration] : (is_array($declaration) ? $declaration : []);
         $file = $this->safeRelative((string) ($provider['file'] ?? 'src/Providers/ServiceProvider.php'));
@@ -345,7 +354,7 @@ final class RuntimeRegistrar
         if (!is_a($class, ProviderInterface::class, true) || !is_a($class, ServiceProvider::class, true)) {
             throw new AddonException('Addon provider must implement ProviderInterface and extend ServiceProvider.', 'invalid_provider');
         }
-        $this->app->register($class);
+        return $this->app->register($class);
     }
 
     /** @param array<string,mixed> $manifest */

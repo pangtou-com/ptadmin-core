@@ -417,6 +417,7 @@ final class PTAdminServiceProvider extends ServiceProvider
 
     private function registerAddonRuntimeServices(): void
     {
+        $this->app->singleton(\PTAdmin\Addon\Runtime\AddonRegistration::class);
         $this->app->singleton(AddonAutoloader::class);
         $this->app->singleton(ResourceSynchronizer::class);
         $this->app->alias(ResourceSynchronizer::class, ResourceSynchronizerInterface::class);

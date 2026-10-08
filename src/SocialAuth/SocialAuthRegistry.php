@@ -5,19 +5,40 @@ declare(strict_types=1);
 namespace PTAdmin\SocialAuth;
 
 use Illuminate\Contracts\Container\Container;
+use PTAdmin\Addon\Runtime\AddonRegistration;
 use PTAdmin\Core\ServiceProtocol\{AddonAvailability, Input, ProtocolException};
 use PTAdmin\SocialAuth\Contracts\SocialAuthAdapterInterface;
+use PTAdmin\SocialAuth\Contracts\SocialAuthProviderInterface;
 
 final class SocialAuthRegistry
 {
     /** @var array<string,array<string,RegisteredSocialAuthChannel>> */
     private array $channels = [];
 
-    public function __construct(private Container $container, private AddonAvailability $availability)
+    public function __construct(private Container $container, private AddonAvailability $availability, private ?AddonRegistration $registration = null)
     {
     }
 
-    /** @internal 只能由加载器提交已验证插件的归属。 */
+    /** 插件 Provider 主动提交登录声明，当前启动作用域绑定插件归属。 */
+    public function register(string $addonCode, SocialAuthProviderInterface $provider): void
+    {
+        $this->availability->assertActive($addonCode);
+        $scope = $this->registration ??= $this->container->make(AddonRegistration::class);
+        $scope->assertOwner($addonCode);
+        $this->assertCanCommit($addonCode);
+        $channels = new SocialAuthRegistration();
+        $provider->register($channels);
+        $scope->stage($addonCode, self::class.':'.spl_object_id($this),
+            fn () => $this->commit($addonCode, $channels->channels()),
+            function () use ($addonCode, $channels): void {
+                if (($this->channels[$addonCode] ?? null) === $channels->channels()) {
+                    unset($this->channels[$addonCode]);
+                }
+            },
+        );
+    }
+
+    /** @internal 提交前检查，业务插件使用 register()。 */
     public function assertCanCommit(string $addonCode): void
     {
         Input::code($addonCode, 'addon_code');
