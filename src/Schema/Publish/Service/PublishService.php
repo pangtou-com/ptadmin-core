@@ -509,6 +509,12 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
         if (empty($field['required'])) {
             $column->nullable();
         }
+        // 标量默认值同时用于新表及增量加列，保证已有记录满足安全发布计划。
+        if (!$multiple && in_array($type, ['string', 'integer', 'number', 'boolean'], true)
+            && \PTAdmin\Schema\Support\FieldProtection::mode($field) !== 'encrypted'
+            && array_key_exists('default', $field) && is_scalar($field['default'])) {
+            $column->default($field['default']);
+        }
     }
 
     /**
