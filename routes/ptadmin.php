@@ -156,6 +156,8 @@ Route::middleware($authenticatedMiddleware)
         Route::get('session/authorize', [CloudController::class, 'authorize'])->name('session.authorize');
         Route::post('session/logout', [CloudController::class, 'logout'])->name('session.logout');
         Route::get('catalog', [CloudController::class, 'catalog'])->name('catalog');
+        Route::get('developer/products', [CloudController::class, 'products'])->name('developer.products');
+        Route::post('developer/{type}/releases/package', [CloudController::class, 'submitRelease'])->where('type', 'addon|template')->name('developer.release.submit');
         Route::post('orders', [CloudController::class, 'order'])->name('orders.store');
         Route::get('orders/{orderId}', [CloudController::class, 'showOrder'])->name('orders.show');
         Route::post('licenses/preview', [CloudController::class, 'license'])->name('licenses.preview');

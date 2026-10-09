@@ -82,6 +82,9 @@ final class Installer
                 $onProgress('extracting', 20, '正在解压插件包。');
             }
             $package = $this->extractor->extract($source, $stage.'/package');
+            if (is_file($package.'/ptadmin-source.json')) {
+                throw new AddonException('源码包用于二次开发，请选择安装包进行安装。', 'source_package_not_installable');
+            }
             if ($onProgress !== null) {
                 $onProgress('verifying', 30, '正在校验插件清单与签名。');
             }

@@ -16,7 +16,7 @@ final class FounderAccess
         if (!$admin instanceof Admin) {
             throw new CloudException('管理员会话无效。', 'unauthorized');
         }
-        if (!(bool) $admin->getAttribute('is_founder')) {
+        if (!(bool) $admin->getAttribute('is_founder') || !(bool) $admin->getAttribute('status')) {
             throw new CloudException('只有创始人可以使用云市场。', 'founder_required');
         }
         return $admin;

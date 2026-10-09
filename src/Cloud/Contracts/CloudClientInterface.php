@@ -17,9 +17,18 @@ interface CloudClientInterface
     public function exchangeAuthorizationCode(string $code, string $codeVerifier, string $redirectUri): array;
 
     /** @return array<string, mixed> */
+    public function pollCliAuthorization(string $requestKey, string $codeVerifier): array;
+
+    /** @return array<string, mixed> */
     public function session(string $accessToken): array;
 
     public function logout(string $accessToken): void;
+
+    public function refresh(string $refreshToken): array;
+
+    public function products(string $accessToken, array $filters = []): array;
+
+    public function submitRelease(string $accessToken, string $type, array $payload): array;
 
     /** @param array<string, mixed> $filters @return array<string, mixed> */
     public function catalog(string $accessToken, array $filters = []): array;

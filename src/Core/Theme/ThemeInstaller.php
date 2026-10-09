@@ -29,6 +29,9 @@ final class ThemeInstaller
         $this->ensureDirectory($stage);
         try {
             $this->extractor->extract($source, $package);
+            if (is_file($package.'/ptadmin-source.json')) {
+                throw new ThemeException('源码包用于二次开发，请选择安装包进行安装。', 'source_package_not_installable');
+            }
             [$code, $version] = $this->manifestIdentity($package);
             if ($expectedCode !== null && strcasecmp($expectedCode, $code) !== 0) {
                 throw new ThemeException('Theme code does not match the requested operation.', 'theme_code_mismatch');

@@ -61,7 +61,7 @@ use PTAdmin\Cloud\Contracts\CloudClientInterface;
 use PTAdmin\Cloud\Contracts\CloudSessionStoreInterface;
 use PTAdmin\Cloud\EncryptedCloudSessionStore;
 use PTAdmin\Cloud\FounderAccess;
-use PTAdmin\Cloud\UnavailableCloudClient;
+use PTAdmin\Cloud\HttpCloudClient;
 use PTAdmin\Core\Theme\ActiveThemeResolver;
 use PTAdmin\Core\Theme\ThemeCatalog;
 use PTAdmin\Core\Theme\ThemeManifestValidator;
@@ -183,7 +183,7 @@ final class PTAdminServiceProvider extends ServiceProvider
         });
         $this->app->singleton(TaskEventLog::class);
         $this->app->singleton(TaskManager::class);
-        $this->app->singleton(CloudClientInterface::class, UnavailableCloudClient::class);
+        $this->app->singleton(CloudClientInterface::class, HttpCloudClient::class);
         $this->app->singleton(CloudSessionStoreInterface::class, static function ($app): CloudSessionStoreInterface {
             return new EncryptedCloudSessionStore(
                 (string) $app['config']->get('ptadmin.cloud.session_path', storage_path('app/ptadmin/cloud/session.json')),
@@ -557,6 +557,8 @@ final class PTAdminServiceProvider extends ServiceProvider
         }
 
         $this->commands([
+            \PTAdmin\Cloud\Console\CloudCommand::class,
+            \PTAdmin\Cloud\Console\PublishCommand::class,
             TaskRunCommand::class,
             TaskRecoverCommand::class,
             UnifiedSyncCommand::class,

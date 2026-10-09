@@ -105,8 +105,6 @@ return [
         'event_limit' => (int) env('PTADMIN_TASK_EVENT_LIMIT', 100),
     ],
     'cloud' => [
-        'client_id' => env('PTADMIN_CLOUD_CLIENT_ID', ''),
-        'redirect_uri' => env('PTADMIN_CLOUD_REDIRECT_URI', ''),
         'callback_redirect' => env('PTADMIN_CLOUD_CALLBACK_REDIRECT', ''),
         'session_path' => env('PTADMIN_CLOUD_SESSION_PATH', storage_path('app/ptadmin/cloud/session.json')),
     ],

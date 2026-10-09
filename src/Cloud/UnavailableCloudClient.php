@@ -19,12 +19,32 @@ final class UnavailableCloudClient implements CloudClientInterface
         throw $this->unavailable();
     }
 
+    public function pollCliAuthorization(string $requestKey, string $codeVerifier): array
+    {
+        throw $this->unavailable();
+    }
+
     public function session(string $accessToken): array
     {
         throw $this->unavailable();
     }
 
     public function logout(string $accessToken): void
+    {
+        throw $this->unavailable();
+    }
+
+    public function refresh(string $refreshToken): array
+    {
+        throw $this->unavailable();
+    }
+
+    public function products(string $accessToken, array $filters = []): array
+    {
+        throw $this->unavailable();
+    }
+
+    public function submitRelease(string $accessToken, string $type, array $payload): array
     {
         throw $this->unavailable();
     }
