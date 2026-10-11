@@ -257,6 +257,7 @@ final class PTAdminServiceProvider extends ServiceProvider
         });
         $this->app->singleton(AdminAuthenticator::class);
         $this->app->singleton(AuthorizationService::class);
+        $this->app->bind(\PTAdmin\Admin\Auth\AuthorizationIdentityResolverInterface::class, \PTAdmin\Admin\Auth\AccountAuthorizationIdentityResolver::class);
         $this->app->singleton(DataScopeRegistry::class);
         $this->app->singleton(DashboardService::class);
         $this->app->singleton(MenuSynchronizer::class, static function ($app): MenuSynchronizer {

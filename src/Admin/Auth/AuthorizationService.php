@@ -13,8 +13,16 @@ final class AuthorizationService
 
     private const LEGACY_MENU_ACCESS_ABILITY = 'view';
 
-    public function __construct(private ConnectionInterface $database)
+    private readonly AuthorizationIdentityResolverInterface $identities;
+
+    public function __construct(private ConnectionInterface $database, ?AuthorizationIdentityResolverInterface $identities = null)
     {
+        $this->identities = $identities ?? new AccountAuthorizationIdentityResolver($database);
+    }
+
+    public function identity(Admin $admin): AuthorizationIdentity
+    {
+        return $this->identities->resolve($admin);
     }
 
     public function allows(
@@ -32,7 +40,11 @@ final class AuthorizationService
         string $resourceKey,
         ?AuthorizationContext $context = null,
     ): AuthorizationDecision {
-        if ((bool) $admin->is_founder) {
+        if (!$this->identities->permits($admin, $resourceKey, $ability)) {
+            return new AuthorizationDecision(false, 'identity_restricted');
+        }
+        $identity = $this->identity($admin);
+        if ($identity->superuser) {
             return new AuthorizationDecision(true, 'founder');
         }
 
@@ -42,7 +54,7 @@ final class AuthorizationService
         }
 
         $direct = [];
-        foreach ($resources as $resource) {
+        foreach ($identity->directGrants ? $resources : [] as $resource) {
             $direct = array_merge($direct, $this->grantsForSubject(
                 'admin',
                 (string) $admin->getKey(),
@@ -57,7 +69,7 @@ final class AuthorizationService
         }
 
         $roleGrants = [];
-        foreach ($this->roleAssignments((int) $admin->getKey()) as $roleId) {
+        foreach ($identity->roleIds as $roleId) {
             foreach ($resources as $resource) {
                 foreach ($this->grantsForSubject(
                     'role',
@@ -80,7 +92,7 @@ final class AuthorizationService
     /** @return array<int, string> */
     public function permissions(Admin $admin): array
     {
-        if ((bool) $admin->is_founder) {
+        if ($this->identity($admin)->superuser) {
             return ['*'];
         }
 
@@ -110,15 +122,14 @@ final class AuthorizationService
     /** @return list<string> */
     public function roles(Admin $admin): array
     {
-        if ((bool) $admin->is_founder) {
+        if ($this->identity($admin)->superuser) {
             return ['*'];
         }
 
         return array_values(array_unique(array_map(
             static fn (mixed $code): string => (string) $code,
-            $this->database->table('admin_user_roles as relations')
-                ->join('admin_roles as roles', 'roles.id', '=', 'relations.role_id')
-                ->where('relations.admin_id', $admin->getKey())
+            $this->database->table('admin_roles as roles')
+                ->whereIn('roles.id', $this->identity($admin)->roleIds)
                 ->where('roles.status', 1)
                 ->whereNull('roles.deleted_at')
                 ->pluck('roles.code')
@@ -313,20 +324,6 @@ final class AuthorizationService
         return new AuthorizationDecision(true, $reason.'_allow', $selected);
     }
 
-    /** @return list<int> */
-    private function roleAssignments(int $adminId): array
-    {
-        return $this->database->table('admin_user_roles as relations')
-            ->join('admin_roles as roles', 'roles.id', '=', 'relations.role_id')
-            ->where('relations.admin_id', $adminId)
-            ->where('roles.status', 1)
-            ->whereNull('roles.deleted_at')
-            ->pluck('relations.role_id')
-            ->map(static fn ($roleId): int => (int) $roleId)
-            ->values()
-            ->all();
-    }
-
     /**
      * @param array<string, mixed>|list<mixed>|null $conditions
      */
@@ -389,12 +386,16 @@ final class AuthorizationService
     /** @return array<int, list<string>> */
     private function declaredAbilities(Admin $admin): array
     {
-        $roleIds = $this->roleAssignments((int) $admin->getKey());
+        $identity = $this->identity($admin);
+        $roleIds = $identity->roleIds;
         $rows = $this->database->table('admin_grants')
-            ->where(function ($query) use ($admin, $roleIds): void {
-                $query->where(function ($direct) use ($admin): void {
-                    $direct->where('subject_type', 'admin')->where('subject_id', (string) $admin->getKey());
-                });
+            ->where(function ($query) use ($admin, $roleIds, $identity): void {
+                $query->whereRaw('1 = 0');
+                if ($identity->directGrants) {
+                    $query->orWhere(function ($direct) use ($admin): void {
+                        $direct->where('subject_type', 'admin')->where('subject_id', (string) $admin->getKey());
+                    });
+                }
                 if ($roleIds !== []) {
                     $query->orWhere(function ($roles) use ($roleIds): void {
                         $roles->where('subject_type', 'role')->whereIn('subject_id', array_map('strval', $roleIds));

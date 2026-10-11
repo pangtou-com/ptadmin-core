@@ -23,6 +23,7 @@ final class RecordAdminOperationMiddlewareTest extends TestCase
         ];
         $request = Request::create('/admin/app/market/addon/releases/7/package', 'POST', $input);
         $request->attributes->set('ptadmin.session', ['guard_name' => 'admin', 'subject_id' => 1]);
+        $request->attributes->set('ptadmin.authorization_identity', ['membership_id' => 12, 'organization_id' => 8]);
         $database = $this->createMock(ConnectionInterface::class);
         $query = $this->createMock(Builder::class);
         $database->expects(self::once())->method('table')->with('admin_operation_records')->willReturn($query);
@@ -34,6 +35,7 @@ final class RecordAdminOperationMiddlewareTest extends TestCase
                 'content_base64' => '[masked]',
                 'context' => ['data' => ['CONTENT-BASE64' => '[masked]', 'password' => '[masked]']],
                 'package_size' => 3000,
+                '_identity' => ['membership_id' => 12, 'organization_id' => 8],
             ], json_decode($record['request_payload'], true, 512, JSON_THROW_ON_ERROR));
 
             return true;

@@ -33,7 +33,7 @@ final class SessionController extends Controller
         /** @var array{id:string, subject_type:string, subject_id:string, guard_name:string, metadata:array<string,mixed>, expires_at:string, absolute_expires_at:string} $session */
         $session = $request->attributes->get('ptadmin.session');
         $admin = Admin::query()->find($session['subject_id']);
-        if (null === $admin || 'admin' !== $session['guard_name']) {
+        if (!$admin instanceof Admin || 'admin' !== $session['guard_name']) {
             return AdminResponse::error(40102, '管理员账号不可用，请重新登录。', null, 401);
         }
 
@@ -42,6 +42,7 @@ final class SessionController extends Controller
         $plugins = $this->addonFrontends->resolve($menus);
         $applications = $this->applicationFrontends->resolve($menus);
         $modules = array_merge($applications['modules'], $plugins['plugins']);
+        $identity = $this->authorization->identity($admin)->attributes;
 
         return AdminResponse::success('', [
             'user' => $this->authenticator->userPayload($admin),
@@ -53,10 +54,11 @@ final class SessionController extends Controller
             'plugins' => $plugins['plugins'],
             'modules' => $modules,
             'session' => [
-                'expires_at' => (string) ($session['expires_at'] ?? ''),
-                'absolute_expires_at' => (string) ($session['absolute_expires_at'] ?? ''),
+                'expires_at' => $session['expires_at'],
+                'absolute_expires_at' => $session['absolute_expires_at'],
             ],
-            'generation' => hash('sha256', (string) $session['id']),
+            'generation' => hash('sha256', (string) $session['id'].($identity === [] ? '' : json_encode($identity, JSON_THROW_ON_ERROR))),
+            ...($identity === [] ? [] : ['authorization' => $identity]),
             'features' => [
                 'task_center' => true,
                 'plugin_runtime' => true,

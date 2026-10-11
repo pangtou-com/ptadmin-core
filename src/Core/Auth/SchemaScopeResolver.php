@@ -17,6 +17,7 @@ final class SchemaScopeResolver implements SchemaScopeResolverInterface
         private AuthorizationService $authorization,
         private ConnectionInterface $database,
         private DataScopeRegistry $scopes,
+        private ?DataScopeBoundaryInterface $boundary = null,
     ) {
     }
 
@@ -25,8 +26,8 @@ final class SchemaScopeResolver implements SchemaScopeResolverInterface
         if (!$subject instanceof Admin) {
             return $this->none();
         }
-        if ((bool) $subject->is_founder) {
-            return null;
+        if ($this->authorization->identity($subject)->superuser) {
+            return $this->boundary?->resolve($subject, $resourceKey, $action, $this->activeSchema($resourceKey) ?? []);
         }
 
         $decision = $this->authorization->decision($subject, $action, $resourceKey);
@@ -43,7 +44,7 @@ final class SchemaScopeResolver implements SchemaScopeResolverInterface
         foreach ($decision->grants as $grant) {
             $constraint = $this->grantConstraint($grant, $subject, $resourceKey, $action, $schema);
             if ($constraint === null) {
-                return null;
+                return $this->boundary?->resolve($subject, $resourceKey, $action, $schema);
             }
             $constraints[] = $constraint;
         }
@@ -52,9 +53,12 @@ final class SchemaScopeResolver implements SchemaScopeResolverInterface
             return $this->none();
         }
 
-        return count($constraints) === 1
+        $granted = count($constraints) === 1
             ? $constraints[0]
             : new ServerConstraint(['any' => $constraints]);
+        $boundary = $this->boundary?->resolve($subject, $resourceKey, $action, $schema);
+
+        return $boundary === null ? $granted : new ServerConstraint(['all' => [$granted, $boundary]]);
     }
 
     /** @param array<string, mixed> $schema */

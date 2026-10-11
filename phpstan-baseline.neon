@@ -67,12 +67,6 @@ parameters:
 			path: src/Admin/Auth/AdminAuthenticator.php
 
 		-
-			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$is_founder\.$#'
-			identifier: property.notFound
-			count: 3
-			path: src/Admin/Auth/AuthorizationService.php
-
-		-
 			message: '#^Using nullsafe property access "\?\-\>attributes" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
 			identifier: nullsafe.neverNull
 			count: 1
@@ -199,12 +193,6 @@ parameters:
 			path: src/Admin/Schema/AdminRuntimeHook.php
 
 		-
-			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\Admin\:\:\$is_founder\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Core/Auth/SchemaScopeResolver.php
-
-		-
 			message: '#^Strict comparison using \=\=\= between non\-empty\-list\<PTAdmin\\Schema\\Contract\\ServerConstraint\> and array\{\} will always evaluate to false\.$#'
 			identifier: identical.alwaysFalse
 			count: 1
@@ -263,30 +251,6 @@ parameters:
 			identifier: return.type
 			count: 1
 			path: src/Core/Http/Controllers/InstallWizardController.php
-
-		-
-			message: '#^Parameter \#1 \$admin of method PTAdmin\\Admin\\Auth\\AdminAuthenticator\:\:userPayload\(\) expects PTAdmin\\Admin\\Models\\Admin, array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Core/Http/Controllers/SessionController.php
-
-		-
-			message: '#^Parameter \#1 \$admin of method PTAdmin\\Admin\\Auth\\AuthorizationService\:\:menus\(\) expects PTAdmin\\Admin\\Models\\Admin, array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Core/Http/Controllers/SessionController.php
-
-		-
-			message: '#^Parameter \#1 \$admin of method PTAdmin\\Admin\\Auth\\AuthorizationService\:\:permissions\(\) expects PTAdmin\\Admin\\Models\\Admin, array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Core/Http/Controllers/SessionController.php
-
-		-
-			message: '#^Parameter \#1 \$admin of method PTAdmin\\Admin\\Auth\\AuthorizationService\:\:roles\(\) expects PTAdmin\\Admin\\Models\\Admin, array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Core/Http/Controllers/SessionController.php
 
 		-
 			message: '#^Parameter \#2 \$default of method Illuminate\\Http\\Request\:\:query\(\) expects array\|string\|null, int given\.$#'

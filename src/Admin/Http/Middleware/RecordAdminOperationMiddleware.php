@@ -68,12 +68,18 @@ final class RecordAdminOperationMiddleware
     private function requestPayload(Request $request): string
     {
         $payload = $this->sanitizeValue($request->input(), 0);
+        // 身份由宿主在服务端验证后写入，不能由请求正文伪造。
+        unset($payload['_identity']);
+        $identity = $request->attributes->get('ptadmin.authorization_identity');
+        if (is_array($identity)) {
+            $payload['_identity'] = $this->sanitizeValue($identity, 0);
+        }
         $encoded = json_encode(
             $payload,
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE,
         );
         if (!is_string($encoded) || strlen($encoded) > self::MAX_PAYLOAD_BYTES) {
-            return '{"_truncated":true,"_reason":"payload_too_large"}';
+            return json_encode(['_truncated' => true, '_reason' => 'payload_too_large', '_identity' => $payload['_identity'] ?? null], JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
         }
 
         return $encoded;
