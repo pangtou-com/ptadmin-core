@@ -137,6 +137,28 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app->singleton(InstallStateStore::class, static function (): InstallStateStore {
             return new InstallStateStore(storage_path('app/ptadmin/install'));
         });
+        $this->app->booting(function (): void {
+            if ($this->app->make(InstallStateStore::class)->isInstalled()) {
+                return;
+            }
+
+            // 宿主注册限流器时就会解析缓存，必须在所有 Provider boot 前隔离数据库缓存。
+            $config = $this->app['config'];
+            foreach (['cache.default', 'cache.limiter'] as $key) {
+                $store = $config->get($key);
+                if (is_string($store) && $config->get('cache.stores.'.$store.'.driver') === 'database') {
+                    $config->set('cache.stores.ptadmin-install', [
+                        'driver' => 'file',
+                        'path' => storage_path('app/ptadmin/install/cache'),
+                    ]);
+                    $config->set($key, 'ptadmin-install');
+                }
+            }
+            // Laravel 的跳转响应也会解析 Session，即使安装路由没有使用 web 中间件。
+            if ($config->get('session.driver') === 'database') {
+                $config->set('session.driver', 'array');
+            }
+        });
         $this->app->singleton(InstallLock::class, static function ($app): InstallLock {
             return new InstallLock($app->make(InstallStateStore::class)->lockPath());
         });
