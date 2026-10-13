@@ -48,6 +48,8 @@ final class AuthorizationService
             return new AuthorizationDecision(true, 'founder');
         }
 
+        $authorizationSubjectId = $identity->authorizationSubjectId ?? (int) $admin->getKey();
+
         $resources = $this->authorizationResources($resourceKey);
         if ($resources === []) {
             return new AuthorizationDecision(false, 'resource_unavailable');
@@ -57,7 +59,7 @@ final class AuthorizationService
         foreach ($identity->directGrants ? $resources : [] as $resource) {
             $direct = array_merge($direct, $this->grantsForSubject(
                 'admin',
-                (string) $admin->getKey(),
+                (string) $authorizationSubjectId,
                 (int) $resource->id,
                 $ability,
                 $admin,
@@ -388,12 +390,13 @@ final class AuthorizationService
     {
         $identity = $this->identity($admin);
         $roleIds = $identity->roleIds;
+        $authorizationSubjectId = $identity->authorizationSubjectId ?? (int) $admin->getKey();
         $rows = $this->database->table('admin_grants')
-            ->where(function ($query) use ($admin, $roleIds, $identity): void {
+            ->where(function ($query) use ($authorizationSubjectId, $roleIds, $identity): void {
                 $query->whereRaw('1 = 0');
                 if ($identity->directGrants) {
-                    $query->orWhere(function ($direct) use ($admin): void {
-                        $direct->where('subject_type', 'admin')->where('subject_id', (string) $admin->getKey());
+                    $query->orWhere(function ($direct) use ($authorizationSubjectId): void {
+                        $direct->where('subject_type', 'admin')->where('subject_id', (string) $authorizationSubjectId);
                     });
                 }
                 if ($roleIds !== []) {

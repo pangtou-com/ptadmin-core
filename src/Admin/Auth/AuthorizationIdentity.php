@@ -13,6 +13,8 @@ final class AuthorizationIdentity
         public readonly bool $directGrants = true,
         public readonly bool $superuser = false,
         public readonly array $attributes = [],
+        /** 读取直接授权时使用的有效授权主体；为空时使用当前登录账号。 */
+        public readonly ?int $authorizationSubjectId = null,
     ) {
     }
 }

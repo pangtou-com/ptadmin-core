@@ -44,6 +44,34 @@ final class AuthorizationIdentityTest extends TestCase
         self::assertSame('identity_restricted', $decision->reason);
     }
 
+    public function testDelegatedAuthorizationSubjectReadsDirectGrantsWhileKeepingActor(): void
+    {
+        $db = new SQLiteConnection(new PDO('sqlite::memory:'));
+        $db->statement('CREATE TABLE admin_resources (id INTEGER, resource_key TEXT, status INTEGER, deleted_at TEXT, sort INTEGER)');
+        $db->statement('CREATE TABLE admin_grants (id INTEGER, subject_type TEXT, subject_id TEXT, resource_id INTEGER, abilities_json TEXT, effect TEXT, priority INTEGER, scope_type TEXT, scope_value_json TEXT, conditions_json TEXT, expires_at TEXT)');
+        $db->table('admin_resources')->insert(['id' => 1, 'resource_key' => 'community.records', 'status' => 1, 'deleted_at' => null, 'sort' => 1]);
+        $db->table('admin_grants')->insert(['id' => 1, 'subject_type' => 'admin', 'subject_id' => '7', 'resource_id' => 1,
+            'abilities_json' => '["view"]', 'effect' => 'allow', 'priority' => 0, 'scope_type' => 'all',
+            'scope_value_json' => null, 'conditions_json' => null, 'expires_at' => null]);
+        $admin = new Admin();
+        $admin->forceFill(['id' => 20, 'is_founder' => false]);
+        $resolver = new class implements AuthorizationIdentityResolverInterface {
+            public function resolve(Admin $admin): AuthorizationIdentity
+            {
+                return new AuthorizationIdentity([], true, false, ['actual_actor_id' => 20], 7);
+            }
+
+            public function permits(Admin $admin, string $resourceKey, string $ability): bool
+            {
+                return true;
+            }
+        };
+        $decision = (new AuthorizationService($db, $resolver))->decision($admin, 'view', 'community.records');
+
+        self::assertTrue($decision->allowed);
+        self::assertSame('direct_grant_allow', $decision->reason);
+    }
+
     public function testMandatoryBoundaryAlsoAppliesToSuperusers(): void
     {
         $db = new SQLiteConnection(new PDO('sqlite::memory:'));
