@@ -27,6 +27,14 @@ final class TaskManagerTest extends TestCase
         $this->remove($this->directory);
     }
 
+    public function testCloudDeliveryAndLocalInstallShareTheExclusiveTaskLock(): void
+    {
+        $this->tasks->create(TaskManager::CLOUD_PACKAGE, ['release_id' => 1]);
+        $this->expectException(TaskException::class);
+        $this->expectExceptionMessage('已有安装或更新正在进行');
+        $this->tasks->create(TaskManager::ADDON_INSTALL, ['source' => '/local.zip']);
+    }
+
     public function testTaskLifecycleWritesStatePayloadResultAndEvents(): void
     {
         $task = $this->tasks->create(TaskManager::ADMIN_FRONTEND_UPDATE, ['version' => '1.2.0'], 'req-1');

@@ -206,6 +206,7 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app->singleton(TaskEventLog::class);
         $this->app->singleton(TaskManager::class);
         $this->app->singleton(CloudClientInterface::class, HttpCloudClient::class);
+        $this->app->singleton(\PTAdmin\Cloud\Contracts\ProductDeliveryClientInterface::class, HttpCloudClient::class);
         $this->app->singleton(CloudSessionStoreInterface::class, static function ($app): CloudSessionStoreInterface {
             return new EncryptedCloudSessionStore(
                 (string) $app['config']->get('ptadmin.cloud.session_path', storage_path('app/ptadmin/cloud/session.json')),
@@ -215,6 +216,7 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app->singleton(FounderAccess::class);
         $this->app->singleton(TaskExecutorRegistry::class, static function ($app): TaskExecutorRegistry {
             $registry = new TaskExecutorRegistry();
+            $registry->register(\PTAdmin\Cloud\CloudPackageExecutor::TYPE, $app->make(\PTAdmin\Cloud\CloudPackageExecutor::class));
             $registry->register('admin_frontend.update', $app->make(AdminFrontendUpdateExecutor::class));
             $addonExecutor = $app->make(AddonTaskExecutor::class);
             $registry->register('addon.download', $addonExecutor);

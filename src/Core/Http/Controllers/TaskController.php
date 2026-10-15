@@ -28,6 +28,9 @@ final class TaskController extends Controller
         $type = trim((string) ($payload['type'] ?? ''));
         try {
             // 模块任务必须经过模块自己的载荷校验和提交接口，通用入口只创建内置类型。
+            if ($type === TaskManager::CLOUD_PACKAGE) {
+                throw new TaskException('云安装任务必须通过云市场交付接口创建。', 'forbidden');
+            }
             TaskManager::permissionFor($type);
             $this->assertTaskPermission($request, $type, 'create');
             $data = $payload['payload'] ?? [];
@@ -74,7 +77,11 @@ final class TaskController extends Controller
         try {
             $task = $tasks->get($taskId);
             $this->assertTaskPermission($request, (string) ($task['type'] ?? ''), 'update');
-            return AdminResponse::success('', $tasks->retry($taskId, $this->requestId($request)));
+            $result = $tasks->retry($taskId, $this->requestId($request));
+            if ($task['type'] === TaskManager::CLOUD_PACKAGE) {
+                \Illuminate\Support\Facades\Bus::dispatchAfterResponse(new \PTAdmin\Cloud\ExecuteCloudPackageTask($taskId));
+            }
+            return AdminResponse::success('', $result);
         } catch (TaskException $exception) {
             return $this->error($exception);
         }
@@ -93,6 +100,13 @@ final class TaskController extends Controller
 
     private function assertTaskPermission(Request $request, string $type, string $ability): void
     {
+        if ($type === TaskManager::CLOUD_PACKAGE) {
+            try {
+                app(\PTAdmin\Cloud\FounderAccess::class)->assert($request);
+            } catch (\PTAdmin\Cloud\CloudException $exception) {
+                throw new TaskException($exception->getMessage(), 'forbidden');
+            }
+        }
         $session = $request->attributes->get('ptadmin.session');
         $admin = is_array($session) ? Admin::query()->find($session['subject_id'] ?? null) : null;
         if (!$admin instanceof Admin) {

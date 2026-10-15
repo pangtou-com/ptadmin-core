@@ -10,7 +10,7 @@ use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\ConnectionException;
 
 /** Core 与官网云市场的固定协议入口。 */
-final class HttpCloudClient implements CloudClientInterface
+final class HttpCloudClient implements CloudClientInterface, \PTAdmin\Cloud\Contracts\ProductDeliveryClientInterface
 {
     public function __construct(private readonly Factory $http, private readonly ApplicationIdentity $identity)
     {
@@ -91,12 +91,12 @@ final class HttpCloudClient implements CloudClientInterface
 
     public function previewLicense(string $accessToken, array $payload): array
     {
-        throw $this->unavailable();
+        return $this->request('POST', '/licenses/preview', $payload, $accessToken);
     }
 
     public function issueDownloadTicket(string $accessToken, array $payload): array
     {
-        throw $this->unavailable();
+        return $this->request('POST', '/licenses/ticket', $payload, $accessToken);
     }
 
     public function migrateIp(string $accessToken, array $payload): array
@@ -106,7 +106,63 @@ final class HttpCloudClient implements CloudClientInterface
 
     public function requestInstanceMigration(string $accessToken, array $payload): array
     {
-        throw $this->unavailable();
+        return $this->request('POST', '/licenses/project', $payload, $accessToken);
+    }
+
+    public function project(string $accessToken, array $payload): array
+    {
+        return $this->request('POST', '/licenses/project', $payload, $accessToken);
+    }
+
+    public function bindLicense(string $accessToken, array $payload): array
+    {
+        return $this->request('POST', '/licenses/bind', $payload, $accessToken);
+    }
+
+    public function releaseLicense(string $accessToken, array $payload): array
+    {
+        return $this->request('POST', '/licenses/release', $payload, $accessToken);
+    }
+
+    public function downloadPackage(string $accessToken, array $payload, string $destination): array
+    {
+        $ticket = $this->issueDownloadTicket($accessToken, $payload);
+        if (!is_string($ticket['ticket'] ?? null) || preg_match('/^[a-f0-9]{64}$/D', $ticket['ticket']) !== 1
+            || !is_string($ticket['sha256'] ?? null) || preg_match('/^[a-f0-9]{64}$/D', $ticket['sha256']) !== 1
+            || !is_int($ticket['size'] ?? null) || $ticket['size'] < 1) {
+            throw new CloudException('平台下载凭证响应无效。', 'cloud_response_invalid');
+        }
+        if (!is_dir(dirname($destination)) && !mkdir(dirname($destination), 0700, true) && !is_dir(dirname($destination))) {
+            throw new CloudException('无法创建下载目录。', 'download_failed');
+        }
+        $temporary = $destination.'.'.bin2hex(random_bytes(6)).'.tmp';
+        try {
+            $response = $this->http->withToken($accessToken)->withHeaders(['X-PTAdmin-Download-Ticket' => $ticket['ticket']])
+                ->connectTimeout(5)->timeout(120)->withoutRedirecting()->withOptions(['sink' => $temporary,
+                    'progress' => static function ($total, $downloaded) use ($ticket): void {
+                        if ($downloaded > $ticket['size']) {
+                            throw new CloudException('下载内容超过版本包声明大小。', 'cloud_response_invalid');
+                        }
+                    }])->post(CloudProtocol::SITE_URL.'/api/cloud/licenses/download');
+            if (!$response->successful()) {
+                throw new CloudException('平台下载失败，请重新连接并确认版本下载资格。', 'download_failed');
+            }
+            if (!is_file($temporary) || filesize($temporary) !== $ticket['size'] || !hash_equals($ticket['sha256'], hash_file('sha256', $temporary))) {
+                throw new CloudException('下载包大小或 SHA-256 不匹配。', 'checksum_mismatch');
+            }
+            chmod($temporary, 0600);
+            if (!rename($temporary, $destination)) {
+                throw new CloudException('无法保存下载包。', 'download_failed');
+            }
+            return ['artifact' => $destination, 'sha256' => $ticket['sha256'], 'size' => $ticket['size']];
+        } catch (ConnectionException $exception) {
+            // 底层异常可能带有请求信息，不进入任务日志。
+            throw new CloudException('下载连接中断，请稍后重试。', 'cloud_platform_unavailable');
+        } finally {
+            if (is_file($temporary)) {
+                unlink($temporary);
+            }
+        }
     }
 
     private function request(string $method, string $path, array $payload = [], ?string $token = null): array

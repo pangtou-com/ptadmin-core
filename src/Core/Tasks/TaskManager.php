@@ -11,6 +11,7 @@ use DateTimeZone;
 
 final class TaskManager
 {
+    public const CLOUD_PACKAGE = 'cloud.package';
     public const CORE_UPDATE = 'core.update';
     public const ADMIN_FRONTEND_UPDATE = 'admin_frontend.update';
     public const ADDON_DOWNLOAD = 'addon.download';
@@ -26,6 +27,7 @@ final class TaskManager
 
     /** @var array<string, string> */
     private const TASK_PERMISSIONS = [
+        self::CLOUD_PACKAGE => 'addon.install',
         self::CORE_UPDATE => 'core.update',
         self::ADMIN_FRONTEND_UPDATE => 'admin.frontend',
         self::ADDON_DOWNLOAD => 'addon.download',

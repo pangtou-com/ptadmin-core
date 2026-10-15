@@ -100,4 +100,71 @@ final class HttpCloudClientTest extends TestCase
         self::assertSame(51, $this->client->products('server-token', ['page' => 2])['total']);
         self::assertSame(7, $this->client->submitRelease('server-token', 'template', ['product_id' => 1])['id']);
     }
+    public function testInvalidTicketIsRejectedBeforeAnyDownload(): void
+    {
+        $bytes = 'verified package';
+        $this->http->fake(function ($request) use ($bytes) {
+            self::assertSame(['Bearer private-access'], $request->header('Authorization'));
+            if (str_ends_with($request->url(), '/ticket')) {
+                return Factory::response(['code' => 0, 'data' => ['ticket' => str_repeat('t', 64), 'sha256' => hash('sha256', $bytes), 'size' => strlen($bytes)]]);
+            }
+            return Factory::response($bytes);
+        });
+        // 非十六进制票据在下载前被拒绝，不创建 artifact。
+        $destination = $this->path.'.zip';
+        try {
+            $this->client->downloadPackage('private-access', ['license_id' => 1, 'release_id' => 2], $destination);
+            self::fail('Invalid ticket accepted');
+        } catch (CloudException $exception) {
+            self::assertSame('cloud_response_invalid', $exception->errorCode);
+        }
+        self::assertFileDoesNotExist($destination);
+        $this->http->assertSentCount(1);
+    }
+
+    public function testChecksumFailureKeepsExistingArtifactAndCleansPartialDownload(): void
+    {
+        $this->http->fakeSequence()
+            ->push(['code' => 0, 'data' => ['ticket' => str_repeat('a', 64), 'sha256' => hash('sha256', 'expected'), 'size' => 8]])
+            ->push('tampered');
+        $destination = $this->path.'.zip';
+        file_put_contents($destination, 'existing');
+        try {
+            $this->client->downloadPackage('private-access', ['license_id' => 1, 'release_id' => 2], $destination);
+            self::fail('Tampered package accepted');
+        } catch (CloudException $exception) {
+            self::assertSame('checksum_mismatch', $exception->errorCode);
+            self::assertStringNotContainsString('private-access', $exception->getMessage());
+        } finally {
+            self::assertSame('existing', file_get_contents($destination));
+            self::assertSame([], glob($destination.'.*.tmp'));
+            unlink($destination);
+        }
+    }
+
+    public function testDownloadUsesFixedEndpointAndPrivateHeaderAndPublishesVerifiedFile(): void
+    {
+        $bytes = 'verified package';
+        $this->http->fake(function ($request) use ($bytes) {
+            self::assertSame(['Bearer private-access'], $request->header('Authorization'));
+            if (str_ends_with($request->url(), '/ticket')) {
+                return Factory::response(['code' => 0, 'data' => ['ticket' => str_repeat('a', 64), 'sha256' => hash('sha256', $bytes), 'size' => strlen($bytes), 'url' => 'https://untrusted.invalid/package']]);
+            }
+            self::assertSame(CloudProtocol::SITE_URL.'/api/cloud/licenses/download', $request->url());
+            self::assertSame([str_repeat('a', 64)], $request->header('X-PTAdmin-Download-Ticket'));
+            return Factory::response($bytes);
+        });
+        $destination = $this->path.'.zip';
+        try {
+            $result = $this->client->downloadPackage('private-access', ['license_id' => 1, 'release_id' => 2], $destination);
+            self::assertSame(hash('sha256', $bytes), $result['sha256']);
+            self::assertSame($bytes, file_get_contents($destination));
+            self::assertArrayNotHasKey('ticket', $result);
+        } finally {
+            if (is_file($destination)) {
+                unlink($destination);
+            }
+        }
+    }
+
 }

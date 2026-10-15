@@ -53,7 +53,7 @@ final class TaskRunCommand extends Command
             return self::FAILURE;
         } catch (\Throwable $exception) {
             try {
-                $code = $exception instanceof AddonException || $exception instanceof ThemeException ? $exception->errorCode : 'executor_failed';
+                $code = $exception instanceof AddonException || $exception instanceof ThemeException || $exception instanceof \PTAdmin\Cloud\CloudException ? $exception->errorCode : 'executor_failed';
                 $tasks->fail($taskId, ['code' => $code, 'message' => $exception->getMessage()]);
             } catch (TaskException) {
             }
