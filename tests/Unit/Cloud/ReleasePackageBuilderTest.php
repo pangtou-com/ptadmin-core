@@ -74,6 +74,45 @@ final class ReleasePackageBuilderTest extends TestCase
         self::assertSame($frontend, json_decode(file_get_contents($this->root.'/source/frontend/frontend.json'), true));
     }
 
+    public function testBusinessCapabilitiesTravelWithVersionAndAreCoveredByAddonSignature(): void
+    {
+        $capabilities = [
+            ['code' => 'payment', 'name' => '支付', 'channels' => ['支付宝'], 'description' => '二维码支付与退款'],
+            ['code' => 'login', 'name' => '登录', 'channels' => ['微信登录'], 'description' => '支持账号绑定'],
+        ];
+        $this->write('ptadmin.release.json', json_encode(['business_capabilities' => $capabilities], JSON_THROW_ON_ERROR));
+        $this->write('manifest.json', json_encode(['code' => 'demo', 'version' => '1.0.0', 'sandbox' => 'iframe']));
+        $this->write('theme.json', json_encode(['code' => 'theme-demo', 'name' => '模板', 'version' => '1.0.0']));
+        $this->write('index.blade.php', 'Template');
+        foreach (['addon', 'template'] as $type) {
+            $this->builder->withPackage($type, $this->root.'/source', '1.1.0', function (array $package) use ($type, $capabilities): void {
+                $zip = new ZipArchive();
+                self::assertTrue($zip->open($package['path']));
+                $filename = $type === 'addon' ? 'manifest.json' : 'theme.json';
+                $manifest = json_decode($zip->getFromName($filename), true);
+                self::assertSame($capabilities, $manifest['release']['business_capabilities']);
+                $zip->extractTo($this->root.'/business-'.$type);
+                $zip->close();
+                self::assertTrue($zip->open($package['source']['path']));
+                self::assertSame($capabilities, json_decode($zip->getFromName('ptadmin.release.json'), true)['business_capabilities']);
+                $zip->close();
+                if ($type === 'addon') {
+                    $verifier = new ManifestVerifier();
+                    $verifier->verify($this->root.'/business-addon', true, false);
+                    $manifest['release']['business_capabilities'][0]['name'] = '伪造功能';
+                    file_put_contents($this->root.'/business-addon/manifest.json', json_encode($manifest));
+                    try {
+                        $verifier->verify($this->root.'/business-addon', true, false);
+                        self::fail('修改业务功能必须使签名校验失败');
+                    } catch (\PTAdmin\Addon\Exception\AddonException $exception) {
+                        self::assertSame('signature_invalid', $exception->errorCode);
+                    }
+                }
+            });
+        }
+        self::assertArrayNotHasKey('release', json_decode(file_get_contents($this->root.'/source/manifest.json'), true));
+    }
+
     public function testTemplateBuildUsesManifestVersionAndCleansAfterConsumerFailure(): void
     {
         $this->write('theme.json', json_encode(['code' => 'theme-demo', 'name' => '模板', 'version' => '1.0.0']));

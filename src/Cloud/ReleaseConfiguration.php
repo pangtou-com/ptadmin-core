@@ -9,11 +9,15 @@ final class ReleaseConfiguration
 {
     public const FILE = 'ptadmin.release.json';
 
+    private readonly ?array $businessCapabilities;
+
     public function __construct(private readonly array $values)
     {
-        if (array_diff(array_keys($values), ['build', 'install', 'source']) !== []) {
+        if (array_diff(array_keys($values), ['build', 'install', 'source', 'business_capabilities']) !== []) {
             throw new CloudException('发布配置包含未知字段。', 'invalid_request');
         }
+        $this->businessCapabilities = array_key_exists('business_capabilities', $values)
+            ? ReleaseBusinessCapabilities::validate($values['business_capabilities']) : null;
         foreach (['install', 'source'] as $kind) {
             $rules = $values[$kind] ?? [];
             if (!is_array($rules) || array_diff(array_keys($rules), ['include', 'exclude']) !== []) {
@@ -99,6 +103,12 @@ final class ReleaseConfiguration
             throw new CloudException('模板构建产物必须输出到 assets 或其子目录。', 'invalid_request');
         }
         return $build;
+    }
+
+    /** @return null|list<array{code:string,name:string,channels:list<string>,description:string}> */
+    public function businessCapabilities(): ?array
+    {
+        return $this->businessCapabilities;
     }
 
     public function includes(string $path, string $kind): bool

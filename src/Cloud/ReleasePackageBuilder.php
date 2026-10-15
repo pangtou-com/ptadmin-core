@@ -134,6 +134,10 @@ final class ReleasePackageBuilder
             }
             $this->copyPaths($snapshot, $root, $installPaths);
             $manifest['release'] = ['source_sha256' => hash_file('sha256', $sourceArchive)];
+            $businessCapabilities = $configuration->businessCapabilities();
+            if ($businessCapabilities !== null) {
+                $manifest['release']['business_capabilities'] = $businessCapabilities;
+            }
             $this->writeJson($root.'/'.$filename, $manifest);
             if ($type === 'addon') {
                 if ($keyId !== null) {

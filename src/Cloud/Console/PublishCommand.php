@@ -61,7 +61,7 @@ final class PublishCommand extends Command
             $this->line('发布版本：'.$version);
             $this->line('更新说明：'.($changelog === '' ? '未填写' : OutputFormatter::escape($changelog)));
             $this->line('交付文件：安装包和源码包；'.($this->option('skip-build') ? '使用已有构建产物。' : '在临时副本执行项目构建。'));
-            if ($interactive && !$this->confirm($dryRun ? '确认执行本地发布检查？' : '确认提交此版本草稿？', false)) {
+            if ($interactive && !$this->confirm($dryRun ? '确认执行本地发布检查？' : '确认提交此版本草稿？', true)) {
                 $this->info('已取消发布。');
                 return self::SUCCESS;
             }
