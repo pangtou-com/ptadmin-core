@@ -15,6 +15,7 @@ use PTAdmin\Cloud\CloudSessionManager;
 use PTAdmin\Cloud\CloudProtocol;
 use Illuminate\Support\Facades\Cache;
 use PTAdmin\Cloud\Contracts\CloudClientInterface;
+use PTAdmin\Cloud\Contracts\CloudCatalogInterface;
 use PTAdmin\Cloud\FounderAccess;
 use PTAdmin\Core\Http\Responses\AdminResponse;
 use PTAdmin\Core\Auth\Session\SessionManager;
@@ -126,11 +127,11 @@ final class CloudController extends Controller
         }
     }
 
-    public function catalog(Request $request): JsonResponse
+    public function catalog(Request $request, CloudCatalogInterface $catalog): JsonResponse
     {
         try {
             $this->founders->assert($request);
-            return AdminResponse::success('', $this->client->catalog($this->token(), $request->query()));
+            return AdminResponse::success('', $catalog->catalog($request->only(['product_type', 'keyword', 'category', 'page', 'per_page'])));
         } catch (CloudException $exception) {
             return $this->error($exception);
         }

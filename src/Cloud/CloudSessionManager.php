@@ -24,12 +24,12 @@ final class CloudSessionManager
     {
         $session = $this->sessions->get();
         if (!is_array($session) || !is_string($session['access_token'] ?? null)) {
-            throw new CloudException('请先完成云市场浏览器授权。', 'cloud_session_required');
+            throw new CloudException('请先登录平台。', 'cloud_session_required');
         }
         if (($session['expires_at'] ?? 0) <= time() + 30) {
             if (!is_string($session['refresh_token'] ?? null)) {
                 $this->sessions->forget();
-                throw new CloudException('云市场会话已过期，请重新连接。', 'cloud_session_required');
+                throw new CloudException('云市场会话已过期，请重新登录平台。', 'cloud_session_required');
             }
             try {
                 $session = $this->client->refresh($session['refresh_token']);

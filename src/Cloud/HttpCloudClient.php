@@ -6,13 +6,12 @@ namespace PTAdmin\Cloud;
 
 use PTAdmin\Cloud\Contracts\CloudClientInterface;
 use PTAdmin\Core\ApplicationIdentity;
-use Illuminate\Http\Client\Factory;
-use Illuminate\Http\Client\ConnectionException;
+use PTAdmin\Cloud\Contracts\CloudTransportInterface;
 
 /** Core 与官网云市场的固定协议入口。 */
 final class HttpCloudClient implements CloudClientInterface, \PTAdmin\Cloud\Contracts\ProductDeliveryClientInterface
 {
-    public function __construct(private readonly Factory $http, private readonly ApplicationIdentity $identity)
+    public function __construct(private readonly CloudTransportInterface $transport, private readonly ApplicationIdentity $identity)
     {
     }
 
@@ -25,7 +24,7 @@ final class HttpCloudClient implements CloudClientInterface, \PTAdmin\Cloud\Cont
         ]);
         openssl_sign(CloudProtocol::authorizationPayload($values), $signature, $identity['private_key'], OPENSSL_ALGO_SHA256);
         $values['signature'] = base64_encode($signature);
-        $result = $this->request('POST', '/requests', $values);
+        $result = $this->transport->request('POST', '/requests', $values);
         if (!is_string($result['request_key'] ?? null) || preg_match('/^[a-f0-9]{64}$/D', $result['request_key']) !== 1) {
             throw new CloudException('平台授权请求响应无效。', 'cloud_response_invalid');
         }
@@ -34,7 +33,7 @@ final class HttpCloudClient implements CloudClientInterface, \PTAdmin\Cloud\Cont
 
     public function exchangeAuthorizationCode(string $code, string $codeVerifier, string $redirectUri): array
     {
-        return $this->request('POST', '/token', [
+        return $this->transport->request('POST', '/token', [
             'grant_type' => 'authorization_code', 'code' => $code, 'code_verifier' => $codeVerifier,
             'redirect_uri' => $redirectUri, 'client_id' => $this->identity->load()['application_instance_id'],
         ]);
@@ -42,18 +41,18 @@ final class HttpCloudClient implements CloudClientInterface, \PTAdmin\Cloud\Cont
 
     public function pollCliAuthorization(string $requestKey, string $codeVerifier): array
     {
-        return $this->request('POST', '/token', ['grant_type' => 'cli', 'request_key' => $requestKey,
+        return $this->transport->request('POST', '/token', ['grant_type' => 'cli', 'request_key' => $requestKey,
             'code_verifier' => $codeVerifier, 'client_id' => $this->identity->load()['application_instance_id']]);
     }
 
     public function refresh(string $refreshToken): array
     {
-        return $this->request('POST', '/token', ['grant_type' => 'refresh_token', 'refresh_token' => $refreshToken]);
+        return $this->transport->request('POST', '/token', ['grant_type' => 'refresh_token', 'refresh_token' => $refreshToken]);
     }
 
     public function products(string $accessToken, array $filters = []): array
     {
-        return $this->request('GET', '/products', $filters, $accessToken);
+        return $this->transport->request('GET', '/products', $filters, $accessToken);
     }
 
     public function submitRelease(string $accessToken, string $type, array $payload): array
@@ -61,22 +60,22 @@ final class HttpCloudClient implements CloudClientInterface, \PTAdmin\Cloud\Cont
         if (!in_array($type, ['addon', 'template'], true)) {
             throw new CloudException('未知商品类型。', 'invalid_request');
         }
-        return $this->request('POST', '/market/'.$type.'/releases/package', $payload, $accessToken);
+        return $this->transport->request('POST', '/market/'.$type.'/releases/package', $payload, $accessToken);
     }
 
     public function session(string $accessToken): array
     {
-        return $this->request('GET', '/session', [], $accessToken);
+        return $this->transport->request('GET', '/session', [], $accessToken);
     }
 
     public function logout(string $accessToken): void
     {
-        $this->request('POST', '/revoke', ['token' => $accessToken]);
+        $this->transport->request('POST', '/revoke', ['token' => $accessToken]);
     }
 
-    public function catalog(string $accessToken, array $filters = []): array
+    public function catalog(array $filters = []): array
     {
-        throw $this->unavailable();
+        return $this->transport->request('GET', '/catalog', $filters);
     }
 
     public function createOrder(string $accessToken, array $payload): array
@@ -91,12 +90,12 @@ final class HttpCloudClient implements CloudClientInterface, \PTAdmin\Cloud\Cont
 
     public function previewLicense(string $accessToken, array $payload): array
     {
-        return $this->request('POST', '/licenses/preview', $payload, $accessToken);
+        return $this->transport->request('POST', '/licenses/preview', $payload, $accessToken);
     }
 
     public function issueDownloadTicket(string $accessToken, array $payload): array
     {
-        return $this->request('POST', '/licenses/ticket', $payload, $accessToken);
+        return $this->transport->request('POST', '/licenses/ticket', $payload, $accessToken);
     }
 
     public function migrateIp(string $accessToken, array $payload): array
@@ -106,86 +105,47 @@ final class HttpCloudClient implements CloudClientInterface, \PTAdmin\Cloud\Cont
 
     public function requestInstanceMigration(string $accessToken, array $payload): array
     {
-        return $this->request('POST', '/licenses/project', $payload, $accessToken);
+        return $this->transport->request('POST', '/licenses/project', $payload, $accessToken);
+    }
+
+    public function deliveryOptions(string $accessToken, array $payload): array
+    {
+        return $this->transport->request('POST', '/licenses/options', $payload, $accessToken);
+    }
+
+    public function redeemLicenseCode(string $accessToken, array $payload): array
+    {
+        return $this->transport->request('POST', '/licenses/redeem', $payload, $accessToken);
+    }
+
+    public function prepareDelivery(string $accessToken, array $payload): array
+    {
+        return $this->transport->request('POST', '/licenses/prepare', $payload, $accessToken);
     }
 
     public function project(string $accessToken, array $payload): array
     {
-        return $this->request('POST', '/licenses/project', $payload, $accessToken);
+        return $this->transport->request('POST', '/licenses/project', $payload, $accessToken);
     }
 
     public function bindLicense(string $accessToken, array $payload): array
     {
-        return $this->request('POST', '/licenses/bind', $payload, $accessToken);
+        return $this->transport->request('POST', '/licenses/bind', $payload, $accessToken);
     }
 
     public function releaseLicense(string $accessToken, array $payload): array
     {
-        return $this->request('POST', '/licenses/release', $payload, $accessToken);
+        return $this->transport->request('POST', '/licenses/release', $payload, $accessToken);
     }
 
     public function downloadPackage(string $accessToken, array $payload, string $destination): array
     {
         $ticket = $this->issueDownloadTicket($accessToken, $payload);
-        if (!is_string($ticket['ticket'] ?? null) || preg_match('/^[a-f0-9]{64}$/D', $ticket['ticket']) !== 1
-            || !is_string($ticket['sha256'] ?? null) || preg_match('/^[a-f0-9]{64}$/D', $ticket['sha256']) !== 1
-            || !is_int($ticket['size'] ?? null) || $ticket['size'] < 1) {
-            throw new CloudException('平台下载凭证响应无效。', 'cloud_response_invalid');
-        }
-        if (!is_dir(dirname($destination)) && !mkdir(dirname($destination), 0700, true) && !is_dir(dirname($destination))) {
-            throw new CloudException('无法创建下载目录。', 'download_failed');
-        }
-        $temporary = $destination.'.'.bin2hex(random_bytes(6)).'.tmp';
-        try {
-            $response = $this->http->withToken($accessToken)->withHeaders(['X-PTAdmin-Download-Ticket' => $ticket['ticket']])
-                ->connectTimeout(5)->timeout(120)->withoutRedirecting()->withOptions(['sink' => $temporary,
-                    'progress' => static function ($total, $downloaded) use ($ticket): void {
-                        if ($downloaded > $ticket['size']) {
-                            throw new CloudException('下载内容超过版本包声明大小。', 'cloud_response_invalid');
-                        }
-                    }])->post(CloudProtocol::SITE_URL.'/api/cloud/licenses/download');
-            if (!$response->successful()) {
-                throw new CloudException('平台下载失败，请重新连接并确认版本下载资格。', 'download_failed');
-            }
-            if (!is_file($temporary) || filesize($temporary) !== $ticket['size'] || !hash_equals($ticket['sha256'], hash_file('sha256', $temporary))) {
-                throw new CloudException('下载包大小或 SHA-256 不匹配。', 'checksum_mismatch');
-            }
-            chmod($temporary, 0600);
-            if (!rename($temporary, $destination)) {
-                throw new CloudException('无法保存下载包。', 'download_failed');
-            }
-            return ['artifact' => $destination, 'sha256' => $ticket['sha256'], 'size' => $ticket['size']];
-        } catch (ConnectionException $exception) {
-            // 底层异常可能带有请求信息，不进入任务日志。
-            throw new CloudException('下载连接中断，请稍后重试。', 'cloud_platform_unavailable');
-        } finally {
-            if (is_file($temporary)) {
-                unlink($temporary);
-            }
-        }
-    }
-
-    private function request(string $method, string $path, array $payload = [], ?string $token = null): array
-    {
-        try {
-            $request = $this->http->acceptJson()->asJson()->connectTimeout(5)->timeout(60)->withoutRedirecting();
-            if ($token !== null) {
-                $request = $request->withToken($token);
-            }
-            $response = $request->send($method, CloudProtocol::SITE_URL.'/api/cloud'.$path, [$method === 'GET' ? 'query' : 'json' => $payload]);
-        } catch (ConnectionException $exception) {
-            throw new CloudException('无法连接云市场平台，请稍后重试。', 'cloud_platform_unavailable');
-        }
-        $result = $response->json();
-        if (!$response->successful() || !is_array($result) || ($result['code'] ?? null) !== 0 || !is_array($result['data'] ?? null)) {
-            throw new CloudException(is_string($result['message'] ?? null) ? $result['message'] : '平台响应无效。',
-                $response->status() === 401 ? 'unauthorized' : ($response->status() === 403 ? 'forbidden' : ($response->status() === 422 ? 'invalid_request' : 'cloud_request_failed')));
-        }
-        return $result['data'];
+        return (new VerifiedPackageDownloader($this->transport))->download($accessToken, $ticket, $destination);
     }
 
     private function unavailable(): CloudException
     {
-        return new CloudException('云市场商品浏览、购买及授权安装功能尚未开放。', 'cloud_platform_unavailable');
+        return new CloudException('云市场购买与订单功能尚未开放。', 'cloud_platform_unavailable');
     }
 }

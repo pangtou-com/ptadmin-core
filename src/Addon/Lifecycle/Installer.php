@@ -132,7 +132,7 @@ final class Installer
             }
             $frontendSource = $target.'/frontend/dist';
             // 数据库资源在事务内同步；文件与前端产物由外层 catch 使用目录备份执行补偿回滚。
-            $activate = function () use ($target, $code, $manifest, $frontendSource, $webPrefix, $update, $onProgress): array {
+            $activate = function () use ($target, $code, $manifest, $frontendSource, $webPrefix, $update, $onProgress, $previousLifecycle): array {
                 $this->autoloader->register($target, $manifest, $update);
                 $this->runMigrations($target);
                 if ($onProgress !== null) {
@@ -144,7 +144,8 @@ final class Installer
                 }
                 $this->lifecycleRegistrar?->invoke('install', $target, $code, $manifest);
                 $this->lifecycle->transition($code, 'ready', ['version' => $manifest['version'], 'manifest' => $manifest]);
-                $this->lifecycle->transition($code, 'active');
+                $disabled = $update && ($previousLifecycle['disabled_by_user'] ?? false) === true;
+                $this->lifecycle->transition($code, $disabled ? 'inactive' : 'active', ['disabled_by_user' => $disabled]);
                 if ($onProgress !== null) {
                     $onProgress('publishing', 90, '正在发布插件前端资源。');
                 }

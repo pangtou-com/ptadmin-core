@@ -49,7 +49,7 @@ final class UnavailableCloudClient implements CloudClientInterface
         throw $this->unavailable();
     }
 
-    public function catalog(string $accessToken, array $filters = []): array
+    public function catalog(array $filters = []): array
     {
         throw $this->unavailable();
     }

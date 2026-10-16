@@ -10,7 +10,6 @@ use Illuminate\Validation\ValidationException;
 use PTAdmin\Cloud\CloudException;
 use PTAdmin\Cloud\CloudPackageExecutor;
 use PTAdmin\Cloud\CloudSessionManager;
-use PTAdmin\Cloud\Contracts\CloudClientInterface;
 use PTAdmin\Cloud\Contracts\ProductDeliveryClientInterface;
 use PTAdmin\Cloud\ExecuteCloudPackageTask;
 use PTAdmin\Cloud\FounderAccess;
@@ -22,8 +21,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 final class ProductDeliveryController
 {
-    public function __construct(private readonly CloudClientInterface $client, private readonly ProductDeliveryClientInterface $delivery,
-        private readonly CloudSessionManager $sessions, private readonly FounderAccess $founders, private readonly TaskManager $tasks)
+    public function __construct(private readonly ProductDeliveryClientInterface $delivery,
+        private readonly \PTAdmin\Cloud\LicenseCodeDeliveryClient $codes, private readonly CloudSessionManager $sessions, private readonly FounderAccess $founders, private readonly TaskManager $tasks)
     {
     }
 
@@ -42,17 +41,22 @@ final class ProductDeliveryController
                     $task['payload']['code'].'-'.$task['payload']['version'].'-'.$task['payload']['package_kind'].'.zip',
                     ['Cache-Control' => 'private, no-store']);
             }
-            $token = $this->sessions->token();
+            $token = in_array($operation, ['code-options', 'package'], true) ? null : $this->sessions->token();
             $result = match ($operation) {
+                'code-options' => $this->codeOptions($request),
+                'redeem' => $this->delivery->redeemLicenseCode($token, $request->validate([
+                    'license_code' => ['required', 'string', 'max:100'], 'expected_user_id' => ['required', 'integer', 'min:1'],
+                ])),
+                'options' => $this->options($request, $token),
                 'project' => $this->delivery->project($token, $request->all()),
                 'bind' => $this->delivery->bindLicense($token, $request->all()),
                 'release' => $this->delivery->releaseLicense($token, $request->all()),
-                'package' => $this->package($request, $token),
+                'package' => $this->package($request),
                 default => throw new CloudException('未知交付操作。', 'invalid_request'),
             };
             $response = AdminResponse::success('', $result, $operation === 'package' ? 202 : 200);
         } catch (CloudException $exception) {
-            $status = match ($exception->errorCode) { 'founder_required', 'forbidden' => 403, 'unauthorized' => 401, 'cloud_platform_unavailable' => 503, default => 422 };
+            $status = match ($exception->errorCode) { 'founder_required', 'forbidden' => 403, 'unauthorized' => 401, 'too_many_requests' => 429, 'cloud_platform_unavailable' => 503, default => 422 };
             $response = AdminResponse::error($status * 100, $exception->getMessage(), ['error_code' => $exception->errorCode], $status);
         } catch (TaskException $exception) {
             $response = AdminResponse::error(40900, $exception->getMessage(), ['error_code' => $exception->errorCode, 'details' => $exception->details], 409);
@@ -62,14 +66,44 @@ final class ProductDeliveryController
         return $response->header('Cache-Control', 'no-store');
     }
 
-    private function package(Request $request, string $token): array
+    private function options(Request $request, string $token): array
+    {
+        $values = $request->validate(['code' => ['required', 'string', 'max:100'], 'product_type' => ['required', 'in:addon,template']]);
+        $options = $this->delivery->deliveryOptions($token, $values);
+        return $this->describeOptions($options);
+    }
+
+    private function codeOptions(Request $request): array
+    {
+        $values = $request->validate(['license_code' => ['required', 'string', 'max:100']]);
+        return $this->describeOptions($this->codes->authorize($values['license_code']));
+    }
+
+    private function describeOptions(array $options): array
+    {
+        $policy = app(\PTAdmin\Cloud\CloudInstallationPolicy::class);
+        foreach ($options['licenses'] as &$license) {
+            foreach ($license['releases'] as &$release) {
+                $release += $policy->describe($options['product']['code'], $options['product']['product_type'],
+                    $release['version'], $release['core_version_range']);
+            }
+            unset($release);
+        }
+        unset($license);
+        return $options;
+    }
+
+    private function package(Request $request): array
     {
         $values = $request->validate(['license_id' => ['required', 'integer', 'min:1'], 'release_id' => ['required', 'integer', 'min:1'],
+            'code_credential_id' => ['sometimes', 'integer', 'min:1'],
             'package_kind' => ['required', 'in:install,source'], 'operation' => ['required', 'in:install,update,download']]);
         if ($values['operation'] !== 'download' && $values['package_kind'] !== 'install') {
             throw new CloudException('源码包只能下载用于二次开发。', 'invalid_request');
         }
-        $preview = $this->client->previewLicense($token, $values);
+        $preview = isset($values['code_credential_id'])
+            ? $this->codes->request((int) $values['code_credential_id'], 'prepare', $values)
+            : $this->delivery->prepareDelivery($this->sessions->token(), $values);
         $result = $this->tasks->create(CloudPackageExecutor::TYPE, $values + $preview,
             $request->attributes->get('ptadmin.request_id'), 3, $request->header('Idempotency-Key'));
         foreach ($values + $preview as $key => $value) {

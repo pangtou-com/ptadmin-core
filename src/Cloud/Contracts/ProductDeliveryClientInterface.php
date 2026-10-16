@@ -7,6 +7,9 @@ namespace PTAdmin\Cloud\Contracts;
 /** 项目授权和私有包交付；下载凭证只在服务端短暂使用。 */
 interface ProductDeliveryClientInterface
 {
+    public function redeemLicenseCode(string $accessToken, array $payload): array;
+    public function deliveryOptions(string $accessToken, array $payload): array;
+    public function prepareDelivery(string $accessToken, array $payload): array;
     public function project(string $accessToken, array $payload): array;
     public function bindLicense(string $accessToken, array $payload): array;
     public function releaseLicense(string $accessToken, array $payload): array;

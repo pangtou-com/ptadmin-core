@@ -8,7 +8,7 @@ namespace PTAdmin\Cloud\Contracts;
  * Stable boundary between the Core user client and the separately deployed cloud platform.
  * Implementations must never expose credentials or download tickets to controllers.
  */
-interface CloudClientInterface
+interface CloudClientInterface extends CloudCatalogInterface
 {
     /** @param array<string, mixed> $parameters */
     public function authorizationUrl(array $parameters): string;
@@ -29,9 +29,6 @@ interface CloudClientInterface
     public function products(string $accessToken, array $filters = []): array;
 
     public function submitRelease(string $accessToken, string $type, array $payload): array;
-
-    /** @param array<string, mixed> $filters @return array<string, mixed> */
-    public function catalog(string $accessToken, array $filters = []): array;
 
     /** @param array<string, mixed> $payload @return array<string, mixed> */
     public function createOrder(string $accessToken, array $payload): array;

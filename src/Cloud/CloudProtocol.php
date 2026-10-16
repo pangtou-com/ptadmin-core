@@ -15,6 +15,15 @@ final class CloudProtocol
         return rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
     }
 
+    /** 授权码不进入签名载荷与日志，签名绑定摘要、应用身份和一次性随机数。 */
+    public static function codeDeliveryPayload(array $values): string
+    {
+        return json_encode(['instance_id' => $values['instance_id'], 'public_key' => $values['public_key'],
+            'code_hash' => hash('sha256', strtoupper(trim($values['license_code']))),
+            'timestamp' => $values['timestamp'], 'nonce' => $values['nonce']],
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
     /** 字段顺序和 JSON 编码是实例签名协议的一部分。 */
     public static function authorizationPayload(array $values): string
     {

@@ -121,7 +121,7 @@ final class RecordAdminOperationMiddleware
     private function isSensitiveKey(string $key): bool
     {
         return preg_match(
-            '/password|token|secret|authorization|cookie|api[_-]?key|private[_-]?key|credential|content[_-]?base64/i',
+            '/password|token|secret|authorization|cookie|api[_-]?key|private[_-]?key|credential|content[_-]?base64|license[_-]?code/i',
             $key,
         ) === 1;
     }

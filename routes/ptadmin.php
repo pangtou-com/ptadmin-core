@@ -155,7 +155,7 @@ Route::middleware($authenticatedMiddleware)
         Route::get('session', [CloudController::class, 'session'])->name('session');
         Route::get('session/authorize', [CloudController::class, 'authorize'])->name('session.authorize');
         Route::post('session/logout', [CloudController::class, 'logout'])->name('session.logout');
-        foreach (['project', 'bind', 'release', 'package'] as $operation) {
+        foreach (['code-options', 'options', 'redeem', 'project', 'bind', 'release', 'package'] as $operation) {
             Route::post('delivery/'.$operation, \PTAdmin\Cloud\Http\Controllers\ProductDeliveryController::class)->defaults('operation', $operation);
         }
         Route::get('delivery/tasks/{taskId}/package', \PTAdmin\Cloud\Http\Controllers\ProductDeliveryController::class)->defaults('operation', 'artifact')->whereUuid('taskId');

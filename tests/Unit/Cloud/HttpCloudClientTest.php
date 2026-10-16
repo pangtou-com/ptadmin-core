@@ -25,7 +25,7 @@ final class HttpCloudClientTest extends TestCase
         $this->identity->createForInstall();
         $this->http = new Factory();
         $this->http->preventStrayRequests();
-        $this->client = new HttpCloudClient($this->http, $this->identity);
+        $this->client = new HttpCloudClient(new \PTAdmin\Cloud\HttpCloudTransport($this->http), $this->identity);
     }
 
     protected function tearDown(): void
@@ -100,6 +100,22 @@ final class HttpCloudClientTest extends TestCase
         self::assertSame(51, $this->client->products('server-token', ['page' => 2])['total']);
         self::assertSame(7, $this->client->submitRelease('server-token', 'template', ['product_id' => 1])['id']);
     }
+    public function testCatalogUsesPublicEndpointWithoutBearerAndPreservesServerPagination(): void
+    {
+        $this->http->fake(function ($request) {
+            self::assertStringStartsWith(CloudProtocol::SITE_URL.'/api/cloud/catalog?', $request->url());
+            self::assertSame([], $request->header('Authorization'));
+            self::assertSame('template', $request['product_type']);
+            self::assertSame('2', (string) $request['page']);
+            self::assertSame('content', $request['category']);
+            self::assertSame('主题', $request['keyword']);
+            return Factory::response(['code' => 0, 'data' => ['results' => [['code' => 'theme']], 'total' => 13, 'page' => 2]]);
+        });
+        $catalog = $this->client->catalog(['product_type' => 'template', 'page' => 2, 'category' => 'content', 'keyword' => '主题']);
+        self::assertSame(13, $catalog['total']);
+        self::assertSame('theme', $catalog['results'][0]['code']);
+    }
+
     public function testInvalidTicketIsRejectedBeforeAnyDownload(): void
     {
         $bytes = 'verified package';
@@ -120,6 +136,26 @@ final class HttpCloudClientTest extends TestCase
         }
         self::assertFileDoesNotExist($destination);
         $this->http->assertSentCount(1);
+    }
+
+    public function testLicenseCodeRedemptionUsesAuthenticatedPostAndPreservesRateLimitFailure(): void
+    {
+        $code = 'PT-'.implode('-', array_fill(0, 4, 'A1234567'));
+        $this->http->fake(function ($request) use ($code) {
+            self::assertSame(CloudProtocol::SITE_URL.'/api/cloud/licenses/redeem', $request->url());
+            self::assertSame('POST', $request->method());
+            self::assertSame(['Bearer server-token'], $request->header('Authorization'));
+            self::assertSame($code, $request['license_code']);
+            self::assertSame(12, $request['expected_user_id']);
+            return Factory::response(['message' => '授权码尝试过于频繁，请一分钟后重试。'], 429);
+        });
+        try {
+            $this->client->redeemLicenseCode('server-token', ['license_code' => $code, 'expected_user_id' => 12]);
+            self::fail('Rate limit was ignored');
+        } catch (CloudException $exception) {
+            self::assertSame('too_many_requests', $exception->errorCode);
+            self::assertStringNotContainsString($code, $exception->getMessage());
+        }
     }
 
     public function testChecksumFailureKeepsExistingArtifactAndCleansPartialDownload(): void

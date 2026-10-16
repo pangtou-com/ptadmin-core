@@ -18,8 +18,8 @@ final class CloudPackageExecutor implements TaskExecutorInterface
     public const TYPE = TaskManager::CLOUD_PACKAGE;
 
     public function __construct(private readonly CloudClientInterface $client, private readonly ProductDeliveryClientInterface $delivery,
-        private readonly CloudSessionManager $sessions, private readonly TaskStore $store,
-        private readonly Installer $addons, private readonly ThemeInstaller $themes, private readonly \PTAdmin\Addon\Manifest\ManifestVerifier $manifests)
+        private readonly LicenseCodeDeliveryClient $codes, private readonly CloudSessionManager $sessions, private readonly TaskStore $store,
+        private readonly Installer $addons, private readonly ThemeInstaller $themes)
     {
     }
 
@@ -27,21 +27,26 @@ final class CloudPackageExecutor implements TaskExecutorInterface
     {
         $id = $task['task_id'];
         $payload = $task['payload'];
-        $tasks->heartbeat($id, 'download', 5, '正在检查项目授权并下载版本包。');
-        $token = $this->sessions->token();
+        $tasks->heartbeat($id, 'download', 5, '正在检查当前应用授权并下载版本包。');
+        $credentialId = $payload['code_credential_id'] ?? null;
+        $token = $credentialId === null ? $this->sessions->token() : null;
         $selection = array_intersect_key($payload, array_flip(['license_id', 'release_id', 'package_kind']));
-        $preview = $this->client->previewLicense($token, $selection);
+        $preview = $credentialId === null ? $this->client->previewLicense($token, $selection)
+            : $this->codes->request((int) $credentialId, 'preview', $selection);
         if ($preview['project_id'] !== $payload['project_id'] || $preview['code'] !== $payload['code']
             || $preview['version'] !== $payload['version'] || $preview['product_type'] !== $payload['product_type']) {
-            throw new CloudException('项目或版本已变化，请重新发起下载。', 'invalid_request');
+            throw new CloudException('应用关联或版本已变化，请重新发起下载。', 'invalid_request');
         }
-        if ($payload['product_type'] === 'addon' && $payload['operation'] === 'update') {
-            $installed = $this->manifests->verifyRuntime(rtrim((string) config('ptadmin.addon.path'), '/').'/'.$payload['code']);
-            if (version_compare($payload['version'], $installed['version'], '<')) {
-                throw new CloudException('在线更新不支持降级；可以下载旧版本包，但不会覆盖当前安装。', 'invalid_request');
+        if ($payload['operation'] !== 'download') {
+            $installation = app(CloudInstallationPolicy::class)->describe($payload['code'], $payload['product_type'],
+                $payload['version'], $preview['core_version_range'] ?? '');
+            if ($installation['install_operation'] !== $payload['operation']) {
+                throw new CloudException($installation['install_reason'] ?: '本地安装状态已变化，请重新选择安装或更新。', 'invalid_request');
             }
         }
-        $artifact = $this->delivery->downloadPackage($token, $selection, $this->store->artifactsPath($id).'/package.zip');
+        $destination = $this->store->artifactsPath($id).'/package.zip';
+        $artifact = $credentialId === null ? $this->delivery->downloadPackage($token, $selection, $destination)
+            : $this->codes->download((int) $credentialId, $selection, $destination);
         if ($payload['operation'] === 'download') {
             return ['download_ready' => true, 'sha256' => $artifact['sha256'], 'size' => $artifact['size']];
         }

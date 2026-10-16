@@ -21,7 +21,7 @@ final class CloudCommand extends Command
         {--no-browser : 登录时只显示授权链接，不询问打开浏览器}
         {--timeout=600 : 等待浏览器授权的秒数，1 至 600}';
 
-    protected $description = '连接云市场并查看授权账户和开发者商品';
+    protected $description = '登录平台并查看授权账户和开发者商品';
 
     public function handle(CloudClientInterface $client, CloudSessionManager $sessions, ProcessFactory $processes): int
     {
@@ -32,18 +32,18 @@ final class CloudCommand extends Command
                 case 'status':
                     $summary = $sessions->summary();
                     if (!$summary['authenticated']) {
-                        $this->warn('尚未连接或授权已失效，请运行 php artisan ptadmin:cloud login。');
+                        $this->warn('尚未登录平台或登录已失效，请运行 php artisan ptadmin:cloud login。');
                         return self::FAILURE;
                     }
                     $this->line('账户：'.OutputFormatter::escape($this->maskedEmail($summary['user']['email'])));
-                    $this->line('连接状态：已连接');
+                    $this->line('登录状态：已登录');
                     if (isset($summary['authorization_expires_at'])) {
-                        $this->line('连接到期：'.date('Y-m-d H:i:s T', $summary['authorization_expires_at']));
+                        $this->line('登录到期：'.date('Y-m-d H:i:s T', $summary['authorization_expires_at']));
                     }
                     return self::SUCCESS;
                 case 'logout':
                     $sessions->logout();
-                    $this->info('云市场连接已退出。');
+                    $this->info('已退出平台登录。');
                     return self::SUCCESS;
                 case 'products':
                     $page = filter_var($this->option('page'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
@@ -88,14 +88,14 @@ final class CloudCommand extends Command
             && $this->confirm('按回车打开默认浏览器（输入 n 后手动打开链接）', true)) {
             $this->openBrowser($url, $processes);
         }
-        $this->line('请在浏览器确认连接当前会员账户。正在等待确认，可按 Ctrl+C 取消等待。');
+        $this->line('请在浏览器确认使用当前会员账户登录。正在等待确认，可按 Ctrl+C 取消等待。');
         $deadline = microtime(true) + $timeout;
         do {
             $result = $client->pollCliAuthorization($key, $verifier);
             if (($result['status'] ?? null) === 'authorized') {
                 unset($result['status']);
                 $sessions->store($result);
-                $this->info('云市场连接成功，授权有效期为 2 小时。');
+                $this->info('平台登录成功，登录有效期为 2 小时。');
                 return self::SUCCESS;
             }
             if (($result['status'] ?? null) !== 'pending') {

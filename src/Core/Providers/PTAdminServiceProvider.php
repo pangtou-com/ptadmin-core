@@ -205,7 +205,9 @@ final class PTAdminServiceProvider extends ServiceProvider
         });
         $this->app->singleton(TaskEventLog::class);
         $this->app->singleton(TaskManager::class);
+        $this->app->singleton(\PTAdmin\Cloud\Contracts\CloudTransportInterface::class, \PTAdmin\Cloud\HttpCloudTransport::class);
         $this->app->singleton(CloudClientInterface::class, HttpCloudClient::class);
+        $this->app->singleton(\PTAdmin\Cloud\Contracts\CloudCatalogInterface::class, static fn ($app) => $app->make(CloudClientInterface::class));
         $this->app->singleton(\PTAdmin\Cloud\Contracts\ProductDeliveryClientInterface::class, HttpCloudClient::class);
         $this->app->singleton(CloudSessionStoreInterface::class, static function ($app): CloudSessionStoreInterface {
             return new EncryptedCloudSessionStore(
