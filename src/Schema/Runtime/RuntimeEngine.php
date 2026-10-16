@@ -485,7 +485,9 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
     {
         $query = Payload::dto($query, SchemaSnapshotQuery::class);
         $resolved = $this->resolved((string) ($query['resource'] ?? ''));
-        $this->authorize($resolved['resource']->resource_key, 'view');
+        // Schema 元数据用于渲染列表、搜索和可用操作。列表权限足以加载元数据，
+        // 单条详情仍由 detail 操作单独校验 view 权限。
+        $this->authorizeAny($resolved['resource']->resource_key, ['list', 'view']);
         $schema = $resolved['schema'];
         return ['resource' => $resolved['resource']->resource_key, 'version' => ['version_id' => (int) $resolved['version']->id, 'version' => (int) $resolved['version']->version, 'status' => $resolved['version']->status, 'checksum' => $resolved['version']->checksum], 'extensions' => $schema->extensions ?? (object) [], 'features' => $schema->features ?? [], 'capabilities' => $schema->capabilities ?? [], 'state' => $schema->state ?? null, 'tree' => $schema->tree ?? null, 'views' => $schema->views ?? [], 'fields' => $schema->fields ?? [], 'actions' => $schema->actions ?? []];
     }
@@ -514,18 +516,29 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
 
     private function authorize(string $resourceKey, string $action): void
     {
+        $this->authorizeAny($resourceKey, [$action]);
+    }
+
+    /** @param list<string> $actions */
+    private function authorizeAny(string $resourceKey, array $actions): void
+    {
         if (!$this->authorization || !$this->subjectContext) {
             throw $this->error('action_not_available', 'schema authorization is not configured', [
                 'resource_key' => $resourceKey,
-                'action' => $action,
+                'action' => $actions,
             ]);
         }
 
         $subject = $this->subjectContext->get();
-        if (!$this->authorization->allows($subject, $resourceKey, $action)) {
+        foreach ($actions as $action) {
+            if ($this->authorization->allows($subject, $resourceKey, $action)) {
+                return;
+            }
+        }
+        if ($actions !== []) {
             throw $this->error('forbidden', 'schema action is not allowed', [
                 'resource_key' => $resourceKey,
-                'action' => $action,
+                'action' => $actions,
             ]);
         }
     }
