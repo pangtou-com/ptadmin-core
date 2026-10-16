@@ -11,6 +11,8 @@ final class DirectiveBuilder
     public function __construct(private DirectiveRegistration $registration, private string $name) {}
     public function output(callable $handler): self { $this->type = 'output'; $this->handler = $handler; return $this; }
     public function loop(callable $handler): self { $this->type = 'loop'; $this->handler = $handler; return $this; }
+    /** 条件块处理器返回包含严格布尔 allowed 的上下文对象。 */
+    public function branch(callable $handler): self { $this->type = 'branch'; $this->handler = $handler; return $this; }
     public function alias(string $alias): self { $this->alias = $alias; return $this; }
     public function description(string $description): self { $this->description = $description; return $this; }
     public function context(array $context): self { $this->context = $context; return $this; }

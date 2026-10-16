@@ -75,17 +75,17 @@ final class TemplateRenderer
                 throw new InvalidArgumentException('第 '.(substr_count(substr($template, 0, $token['start']), "\n") + 1).' 行：Unknown template directive: '.$token['name']);
             }
             foreach ($this->arguments->parse($token['arguments']) as $name => $argument) {
-                if (!isset($definition->parameters()[$name]) && !($definition->type() === 'loop' && in_array($name, ['as', 'id'], true))) {
+                if (!isset($definition->parameters()[$name]) && !(in_array($definition->type(), ['loop', 'branch'], true) && in_array($name, ['as', 'id'], true))) {
                     throw new InvalidArgumentException('Template directive "'.$definition->fullName().'" has unknown parameter "'.$name.'".');
                 }
             }
             $node = ['definition' => $definition, 'arguments' => $token['arguments'], 'line' => substr_count(substr($template, 0, $token['start']), "\n") + 1];
             $offset = $token['end'];
             $index++;
-            if ($definition->type() === 'loop') {
+            if (in_array($definition->type(), ['loop', 'branch'], true)) {
                 $node['body'] = $this->parseNodes($template, $tokens, $index, $offset, true);
                 $node['empty'] = [];
-                if (($tokens[$index]['name'] ?? '') === 'empty') {
+                if (($tokens[$index]['name'] ?? '') === ($definition->type() === 'branch' ? '__else' : 'empty')) {
                     $offset = $tokens[$index++]['end'];
                     $node['empty'] = $this->parseNodes($template, $tokens, $index, $offset, true);
                 }
@@ -123,13 +123,13 @@ final class TemplateRenderer
             $definition = $node['definition'];
             try {
                 $arguments = $this->arguments->evaluate($node['arguments'], $context);
-                if ($definition->type() !== 'loop') {
+                if ($definition->type() === 'output') {
                     $this->validateArguments($definition, $arguments);
                 }
             } catch (InvalidArgumentException $exception) {
                 throw new InvalidArgumentException('第 '.$node['line'].' 行：'.$exception->getMessage(), 0, $exception);
             }
-            if ($definition->type() !== 'loop') {
+            if ($definition->type() === 'output') {
                 $output .= $this->invoke($definition, $arguments, $context);
                 continue;
             }
@@ -153,6 +153,14 @@ final class TemplateRenderer
             $context['__ptadmin_render_state'] =& $this->renderState;
             $callContext = ['context' => $context, 'loop' => $loopStack];
             $items = $definition->invoke($arguments, $callContext);
+            if ($definition->type() === 'branch') {
+                if (!is_array($items) || !isset($items['allowed']) || !is_bool($items['allowed'])) {
+                    throw new InvalidArgumentException('Branch directive must return an object with boolean allowed: '.$definition->fullName());
+                }
+                $child = array_replace($context, [$variable => $items]);
+                $output .= $this->renderNodes($items['allowed'] ? $node['body'] : $node['empty'], $child, $loopStack);
+                continue;
+            }
             if (!is_iterable($items)) {
                 throw new InvalidArgumentException('Loop directive must return iterable data: '.$definition->fullName());
             }

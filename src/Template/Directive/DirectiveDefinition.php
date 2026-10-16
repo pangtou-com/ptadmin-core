@@ -14,13 +14,13 @@ final class DirectiveDefinition
         if (!preg_match('/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/', $name)) {
             throw new InvalidArgumentException('Template directive name must be lowercase snake_case.');
         }
-        if (!in_array($type, ['output', 'loop'], true)) {
+        if (!in_array($type, ['output', 'loop', 'branch'], true)) {
             throw new InvalidArgumentException('Template directive type is invalid.');
         }
         if ($alias !== null && !preg_match('/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/', $alias)) {
             throw new InvalidArgumentException('Template directive alias must be lowercase snake_case.');
         }
-        if ($type === 'loop' && isset($parameters['as'])) {
+        if (in_array($type, ['loop', 'branch'], true) && isset($parameters['as'])) {
             throw new InvalidArgumentException('The reserved loop parameter "as" cannot be declared.');
         }
     }
