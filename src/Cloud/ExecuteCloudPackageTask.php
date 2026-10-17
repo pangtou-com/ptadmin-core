@@ -15,6 +15,16 @@ final class ExecuteCloudPackageTask
 
     public function handle(): void
     {
-        Artisan::call('ptadmin:task:run', ['task_id' => $this->taskId]);
+        // after-response callbacks run after the HTTP response is built. Keep command output
+        // from being appended to the JSON body by hosts that still share the output buffer.
+        $outputLevel = ob_get_level();
+        ob_start();
+        try {
+            Artisan::call('ptadmin:task:run', ['task_id' => $this->taskId]);
+        } finally {
+            while (ob_get_level() > $outputLevel) {
+                ob_end_clean();
+            }
+        }
     }
 }

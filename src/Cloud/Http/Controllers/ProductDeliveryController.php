@@ -95,6 +95,9 @@ final class ProductDeliveryController
 
     private function package(Request $request): array
     {
+        // 会员交付先检查云会话，再校验选包参数；只有独立授权码交付不依赖会员会话。
+        $codeCredentialRequested = $request->input('code_credential_id') !== null;
+        $memberToken = $codeCredentialRequested ? null : $this->sessions->token();
         $values = $request->validate(['license_id' => ['required', 'integer', 'min:1'], 'release_id' => ['required', 'integer', 'min:1'],
             'code_credential_id' => ['sometimes', 'integer', 'min:1'],
             'package_kind' => ['required', 'in:install,source'], 'operation' => ['required', 'in:install,update,download']]);
@@ -103,7 +106,7 @@ final class ProductDeliveryController
         }
         $preview = isset($values['code_credential_id'])
             ? $this->codes->request((int) $values['code_credential_id'], 'prepare', $values)
-            : $this->delivery->prepareDelivery($this->sessions->token(), $values);
+            : $this->delivery->prepareDelivery((string) $memberToken, $values);
         $result = $this->tasks->create(CloudPackageExecutor::TYPE, $values + $preview,
             $request->attributes->get('ptadmin.request_id'), 3, $request->header('Idempotency-Key'));
         foreach ($values + $preview as $key => $value) {

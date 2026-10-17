@@ -580,6 +580,9 @@ final class PTAdminServiceProvider extends ServiceProvider
             $this->app->make(RuntimeRegistrar::class)->register();
         }
         if (!$this->app->runningInConsole()) {
+            // Cloud package tasks are dispatched after the HTTP response and invoke
+            // this command in the same application process.
+            $this->commands([TaskRunCommand::class]);
             return;
         }
 
