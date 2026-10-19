@@ -114,7 +114,9 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         $page = max(1, (int) ($query['page'] ?? 1));
         $limit = max(1, min(500, (int) ($query['limit'] ?? 20)));
         $total = (clone $builder)->count();
-        $rows = $builder->forPage($page, $limit)->get()->map(fn ($row): array => $this->output((array) $row, $schema, $resource->resource_key))->all();
+        $rawRows = $builder->forPage($page, $limit)->get()->map(static fn ($row): array => (array) $row)->all();
+        $referenceLabels = $this->referenceOutputLabels($rawRows, $schema);
+        $rows = array_map(fn (array $row): array => $this->output($row, $schema, $resource->resource_key, $referenceLabels), $rawRows);
         $context = new RuntimeHookContext($resource->resource_key, 'list.transform', $schema, input: $query);
         if ($snapshot !== null && $this->hasHookBinding($snapshot, $context)) {
             $rows = $this->runtimeExecutor?->transform($snapshot, $context, $rows) ?? $rows;
@@ -983,7 +985,73 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         }
         return $data;
     }
-    private function output(array $row, Schema $schema, string $resourceKey = ''): array
+    /**
+     * 列表按引用字段批量加载展示名称，避免每条记录分别查询资源元数据和目标记录。
+     *
+     * @param list<array<string, mixed>> $rows
+     * @return array<string, array<string, mixed>>
+     */
+    private function referenceOutputLabels(array $rows, Schema $schema): array
+    {
+        $references = [];
+        foreach ((array) ($schema->toArray()['fields'] ?? []) as $field) {
+            $name = (string) ($field['name'] ?? '');
+            if ($name === '' || !isset($field['reference'])) {
+                continue;
+            }
+            $reference = (array) $field['reference'];
+            $resourceKey = (string) ($reference['resource'] ?? '');
+            if ($resourceKey === '') {
+                continue;
+            }
+            $values = [];
+            foreach ($rows as $row) {
+                $value = $row[$name] ?? null;
+                if (!empty($field['multiple']) && is_string($value)) {
+                    $decoded = json_decode($value, true);
+                    $value = json_last_error() === JSON_ERROR_NONE ? $decoded : $value;
+                }
+                foreach (!empty($field['multiple']) && is_array($value) ? $value : [$value] as $item) {
+                    if (is_int($item) || is_string($item)) {
+                        $values[(string) $item] = $item;
+                    }
+                }
+            }
+            $references[$name] = [
+                'resource' => $resourceKey,
+                'value_field' => (string) ($reference['value_field'] ?? 'id'),
+                'label_field' => (string) ($reference['label_field'] ?? 'id'),
+                'values' => array_values($values),
+            ];
+        }
+        if ($references === []) {
+            return [];
+        }
+
+        $resources = Resource::query()
+            ->whereIn('resource_key', array_values(array_unique(array_column($references, 'resource'))))
+            ->get()
+            ->keyBy('resource_key');
+        $labels = [];
+        foreach ($references as $name => $reference) {
+            $labels[$name] = [];
+            $target = $resources->get($reference['resource']);
+            if ($target === null || $reference['values'] === []) {
+                continue;
+            }
+            foreach (array_chunk($reference['values'], 500) as $values) {
+                foreach (DB::table($target->table_name)->whereIn($reference['value_field'], $values)
+                    ->get([$reference['value_field'], $reference['label_field']]) as $targetRow) {
+                    $labels[$name][(string) $targetRow->{$reference['value_field']}] = $targetRow->{$reference['label_field']};
+                }
+            }
+        }
+
+        return $labels;
+    }
+
+    /** @param array<string, array<string, mixed>> $referenceLabels */
+    private function output(array $row, Schema $schema, string $resourceKey = '', array $referenceLabels = []): array
     {
         foreach ((array) $schema->fields as $field) {
             $name = $field['name'];
@@ -1007,24 +1075,41 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
             }
             if (isset($field['reference'], $row[$name]) && $row[$name] !== null) {
                 $reference = (array) $field['reference'];
-                $target = Resource::query()->where('resource_key', $reference['resource'] ?? '')->first();
-                if ($target) {
+                if (array_key_exists($name, $referenceLabels)) {
                     $value = $row[$name];
                     if (!empty($field['multiple']) && is_array($value)) {
                         $labels = [];
                         foreach ($value as $item) {
-                            $targetRow = DB::table($target->table_name)->where($reference['value_field'] ?? 'id', $item)->first();
-                            if ($targetRow) {
-                                $labels[] = (string) ($targetRow->{$reference['label_field'] ?? 'id'} ?? '');
+                            if (array_key_exists((string) $item, $referenceLabels[$name])) {
+                                $labels[] = (string) $referenceLabels[$name][(string) $item];
                             }
                         }
                         if ($labels !== []) {
                             $row['_'.$name.'_label'] = $labels;
                         }
-                    } else {
-                        $targetRow = DB::table($target->table_name)->where($reference['value_field'] ?? 'id', $value)->first();
-                        if ($targetRow) {
-                            $row['_'.$name.'_label'] = $targetRow->{$reference['label_field'] ?? 'id'} ?? null;
+                    } elseif (array_key_exists((string) $value, $referenceLabels[$name])) {
+                        $row['_'.$name.'_label'] = $referenceLabels[$name][(string) $value];
+                    }
+                } else {
+                    $target = Resource::query()->where('resource_key', $reference['resource'] ?? '')->first();
+                    if ($target) {
+                        $value = $row[$name];
+                        if (!empty($field['multiple']) && is_array($value)) {
+                            $labels = [];
+                            foreach ($value as $item) {
+                                $targetRow = DB::table($target->table_name)->where($reference['value_field'] ?? 'id', $item)->first();
+                                if ($targetRow) {
+                                    $labels[] = (string) ($targetRow->{$reference['label_field'] ?? 'id'} ?? '');
+                                }
+                            }
+                            if ($labels !== []) {
+                                $row['_'.$name.'_label'] = $labels;
+                            }
+                        } else {
+                            $targetRow = DB::table($target->table_name)->where($reference['value_field'] ?? 'id', $value)->first();
+                            if ($targetRow) {
+                                $row['_'.$name.'_label'] = $targetRow->{$reference['label_field'] ?? 'id'} ?? null;
+                            }
                         }
                     }
                 }
