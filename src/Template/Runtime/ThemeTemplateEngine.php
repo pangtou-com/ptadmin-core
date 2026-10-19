@@ -5,17 +5,19 @@ declare(strict_types=1);
 namespace PTAdmin\Template\Runtime;
 
 use Illuminate\Contracts\View\Engine;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\View\Compilers\CompilerInterface;
 use Illuminate\View\Engines\CompilerEngine;
 use Illuminate\View\FileViewFinder;
 use InvalidArgumentException;
 use PTAdmin\Core\Theme\ThemeViewLoader;
 
-/** 仅当前主题使用受限模板解释器；宿主命名空间视图保留原 Blade 引擎。 */
+/** 当前主题先执行 @pt 业务指令，再交给 Laravel Blade 编译。 */
 final class ThemeTemplateEngine implements Engine
 {
-    public function __construct(private CompilerEngine $blade, private FileViewFinder $finder, private ThemeViewLoader $themes, private TemplateRenderer $renderer)
+    public function __construct(private CompilerEngine $blade, private FileViewFinder $finder, private ThemeViewLoader $themes, private TemplateRenderer $renderer, private ?Filesystem $files = null)
     {
+        $this->files ??= new Filesystem();
     }
 
     /** Laravel view:clear 需要清理被包装 Blade 引擎的编译状态，安装收尾也使用该命令。 */
@@ -38,9 +40,27 @@ final class ThemeTemplateEngine implements Engine
         }
         try {
             $literals = [];
-            $source = strtr($this->expand($path, $root, [], $literals), $literals);
-            $data += ['environment' => app()->environment(), 'current_path' => request()->getPathInfo(), 'current_url' => request()->url(), 'query' => request()->query()];
-            return $this->renderer->render($source, $this->publicContext($data));
+            $bladeLiterals = [];
+            $source = strtr($this->expand($path, $root, [], $literals, $bladeLiterals), $literals);
+            $source = $this->protectNativeBladeDirectives($source, $bladeLiterals);
+            $data += $this->runtimeData();
+            $source = strtr($this->renderer->render($source, $this->publicContext($data)), $bladeLiterals);
+
+            // PTAdmin directives are resolved first; the resulting source is
+            // then compiled by Laravel so native Blade remains available in a
+            // user theme.
+            $temporary = tempnam(sys_get_temp_dir(), 'ptadmin-theme-');
+            if ($temporary === false) {
+                throw new InvalidArgumentException('无法创建主题 Blade 编译源文件。');
+            }
+            $temporaryBlade = $temporary.'.blade.php';
+            rename($temporary, $temporaryBlade);
+            $this->files->put($temporaryBlade, $source);
+            try {
+                return $this->blade->get($temporaryBlade, $data);
+            } finally {
+                $this->files->delete($temporaryBlade);
+            }
         } catch (InvalidArgumentException $exception) {
             throw new InvalidArgumentException('主题模板 '.substr($path, strlen(rtrim($root, '/')) + 1).'：'.$exception->getMessage(), 0, $exception);
         }
@@ -63,7 +83,52 @@ final class ThemeTemplateEngine implements Engine
         return $result;
     }
 
-    private function expand(string $path, string $root, array $stack, array &$literals, array $sections = []): string
+    /** Core 单元测试可能只有基础 Container，正式宿主则提供完整 request/config 服务。 */
+    private function runtimeData(): array
+    {
+        $container = app();
+        $request = $container->bound('request') ? $container->make('request') : null;
+        $environment = 'testing';
+        if ($container->bound('config')) {
+            $environment = (string) $container->make('config')->get('app.env', $environment);
+        } elseif ($container->bound('env')) {
+            $environment = (string) $container->make('env');
+        }
+
+        return [
+            'environment' => $environment,
+            'current_path' => $request?->getPathInfo() ?? '/',
+            'current_url' => $request?->url() ?? '',
+            'query' => $request?->query() ?? [],
+        ];
+    }
+
+    /** 主题中的原生控制结构必须完整交给 Blade，不能被 @pt 解析器猜测。 */
+    private function protectNativeBladeDirectives(string $source, array &$literals): string
+    {
+        return preg_replace_callback(
+            '/(?<!@)@(foreach|endforeach|forelse|empty|endforelse|while|endwhile|php|endphp|include)\b(?:\s*\([^)]*\))?/s',
+            static function (array $match) use (&$literals): string {
+                $placeholder = "\x1EPTBLADE".bin2hex(random_bytes(12))."\x1F";
+                $directive = $match[0];
+                // Migrated templates use the historical $value.path notation
+                // inside Blade conditions; translate it to PHP array access.
+                $directive = preg_replace_callback('/\$([A-Za-z_][A-Za-z0-9_]*)(\.[A-Za-z_][A-Za-z0-9_]*)+/', static function (array $path): string {
+                    $parts = explode('.', ltrim($path[0], '$'));
+                    $value = '$'.$parts[0];
+                    foreach (array_slice($parts, 1) as $part) {
+                        $value .= "['".$part."']";
+                    }
+                    return $value;
+                }, $directive) ?? $directive;
+                $literals[$placeholder] = $directive;
+                return $placeholder;
+            },
+            $source,
+        ) ?? $source;
+    }
+
+    private function expand(string $path, string $root, array $stack, array &$literals, array &$bladeLiterals, array $sections = []): string
     {
         $real = realpath($path);
         $base = realpath($root);
@@ -82,11 +147,12 @@ final class ThemeTemplateEngine implements Engine
         // 字段参数中的 @include/@section 等只作为文字，不能参与布局展开。
         foreach (array_reverse((new \PTAdmin\Template\Parsing\FieldOutputParser())->tokens($source)) as $field) {
             $placeholder = "\x1EPTFIELD".bin2hex(random_bytes(12))."\x1F";
-            $literals[$placeholder] = substr($source, $field['start'], $field['end'] - $field['start']);
+            if ($field['blade']) {
+                $bladeLiterals[$placeholder] = substr($source, $field['start'], $field['end'] - $field['start']);
+            } else {
+                $literals[$placeholder] = substr($source, $field['start'], $field['end'] - $field['start']);
+            }
             $source = substr_replace($source, $placeholder, $field['start'], $field['end'] - $field['start']);
-        }
-        if (preg_match('/<\?|\{!!|\{\{/', $source, $bad, PREG_OFFSET_CAPTURE)) {
-            throw new InvalidArgumentException('第 '.(substr_count(substr($source, 0, $bad[0][1]), "\n") + 1).' 行包含不支持的 PHP/Blade 表达式，请使用受控字段输出。');
         }
         $logical = '[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*';
         $parent = null;
@@ -102,20 +168,12 @@ final class ThemeTemplateEngine implements Engine
             return '';
         }, $source) ?? $source;
         if ($parent !== null) {
-            return $this->expand($this->finder->find($parent), $root, $stack, $literals, $sections);
+            return $this->expand($this->finder->find($parent), $root, $stack, $literals, $bladeLiterals, $sections);
         }
         $source = preg_replace_callback('/@yield\(\s*[\'\"]([A-Za-z0-9_-]+)[\'\"]\s*\)/', static fn (array $match): string => $sections[$match[1]] ?? '', $source) ?? $source;
-        $source = preg_replace_callback('/@include\(\s*[\'\"]('.$logical.')[\'\"]\s*\)/', function (array $match) use ($root, $stack, &$literals): string {
-            return $this->expand($this->finder->find($match[1]), $root, $stack, $literals);
+        $source = preg_replace_callback('/@include\(\s*[\'\"]('.$logical.')[\'\"]\s*\)/', function (array $match) use ($root, $stack, &$literals, &$bladeLiterals): string {
+            return $this->expand($this->finder->find($match[1]), $root, $stack, $literals, $bladeLiterals);
         }, $source) ?? $source;
-        if (preg_match_all('/(?<![@A-Za-z0-9_])@(?!pt:|if\b|elseif\b|else\b|endif\b)([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(|\b)/', $source, $badMatches, PREG_OFFSET_CAPTURE | PREG_SET_ORDER)) {
-            foreach ($badMatches as $bad) {
-                // CSS @media 等静态规则不是模板语法。
-                if (!in_array($bad[1][0], ['media', 'supports', 'keyframes', 'font', 'import', 'charset', 'layer', 'container', 'page', 'property'], true)) {
-                    throw new InvalidArgumentException('第 '.(substr_count(substr($source, 0, $bad[0][1]), "\n") + 1).' 行包含不支持的模板语法 @'.$bad[1][0]);
-                }
-            }
-        }
         return $source;
     }
 }

@@ -194,6 +194,10 @@ final class TemplateRenderer
                 $output .= substr($text, $token['start'] + 1, $token['end'] - $token['start'] - 1);
                 continue;
             }
+            if ($token['blade'] && $token['path'] === '') {
+                $output .= substr($text, $token['start'], $token['end'] - $token['start']);
+                continue;
+            }
             try {
                 $options = $this->arguments->evaluate($token['arguments'], $context);
                 $value = $formatter->format($this->readPath($context, explode('.', $token['path'])), $options, $token['blade']);
@@ -283,7 +287,7 @@ final class TemplateRenderer
                     $nameEnd++;
                 }
                 $name = substr($template, $nameStart, $nameEnd - $nameStart);
-            } elseif (preg_match('/\G@(if|elseif|else|endif)\b/', $template, $match, 0, $index)) {
+            } elseif (preg_match('/^@(if|elseif|else|endif)\b/', substr($template, $index), $match)) {
                 $name = '__'.$match[1];
                 $nameEnd = $index + strlen($match[0]);
             } else {
@@ -324,6 +328,17 @@ final class TemplateRenderer
                 if ($end === $nameEnd) {
                     throw new InvalidArgumentException(sprintf('Template directive "%s" has unbalanced parentheses.', $name));
                 }
+            }
+            if (str_starts_with($name, '__') && in_array($name, ['__if', '__elseif'], true)) {
+                try {
+                    (new \PTAdmin\Template\Parsing\ConditionExpression())->evaluate($arguments, []);
+                } catch (InvalidArgumentException) {
+                    $index = $end - 1;
+                    continue;
+                }
+            } elseif ($this->registry->get($name) === null && !in_array($name, ['end', 'empty', '__else', '__endif'], true)) {
+                $index = $end - 1;
+                continue;
             }
             $tokens[] = ['name' => $name, 'arguments' => $arguments, 'start' => $index, 'end' => $end];
             $index = $end - 1;

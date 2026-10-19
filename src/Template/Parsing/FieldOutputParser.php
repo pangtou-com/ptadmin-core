@@ -26,6 +26,13 @@ final class FieldOutputParser
             }
             $body = trim(substr($source, $bodyStart, $end - $bodyStart));
             $offset = $end + ($blade ? 2 : 1);
+            if ($blade && !preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*(?:\s*\?\?\s*.*)?$/sD', $body)) {
+                // Arbitrary native Blade expressions, including method calls,
+                // are compiled by Laravel and must not be parsed as theme
+                // fields.
+                $tokens[] = ['start' => $start, 'end' => $offset, 'path' => '', 'arguments' => '', 'raw' => false, 'escaped' => false, 'blade' => true];
+                continue;
+            }
             // 转义内容只要求边界闭合，不校验其示例语法。
             [$path, $arguments] = $escaped ? ['', ''] : $this->expression($body, $blade);
             $tokens[] = ['start' => $start, 'end' => $offset, 'path' => $path, 'arguments' => $arguments,
