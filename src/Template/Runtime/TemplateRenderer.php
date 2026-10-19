@@ -19,6 +19,93 @@ final class TemplateRenderer
         $this->arguments ??= new DirectiveArgumentParser();
     }
 
+    /** 编译期只校验声明与参数名，参数值在 Blade 执行到指令时读取。 */
+    public function bladeDefinition(string $name, string $source): DirectiveDefinition
+    {
+        $definition = $this->registry->get($name);
+        if ($definition === null) {
+            throw new InvalidArgumentException('Unknown template directive: '.$name);
+        }
+        foreach ($this->arguments->parse($source) as $parameter => $_value) {
+            if (!isset($definition->parameters()[$parameter]) && !($definition->type() !== 'output' && in_array($parameter, ['as', 'id'], true))) {
+                throw new InvalidArgumentException('Template directive "'.$definition->fullName().'" has unknown parameter "'.$parameter.'".');
+            }
+        }
+        return $definition;
+    }
+
+    public function bladeOutput(string $name, string $source, array $context): string
+    {
+        return $this->invoke($this->bladeDefinition($name, $source), $this->arguments->evaluate($source, $context), $this->publicContext($context));
+    }
+
+    public function bladeField(string $source, array $context): string
+    {
+        $context = array_filter($context, static fn (string $key): bool => $key !== 'app' && !str_starts_with($key, '__'), ARRAY_FILTER_USE_KEY);
+        return $this->renderText($source, $context);
+    }
+
+    /** 保存业务变量，退出循环或分支时由编译后的 finally 恢复调用处作用域。 */
+    public function bladeBlock(string $name, string $source, array $context): \stdClass
+    {
+        $definition = $this->bladeDefinition($name, $source);
+        $arguments = $this->arguments->evaluate($source, $context);
+        $variable = $this->blockVariable($definition, $arguments);
+        $this->validateArguments($definition, $arguments, true);
+        $loopStack = $context['__ptadminLoopStack'] ?? [];
+        $public = $this->publicContext($context);
+        $public['__ptadmin_render_state'] =& $this->renderState;
+        $value = $definition->invoke($arguments, ['context' => $public, 'loop' => $loopStack]);
+        if ($definition->type() === 'branch') {
+            if (!is_array($value) || !isset($value['allowed']) || !is_bool($value['allowed'])) {
+                throw new InvalidArgumentException('Branch directive must return an object with boolean allowed: '.$definition->fullName());
+            }
+        } elseif (!is_iterable($value)) {
+            throw new InvalidArgumentException('Loop directive must return iterable data: '.$definition->fullName());
+        }
+        $bindings = array_fill_keys($definition->type() === 'branch' ? [$variable] : [$variable, 'current_item', '__ptadminLoopStack'], true);
+        return (object) [
+            'variable' => $variable, 'value' => $value, 'loopStack' => $loopStack,
+            'previous' => array_intersect_key($context, $bindings),
+            'missing' => array_keys(array_diff_key($bindings, $context)),
+            'count' => 0, 'empty' => $this->stringify($arguments['empty'] ?? '', true),
+        ];
+    }
+
+    private function blockVariable(DirectiveDefinition $definition, array &$arguments): string
+    {
+        if (array_key_exists('id', $arguments) && !isset($definition->parameters()['id'])) {
+            if (isset($arguments['as']) && $arguments['as'] !== $arguments['id']) {
+                throw new InvalidArgumentException('Loop parameters "as" and "id" must name the same variable.');
+            }
+            $arguments['as'] = $arguments['id'];
+            unset($arguments['id']);
+        }
+        $variable = array_key_exists('as', $arguments) ? $arguments['as'] : 'field';
+        if (!is_string($variable) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $variable)
+            || str_starts_with($variable, '__') || in_array($variable, ['current_item', 'this', 'GLOBALS'], true)) {
+            throw new InvalidArgumentException('Loop parameter "as" must be a simple, non-reserved variable name.');
+        }
+        return $variable;
+    }
+
+    /** Blade 服务对象和编译器内部变量不进入业务指令的隐式公开上下文。 */
+    private function publicContext(array $context, bool $topLevel = true): array
+    {
+        $result = [];
+        foreach ($context as $key => $value) {
+            if ($topLevel && str_starts_with((string) $key, '__')) {
+                continue;
+            }
+            if (is_array($value)) {
+                $result[$key] = $this->publicContext($value, false);
+            } elseif (is_scalar($value) || $value === null || $value instanceof SafeHtml || $value instanceof \DateTimeInterface) {
+                $result[$key] = $value;
+            }
+        }
+        return $result;
+    }
+
     /** @param array<string,mixed> $context */
     public function render(string $template, array $context = []): string
     {
@@ -133,22 +220,11 @@ final class TemplateRenderer
                 $output .= $this->invoke($definition, $arguments, $context);
                 continue;
             }
-            if (array_key_exists('id', $arguments) && !isset($definition->parameters()['id'])) {
-                if (isset($arguments['as']) && $arguments['as'] !== $arguments['id']) {
-                    throw new InvalidArgumentException('Loop parameters "as" and "id" must name the same variable.');
-                }
-                $arguments['as'] = $arguments['id'];
-                unset($arguments['id']);
-            }
+            $variable = $this->blockVariable($definition, $arguments);
             try {
                 $this->validateArguments($definition, $arguments, true);
             } catch (InvalidArgumentException $exception) {
                 throw new InvalidArgumentException('第 '.$node['line'].' 行：'.$exception->getMessage(), 0, $exception);
-            }
-            $variable = array_key_exists('as', $arguments) ? $arguments['as'] : 'field';
-            if (!is_string($variable) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $variable)
-                || in_array($variable, ['__ptadmin_render_state', 'current_item'], true)) {
-                throw new InvalidArgumentException('Loop parameter "as" must be a simple, non-reserved variable name.');
             }
             $context['__ptadmin_render_state'] =& $this->renderState;
             $callContext = ['context' => $context, 'loop' => $loopStack];

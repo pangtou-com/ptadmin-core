@@ -552,7 +552,6 @@ final class PTAdminServiceProvider extends ServiceProvider
         if (!$blade instanceof \PTAdmin\Template\Runtime\ThemeTemplateEngine) {
             $engines->register('blade', fn () => new \PTAdmin\Template\Runtime\ThemeTemplateEngine(
                 $blade,
-                $this->app['view']->getFinder(),
                 $this->app->make(ThemeViewLoader::class),
                 $this->app->make(TemplateRenderer::class),
             ));
