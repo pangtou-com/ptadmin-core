@@ -116,7 +116,8 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         $total = (clone $builder)->count();
         $rawRows = $builder->forPage($page, $limit)->get()->map(static fn ($row): array => (array) $row)->all();
         $referenceLabels = $this->referenceOutputLabels($rawRows, $schema);
-        $rows = array_map(fn (array $row): array => $this->output($row, $schema, $resource->resource_key, $referenceLabels), $rawRows);
+        $mirrorValues = $this->mirrorOutputValues($rawRows, $schema);
+        $rows = array_map(fn (array $row): array => $this->output($row, $schema, $resource->resource_key, $referenceLabels, $mirrorValues), $rawRows);
         $context = new RuntimeHookContext($resource->resource_key, 'list.transform', $schema, input: $query);
         if ($snapshot !== null && $this->hasHookBinding($snapshot, $context)) {
             $rows = $this->runtimeExecutor?->transform($snapshot, $context, $rows) ?? $rows;
@@ -470,12 +471,32 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         $total = (clone $builder)->count();
         $rows = $builder->orderBy($labelField)->forPage($page, $limit)->get();
         $results = $rows->map(static fn ($row): array => ['value' => $row->{$valueField}, 'label' => (string) ($row->{$labelField} ?? ''), 'parent_value' => ($reference['parent_field'] ?? null) ? ($row->{$reference['parent_field']} ?? null) : null, 'description' => ($reference['description_field'] ?? null) ? (string) ($row->{$reference['description_field']} ?? '') : '', 'disabled' => ($reference['disabled_field'] ?? null) ? (bool) ($row->{$reference['disabled_field']} ?? false) : false])->all();
+        $selectedValues = (array) ($query['values'] ?? []);
+        $hasNullValue = in_array(null, $selectedValues, true);
+        $selectedValues = array_values(array_unique(array_filter($selectedValues, static fn (mixed $value): bool => $value !== null), SORT_REGULAR));
+        $selectedRows = [];
+        foreach (array_chunk($selectedValues, 500) as $valuesChunk) {
+            $selectedBuilder = DB::table($target['resource']->table_name)->whereIn($valueField, $valuesChunk);
+            $this->applyScope($selectedBuilder, $targetScope, $target['schema']);
+            foreach ($selectedBuilder->get([$valueField, $labelField]) as $selectedRow) {
+                $key = (string) $selectedRow->{$valueField};
+                if (!array_key_exists($key, $selectedRows)) {
+                    $selectedRows[$key] = $selectedRow;
+                }
+            }
+        }
+        if ($hasNullValue) {
+            $selectedBuilder = DB::table($target['resource']->table_name)->whereNull($valueField);
+            $this->applyScope($selectedBuilder, $targetScope, $target['schema']);
+            $selectedRow = $selectedBuilder->first([$valueField, $labelField]);
+            if ($selectedRow) {
+                $selectedRows[''] = $selectedRow;
+            }
+        }
         $selected = [];
         foreach ((array) ($query['values'] ?? []) as $selectedValue) {
-            $selectedBuilder = DB::table($target['resource']->table_name)->where($valueField, $selectedValue);
-            $this->applyScope($selectedBuilder, $targetScope, $target['schema']);
-            $selectedRow = $selectedBuilder->first();
-            if ($selectedRow) {
+            $selectedRow = $selectedRows[(string) $selectedValue] ?? null;
+            if ($selectedRow !== null) {
                 $selected[] = ['value' => $selectedRow->{$valueField}, 'label' => (string) ($selectedRow->{$labelField} ?? '')];
             }
         }
@@ -1050,8 +1071,75 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         return $labels;
     }
 
-    /** @param array<string, array<string, mixed>> $referenceLabels */
-    private function output(array $row, Schema $schema, string $resourceKey = '', array $referenceLabels = []): array
+    /**
+     * 列表按镜像字段批量加载源值，避免每条记录分别查询目标资源和目标记录。
+     *
+     * @param list<array<string, mixed>> $rows
+     * @return array<string, array<string, mixed>>
+     */
+    private function mirrorOutputValues(array $rows, Schema $schema): array
+    {
+        $mirrors = [];
+        foreach ((array) ($schema->toArray()['fields'] ?? []) as $field) {
+            $field = (array) $field;
+            $name = (string) ($field['name'] ?? '');
+            $extensions = (array) ($field['extensions'] ?? []);
+            $mirror = (array) ($extensions['mirror'] ?? []);
+            $reference = (array) ($field['reference'] ?? []);
+            if ($name === '' || $mirror === [] || (string) ($mirror['from_field'] ?? '') === '' || (string) ($mirror['source_field'] ?? '') === '') {
+                continue;
+            }
+            $resourceKey = (string) ($reference['resource'] ?? '');
+            if ($resourceKey === '') {
+                continue;
+            }
+            $values = [];
+            $from = (string) $mirror['from_field'];
+            foreach ($rows as $row) {
+                $value = $row[$from] ?? null;
+                if (is_int($value) || is_string($value)) {
+                    $values[(string) $value] = $value;
+                }
+            }
+            $mirrors[$name] = [
+                'resource' => $resourceKey,
+                'value_field' => (string) ($reference['value_field'] ?? 'id'),
+                'source_field' => (string) $mirror['source_field'],
+                'values' => array_values($values),
+            ];
+        }
+        if ($mirrors === []) {
+            return [];
+        }
+
+        $resources = Resource::query()
+            ->whereIn('resource_key', array_values(array_unique(array_column($mirrors, 'resource'))))
+            ->get()
+            ->keyBy('resource_key');
+        $values = [];
+        foreach ($mirrors as $name => $mirror) {
+            $values[$name] = [];
+            $target = $resources->get($mirror['resource']);
+            if ($target === null || $mirror['values'] === []) {
+                continue;
+            }
+            foreach (array_chunk($mirror['values'], 500) as $chunk) {
+                foreach (DB::table($target->table_name)
+                    ->whereIn($mirror['value_field'], $chunk)
+                    ->get([$mirror['value_field'], $mirror['source_field']]) as $targetRow) {
+                    $values[$name][(string) $targetRow->{$mirror['value_field']}] = $targetRow->{$mirror['source_field']} ?? null;
+                }
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $referenceLabels
+     * @param array<string, array<string, mixed>> $mirrorValues
+     */
+    private function output(array $row, Schema $schema, string $resourceKey = '', array $referenceLabels = [], array $mirrorValues = []): array
     {
         foreach ((array) $schema->fields as $field) {
             $name = $field['name'];
@@ -1114,7 +1202,7 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
                     }
                 }
             }
-            $this->applyMirrorOutput($row, $field);
+            $this->applyMirrorOutput($row, $field, $mirrorValues);
         }
         if ($resourceKey !== '') {
             $snapshot = $this->runtimeSnapshot();
@@ -1247,15 +1335,28 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         return $payload;
     }
 
-    private function applyMirrorOutput(array &$row, array $field): void
+    /** @param array<string, array<string, mixed>> $mirrorValues */
+    private function applyMirrorOutput(array &$row, array $field, array $mirrorValues = []): void
     {
-        $mirror = (array) (($field['extensions'] ?? [])['mirror'] ?? []);
+        $extensions = (array) ($field['extensions'] ?? []);
+        $mirror = (array) ($extensions['mirror'] ?? []);
         if ($mirror === []) {
             return;
         }
         $from = (string) ($mirror['from_field'] ?? '');
         $source = (string) ($mirror['source_field'] ?? '');
         if ($from === '' || $source === '' || !array_key_exists($from, $row)) {
+            return;
+        }
+        $name = (string) ($field['name'] ?? '');
+        if (array_key_exists($name, $mirrorValues)) {
+            $value = $row[$from];
+            if (is_int($value) || is_string($value)) {
+                $key = (string) $value;
+                if (array_key_exists($key, $mirrorValues[$name])) {
+                    $row[$name] = $mirrorValues[$name][$key];
+                }
+            }
             return;
         }
         $reference = (array) ($field['reference'] ?? []);

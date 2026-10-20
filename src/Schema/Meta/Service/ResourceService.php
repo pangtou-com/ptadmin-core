@@ -139,7 +139,19 @@ final class ResourceService implements \PTAdmin\Schema\Contracts\ResourceService
         $page = max(1, (int) ($query['page'] ?? 1));
         $limit = max(1, min(100, (int) ($query['limit'] ?? 20)));
         $total = (clone $builder)->count();
-        $items = $builder->forPage($page, $limit)->get()->map(fn (Resource $resource): ResourceInfo => $this->resourceInfo($resource))->all();
+        $resources = $builder->forPage($page, $limit)->get();
+        $versionsByResource = [];
+        if ($resources->isNotEmpty()) {
+            foreach (ResourceVersion::query()
+                ->whereIn('resource_id', $resources->pluck('id')->all())
+                ->whereIn('status', ['active', 'draft'])
+                ->get(['id', 'resource_id', 'status', 'checksum']) as $version) {
+                $versionsByResource[(int) $version->resource_id][(string) $version->status] = $version;
+            }
+        }
+        $items = $resources
+            ->map(fn (Resource $resource): ResourceInfo => $this->resourceInfo($resource, $versionsByResource[(int) $resource->id] ?? []))
+            ->all();
         return new ListResourcesResult(['results' => $items, 'total' => $total, 'page' => $page, 'limit' => $limit]);
     }
 
@@ -412,10 +424,17 @@ final class ResourceService implements \PTAdmin\Schema\Contracts\ResourceService
     {
         return new SchemaError($code, $message, $details, $issues, false, $stage);
     }
-    private function resourceInfo(Resource $resource): ResourceInfo
+    /** @param array<string, ResourceVersion|null>|null $versions */
+    private function resourceInfo(Resource $resource, ?array $versions = null): ResourceInfo
     {
-        $active = $resource->versions()->where('status', 'active')->first();
-        $draft = $resource->versions()->where('status', 'draft')->first();
+        if ($versions === null) {
+            $versions = [
+                'active' => $resource->versions()->where('status', 'active')->first(),
+                'draft' => $resource->versions()->where('status', 'draft')->first(),
+            ];
+        }
+        $active = $versions['active'] ?? null;
+        $draft = $versions['draft'] ?? null;
         $designFlow = null;
         $designFlowId = trim((string) $resource->design_flow_id);
         if ($designFlowId !== '' && str_contains($designFlowId, ':')) {
