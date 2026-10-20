@@ -83,6 +83,10 @@ final class AddonCatalog
                 if (($manifest['code'] ?? null) !== $code) {
                     throw new AddonException('The addon directory must match its lowercase manifest code.', 'addon_directory_mismatch');
                 }
+                $verifiedFiles = $current['manifest']['verified_files'] ?? null;
+                if (is_array($verifiedFiles)) {
+                    $manifest['verified_files'] = $verifiedFiles;
+                }
                 $this->lifecycle->transition($code, 'loading');
                 $this->lifecycle->transition($code, 'ready', [
                     'manifest' => $manifest,

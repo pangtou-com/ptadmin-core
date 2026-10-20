@@ -252,7 +252,7 @@ final class FrontendRegistry
             $entry = [
                 'key' => $key,
                 'title' => $title,
-                'entry' => './plugins/'.rawurlencode($code).'/'.$entryPath.'?v='.rawurlencode((string) ($manifest['version'] ?? 'dev')),
+                'entry' => '/plugins/'.rawurlencode($code).'/'.$entryPath.'?v='.rawurlencode((string) ($manifest['version'] ?? 'dev')),
                 'sandbox' => $sandbox,
                 'host_api' => $hostApi,
             ];
@@ -278,7 +278,7 @@ final class FrontendRegistry
                     $entry['styles'] = (new PublishedBuildStyles())->resolve(
                         $this->publicRoot.'/'.$this->webPrefix.'/plugins/'.$code,
                         $entryPath,
-                        './plugins/'.rawurlencode($code),
+                        '/plugins/'.rawurlencode($code),
                     );
                 }
                 // trusted 模块与宿主同一执行上下文，必须同时满足包声明、Runtime Profile 和部署信任策略。
@@ -540,6 +540,20 @@ final class FrontendRegistry
         $verifiedAt = $state['updated_at'] ?? null;
         if (is_string($verifiedAt) && $verifiedAt !== '') {
             $trust['verified_at'] = $verifiedAt;
+        }
+        $verifiedManifest = $state['manifest'] ?? null;
+        if ((!is_array($verifiedManifest) || !is_array($verifiedManifest['verified_files'] ?? null))
+            && is_array($manifest['signature'] ?? null)
+            && is_file($this->addonsPath.'/'.$code.'/manifest.json')) {
+            try {
+                $verifiedManifest = $this->verifier->verify($this->addonsPath.'/'.$code, true);
+            } catch (\Throwable) {
+                $verifiedManifest = null;
+            }
+        }
+        if (is_array($verifiedManifest) && is_array($verifiedManifest['verified_files'] ?? null)) {
+            $trust['verified'] = true;
+            $trust['manifest_sha256'] = $this->verifier->manifestSha256($verifiedManifest);
         }
 
         return $trust;

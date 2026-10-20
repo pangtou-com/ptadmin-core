@@ -52,7 +52,7 @@ final class FrontendRegistryTest extends TestCase
         self::assertSame('/ptadmin/demo-addon', $plugin['api_base']);
         self::assertSame(['schema.runtime'], $plugin['entries'][0]['capabilities']);
         self::assertSame(
-            './plugins/demo-addon/index.html?v=1.0.0',
+            '/plugins/demo-addon/index.html?v=1.0.0',
             $plugin['entries'][0]['entry'],
         );
 
@@ -95,7 +95,7 @@ final class FrontendRegistryTest extends TestCase
 
         self::assertSame('cms', $plugin['code']);
         self::assertSame('/ptadmin/cms', $plugin['api_base']);
-        self::assertSame('./plugins/cms/index.html?v=1.0.0', $plugin['entries'][0]['entry']);
+        self::assertSame('/plugins/cms/index.html?v=1.0.0', $plugin['entries'][0]['entry']);
     }
 
     public function testTrustedLocalEntryNeedsExplicitPolicyAndIsNeverDowngraded(): void
@@ -117,6 +117,34 @@ final class FrontendRegistryTest extends TestCase
         self::assertSame('admin-v1', $entry['runtime_profile']);
         self::assertFalse($entry['trust']['verified']);
         self::assertSame('local', $entry['trust']['mode']);
+    }
+
+    public function testInstalledTrustedEntryExposesTheVerifiedManifestDigest(): void
+    {
+        $this->writeAddon('trusted', 'frontend.mjs', true);
+        $lifecycle = new LifecycleStore($this->lifecyclePath);
+        $manifest = json_decode(
+            (string) file_get_contents($this->addonsPath.'/demo-addon/manifest.json'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+        $manifest['verified_files'] = [[
+            'path' => 'manifest.json',
+            'size' => filesize($this->addonsPath.'/demo-addon/manifest.json'),
+            'sha256' => hash_file('sha256', $this->addonsPath.'/demo-addon/manifest.json'),
+        ]];
+        $lifecycle->transition('demo-addon', 'validating');
+        $lifecycle->transition('demo-addon', 'loading');
+        $lifecycle->transition('demo-addon', 'ready', ['manifest' => $manifest]);
+        $lifecycle->transition('demo-addon', 'active');
+        self::assertIsArray($lifecycle->read('demo-addon')['manifest']['verified_files'] ?? null);
+
+        $entry = $this->registry(new TrustPolicy([], [], true, 'testing'))
+            ->resolve($this->addonMenu())['plugins'][0]['entries'][0];
+
+        self::assertTrue($entry['trust']['verified']);
+        self::assertStringStartsWith('sha256:', $entry['trust']['manifest_sha256']);
     }
 
     public function testRegistryDoesNotPerformPackageIntegrityChecksAtRuntime(): void
@@ -327,7 +355,7 @@ final class FrontendRegistryTest extends TestCase
         $resolved = $publish($build);
         self::assertSame([], $resolved['errors']);
         $styles = $resolved['plugins'][0]['entries'][0]['styles'];
-        self::assertSame(['./plugins/demo-addon/page.css?v='.hash_file('sha256', $source.'/page.css')], $styles);
+        self::assertSame(['/plugins/demo-addon/page.css?v='.hash_file('sha256', $source.'/page.css')], $styles);
         file_put_contents($source.'/page.css', '.page { color: blue }');
         self::assertNotSame($styles, $publish($build)['plugins'][0]['entries'][0]['styles']);
         foreach (['../page.css', '/page.css', 'https://example.test/page.css', 'page.css?x=1'] as $invalid) {

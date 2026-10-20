@@ -37,7 +37,7 @@ final class PublishedBuildStylesTest extends TestCase
         $this->write(['app.css', 'app.css']);
         $hash = hash_file('sha256', $this->root.'/app.css');
         self::assertSame(['./modules/app/app.css?v='.$hash], $reader->resolve($this->root, 'app.mjs', './modules/app'));
-        self::assertSame(['./plugins/demo/app.css?v='.$hash], $reader->resolve($this->root, 'app.mjs', './plugins/demo'));
+        self::assertSame(['/plugins/demo/app.css?v='.$hash], $reader->resolve($this->root, 'app.mjs', '/plugins/demo'));
         file_put_contents($this->root.'/app.css', 'body { color: blue; }');
         self::assertNotSame(['./modules/app/app.css?v='.$hash], $reader->resolve($this->root, 'app.mjs', './modules/app'));
     }
