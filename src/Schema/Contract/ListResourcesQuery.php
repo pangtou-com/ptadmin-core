@@ -17,6 +17,7 @@ final class ListResourcesQuery extends ContractObject
         'owner_type' => 'string',
         'owner_code' => 'string',
         'status' => 'string',
+        'design_scope' => 'string',
         'page' => 'int',
         'limit' => 'int',
     ];
@@ -29,6 +30,7 @@ final class ListResourcesQuery extends ContractObject
         'owner_type' => ['omit_empty' => true],
         'owner_code' => ['omit_empty' => true],
         'status' => ['omit_empty' => true],
+        'design_scope' => ['omit_empty' => true],
         'page' => ['omit_empty' => true],
         'limit' => ['omit_empty' => true],
     ];
@@ -50,6 +52,9 @@ final class ListResourcesQuery extends ContractObject
 
     /** Status 资源主体状态。 */
     public string $status = '';
+
+    /** DesignScope 设计目录分组；editable 为可编辑模型，readonly 为代码、插件或已归档模型。 */
+    public string $design_scope = '';
 
     /** Page 页码，从 1 开始。 */
     public int $page = 0;

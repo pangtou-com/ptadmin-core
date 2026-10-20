@@ -52,7 +52,7 @@ final class ResourceController extends Controller
     public function index(Request $request, ResourceServiceInterface $resources): JsonResponse
     {
         return $this->respond(static function () use ($request, $resources): mixed {
-            $query = $request->only(['keyword', 'namespace', 'source_type', 'owner_type', 'owner_code', 'status']);
+            $query = $request->only(['keyword', 'namespace', 'source_type', 'owner_type', 'owner_code', 'status', 'design_scope']);
             foreach (['page', 'limit'] as $field) {
                 if ($request->query->has($field)) {
                     $query[$field] = $request->integer($field);

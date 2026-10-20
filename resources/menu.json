@@ -118,7 +118,7 @@
     },
     {
         "resource_key": "schema.resources",
-        "title": "Schema 资源",
+        "title": "模型管理",
         "type": "page",
         "path": "/schema/resources",
         "parent_key": "site",

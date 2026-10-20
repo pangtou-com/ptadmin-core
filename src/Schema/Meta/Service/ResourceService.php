@@ -130,6 +130,14 @@ final class ResourceService implements \PTAdmin\Schema\Contracts\ResourceService
                 $builder->where($field, $value);
             }
         }
+        $designScope = trim((string) ($query['design_scope'] ?? ''));
+        if ($designScope === 'editable') {
+            $builder->whereIn('source_type', ['studio', 'custom'])->where('status', '<>', 'archived');
+        } elseif ($designScope === 'readonly') {
+            $builder->where(static function ($nested): void {
+                $nested->whereNotIn('source_type', ['studio', 'custom'])->orWhere('status', 'archived');
+            });
+        }
         if (($keyword = trim((string) ($query['keyword'] ?? ''))) !== '') {
             $builder->where(static function ($nested) use ($keyword): void {
                 $like = '%'.$keyword.'%';

@@ -158,6 +158,19 @@ final class SchemaQueryOptimizationTest extends TestCase
         self::assertCount(3, $result->results);
     }
 
+    public function testResourceListSeparatesEditableAndReadonlyDesignModels(): void
+    {
+        DB::table('schema_resources')->where('resource_key', 'test.tree')->update(['source_type' => 'studio', 'status' => 'active']);
+        DB::table('schema_resources')->where('resource_key', 'test.categories')->update(['source_type' => 'custom', 'status' => 'archived']);
+        DB::table('schema_resources')->where('resource_key', 'test.orders')->update(['source_type' => 'code', 'status' => 'active']);
+
+        $editable = app(ResourceServiceInterface::class)->listResources(['design_scope' => 'editable']);
+        $readonly = app(ResourceServiceInterface::class)->listResources(['design_scope' => 'readonly']);
+
+        self::assertSame(['test.tree'], array_column($editable->toArray()['results'], 'resource_key'));
+        self::assertSame(['test.orders', 'test.categories'], array_column($readonly->toArray()['results'], 'resource_key'));
+    }
+
     public function testRelationSelectedValuesAreLoadedInOneBatch(): void
     {
         foreach (range(1, 60) as $id) {

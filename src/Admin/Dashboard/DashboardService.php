@@ -249,7 +249,7 @@ final class DashboardService
     {
         return ['type' => 'card', 'items' => [
             ['id' => 'shortcut-users', 'label' => '管理员管理', 'description' => '账号和权限', 'target' => '/admin/users'],
-            ['id' => 'shortcut-schema', 'label' => 'Schema 资源', 'description' => '字段和 CRUD', 'target' => '/schema/resources'],
+            ['id' => 'shortcut-schema', 'label' => '模型管理', 'description' => '表单与数据模型', 'target' => '/schema/resources'],
             ['id' => 'shortcut-cloud', 'label' => '云市场', 'description' => '扩展与安装', 'target' => '/cloud/market'],
             ['id' => 'shortcut-tasks', 'label' => '任务中心', 'description' => '发布任务', 'target' => '/tasks'],
         ]];
