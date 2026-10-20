@@ -67,9 +67,12 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         $resolved = $this->resolved((string) ($query['resource'] ?? ''));
         $query = $this->treeContext($query, $resolved);
         $root = $this->node($query, $resolved);
-        $rows = $this->filteredTreeRows($query, $resolved);
+        $rows = $this->descendantTreeRows($query, $resolved, $root->{$this->keyField($resolved['schema'])});
         $parentIds = $this->parentIdsForNodes($resolved['resource']->table_name, $this->keyField($resolved['schema']), [...$rows, $root]);
-        $allChildCounts = $this->allChildCounts($query, $resolved);
+        $allChildCounts = $this->allChildCounts($query, $resolved, array_map(
+            fn (object $row): mixed => $row->{$this->keyField($resolved['schema'])},
+            $rows,
+        ));
         $children = $this->groupNodesByParent($rows, $query, $allChildCounts, $parentIds);
         $items = [];
         if (!empty($query['include_root'])) {
@@ -130,12 +133,25 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         $keyField = $this->keyField($resolved['schema']);
         $query = $this->treeContext($query, $resolved);
         $current = $this->node($query, $resolved);
-        $ancestors = DB::table($resolved['resource']->table_name);
-        $this->applyScope($ancestors, $resolved['resource']->resource_key, 'list', $resolved['schema']);
-        $rowsByKey = $ancestors->get()->keyBy(fn ($row): string => (string) $row->{$keyField});
+        $chainRows = $this->recursiveTreeRows(
+            $resolved['resource']->table_name,
+            $keyField,
+            $parent,
+            $current->{$keyField},
+            false,
+            $resolved['schema'],
+            null,
+            $resolved['resource']->resource_key,
+        );
+        $rowsByKey = [];
+        foreach ($chainRows as $row) {
+            $rowsByKey[(string) $row->{$keyField}] = $row;
+        }
         $path = [];
         $seen = [];
-        while ($current) {
+        $currentKey = (string) $current->{$keyField};
+        while (isset($rowsByKey[$currentKey])) {
+            $current = $rowsByKey[$currentKey];
             if (isset($seen[(int) $current->id])) {
                 break;
             }
@@ -145,7 +161,7 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
             if ($this->isRootTreeValue($parentValue)) {
                 break;
             }
-            $current = $rowsByKey->get((string) $parentValue);
+            $currentKey = (string) $parentValue;
         }
         $parentIds = $this->parentIdsForNodes($resolved['resource']->table_name, $keyField, $path, $parent);
         $payloads = [];
@@ -195,7 +211,7 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
                 }
                 $newParent = $parentNode->{$keyField};
             }
-            if ($newParentId !== null && (int) $newParentId > 0 && !$this->isAncestorSafe($resolved['resource']->table_name, $id, (int) $newParentId, $keyField, $parent)) {
+            if ($newParentId !== null && (int) $newParentId > 0 && !$this->isAncestorSafe($resolved['resource']->table_name, $id, $newParent, $keyField, $parent, $resolved['schema'])) {
                 throw $this->error('invalid_input', 'tree node cannot move under its descendant');
             }
             $builder->update([$parent => $newParent]);
@@ -387,6 +403,91 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         return $builder->orderBy('id')->get()->all();
     }
 
+    /**
+     * 按递归父子关系读取目标节点的后代，避免加载无关树节点。
+     *
+     * @param array<string, mixed> $query
+     * @param array<string, mixed> $resolved
+     * @return list<object>
+     */
+    private function descendantTreeRows(array $query, array $resolved, mixed $rootKey): array
+    {
+        return $this->recursiveTreeRows(
+            (string) $resolved['resource']->table_name,
+            $this->keyField($resolved['schema']),
+            $this->parentField($resolved['schema']),
+            $rootKey,
+            true,
+            $resolved['schema'],
+            $query,
+            $resolved['resource']->resource_key,
+        );
+    }
+
+    /**
+     * 在数据库中沿父子字段递归，只返回与起始节点连通的节点；UNION 去重可在历史数据存在环路时终止递归。
+     * @param array<string, mixed>|null $query
+     * @return list<object>
+     */
+    private function recursiveTreeRows(
+        string $table,
+        string $keyField,
+        string $parentField,
+        mixed $startValue,
+        bool $descendants,
+        object $schema,
+        ?array $query = null,
+        ?string $resourceKey = null,
+    ): array {
+        $grammar = DB::connection()->getQueryGrammar();
+        $eligible = DB::table($table)->selectRaw(implode(', ', [
+            $grammar->wrap('id').' as '.$grammar->wrap('node_id'),
+            $grammar->wrap($keyField).' as '.$grammar->wrap('node_key'),
+            $grammar->wrap($parentField).' as '.$grammar->wrap('parent_key'),
+        ]));
+        if ($query !== null) {
+            if (!empty($query['has_soft_deletes'])) {
+                $eligible->whereNull('deleted_at');
+            }
+            $this->applyFilters($eligible, (array) ($query['filters'] ?? []));
+            $this->applyStatePolicy($eligible, $query, $schema);
+        }
+        if ($resourceKey !== null) {
+            $this->applyScope($eligible, $resourceKey, 'list', $schema);
+        }
+
+        $eligibleName = $grammar->wrapTable('tree_eligible_nodes');
+        $chainName = $grammar->wrapTable('tree_chain');
+        $parentName = $grammar->wrapTable('tree_parent_nodes');
+        $childName = $grammar->wrapTable('tree_child_nodes');
+        $nodeId = $grammar->wrap('node_id');
+        $nodeKey = $grammar->wrap('node_key');
+        $parentKey = $grammar->wrap('parent_key');
+        $baseColumns = implode(', ', [$nodeId, $nodeKey, $parentKey]);
+        if ($descendants) {
+            $anchor = 'select '.$baseColumns.' from '.$eligibleName.' where '.$parentKey.' = ?';
+            $recursive = 'select '.$childName.'.'.$nodeId.', '.$childName.'.'.$nodeKey.', '.$childName.'.'.$parentKey
+                .' from '.$eligibleName.' as '.$childName
+                .' inner join '.$chainName.' as '.$parentName.' on '.$childName.'.'.$parentKey.' = '.$parentName.'.'.$nodeKey;
+        } else {
+            $anchor = 'select '.$baseColumns.' from '.$eligibleName.' where '.$nodeKey.' = ?';
+            $recursive = 'select '.$parentName.'.'.$nodeId.', '.$parentName.'.'.$nodeKey.', '.$parentName.'.'.$parentKey
+                .' from '.$eligibleName.' as '.$parentName
+                .' inner join '.$chainName.' as '.$childName.' on '.$parentName.'.'.$nodeKey.' = '.$childName.'.'.$parentKey;
+        }
+        $source = DB::table($table.' as tree_source')
+            ->join('tree_chain', 'tree_source.id', '=', 'tree_chain.node_id')
+            ->select('tree_source.*');
+        if ($query !== null && !empty($query['has_order_field'])) {
+            $source->orderBy('tree_source.'.$this->orderField($schema));
+        }
+        $source->orderBy('tree_source.id');
+        $sql = 'with recursive '.$eligibleName.' as ('.$eligible->toSql().'), '.$chainName.' as ('
+            .$anchor.' union '.$recursive.') '.$source->toSql();
+
+        return DB::select($sql, [...$eligible->getBindings(), $startValue, ...$source->getBindings()]);
+    }
+
     /** @param list<object> $rows @param array<string, mixed> $context @param array<string, int> $allChildCounts @param array<string, int> $parentIds @return array<string, list<array<string, mixed>>> */
     private function groupNodesByParent(array $rows, array $context, array $allChildCounts, array $parentIds): array
     {
@@ -419,31 +520,40 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
             return [];
         }
 
-        $rowsByKey = DB::table($table)
-            ->whereIn($keyField, array_values($values))
-            ->get([$keyField, 'id']);
         $ids = [];
-        foreach ($rowsByKey as $row) {
-            $ids[$this->treeValueKey($row->{$keyField})] ??= (int) $row->id;
+        foreach (array_chunk(array_values($values), 500) as $chunk) {
+            $rowsByKey = DB::table($table)
+                ->whereIn($keyField, $chunk)
+                ->get([$keyField, 'id']);
+            foreach ($rowsByKey as $row) {
+                $ids[$this->treeValueKey($row->{$keyField})] ??= (int) $row->id;
+            }
         }
 
         return $ids;
     }
 
     /** @param array<string, mixed> $query @param array<string, mixed> $resolved @return array<string, int> */
-    private function allChildCounts(array $query, array $resolved): array
+    private function allChildCounts(array $query, array $resolved, ?array $parentValues = null): array
     {
         $field = $this->parentField($resolved['schema']);
-        $builder = DB::table($resolved['resource']->table_name)
-            ->select($field)
-            ->selectRaw('count(*) as aggregate');
-        if (!empty($query['has_soft_deletes'])) {
-            $builder->whereNull('deleted_at');
-        }
-        $this->applyScope($builder, $resolved['resource']->resource_key, 'list', $resolved['schema']);
         $counts = [];
-        foreach ($builder->groupBy($field)->get() as $row) {
-            $counts[$this->treeValueKey($row->{$field} ?? null)] = (int) $row->aggregate;
+        $chunks = $parentValues === null ? [null] : array_chunk(array_values(array_unique(array_filter($parentValues, static fn (mixed $value): bool => $value !== null), SORT_REGULAR)), 500);
+        foreach ($chunks as $chunk) {
+            $builder = DB::table($resolved['resource']->table_name)
+                ->select($field)
+                ->selectRaw('count(*) as aggregate');
+            if ($chunk !== null) {
+                $builder->whereIn($field, $chunk);
+            }
+            if (!empty($query['has_soft_deletes'])) {
+                $builder->whereNull('deleted_at');
+            }
+            $this->applyScope($builder, $resolved['resource']->resource_key, 'list', $resolved['schema']);
+            foreach ($builder->groupBy($field)->get() as $row) {
+                $key = $this->treeValueKey($row->{$field} ?? null);
+                $counts[$key] = ($counts[$key] ?? 0) + (int) $row->aggregate;
+            }
         }
 
         return $counts;
@@ -457,31 +567,35 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         if ($parents === [] && !$hasNull) {
             return [];
         }
-        if ($parents === []) {
-            $builder = DB::table((string) $context['table_name'])
-                ->select((string) $context['parent_field'])
-                ->selectRaw('count(*) as aggregate')
-                ->whereNull((string) $context['parent_field']);
-        } else {
-            $field = (string) $context['parent_field'];
+        $counts = [];
+        $field = (string) $context['parent_field'];
+        foreach (array_chunk($parents, 500) as $chunk) {
             $builder = DB::table((string) $context['table_name'])
                 ->select($field)
                 ->selectRaw('count(*) as aggregate')
-                ->where(function ($query) use ($field, $parents, $hasNull): void {
-                    $query->whereIn($field, $parents);
-                    if ($hasNull) {
-                        $query->orWhereNull($field);
-                    }
-                });
+                ->whereIn($field, $chunk);
+            if (!empty($context['has_soft_deletes'])) {
+                $builder->whereNull('deleted_at');
+            }
+            $this->applyScope($builder, (string) $context['resource'], 'list', $context['schema_object']);
+            foreach ($builder->groupBy($field)->get() as $row) {
+                $key = $this->treeValueKey($row->{$field} ?? null);
+                $counts[$key] = ($counts[$key] ?? 0) + (int) $row->aggregate;
+            }
         }
-        if (!empty($context['has_soft_deletes'])) {
-            $builder->whereNull('deleted_at');
-        }
-        $this->applyScope($builder, (string) $context['resource'], 'list', $context['schema_object']);
-        $counts = [];
-        $field = (string) $context['parent_field'];
-        foreach ($builder->groupBy($field)->get() as $row) {
-            $counts[$this->treeValueKey($row->{$field} ?? null)] = (int) $row->aggregate;
+        if ($hasNull) {
+            $builder = DB::table((string) $context['table_name'])
+                ->select($field)
+                ->selectRaw('count(*) as aggregate')
+                ->whereNull($field);
+            if (!empty($context['has_soft_deletes'])) {
+                $builder->whereNull('deleted_at');
+            }
+            $this->applyScope($builder, (string) $context['resource'], 'list', $context['schema_object']);
+            foreach ($builder->groupBy($field)->get() as $row) {
+                $key = $this->treeValueKey($row->{$field} ?? null);
+                $counts[$key] = ($counts[$key] ?? 0) + (int) $row->aggregate;
+            }
         }
 
         return $counts;
@@ -634,37 +748,20 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         return $this->runtimeCache->load(static fn (): RuntimeRegistrySnapshot => $registry->build());
     }
 
-    private function isAncestorSafe(string $table, int $nodeId, int $parentId, string $keyField, string $parentField): bool
+    private function isAncestorSafe(string $table, int $nodeId, mixed $parentKey, string $keyField, string $parentField, object $schema): bool
     {
-        $rows = DB::table($table)->get(['id', $keyField, $parentField]);
-        $rowsById = [];
-        $idsByKey = [];
-        foreach ($rows as $row) {
-            $rowsById[(int) $row->id] = $row;
-            $idsByKey[(string) $row->{$keyField}] ??= (int) $row->id;
+        $chain = $this->recursiveTreeRows($table, $keyField, $parentField, $parentKey, false, $schema);
+        $reachesRoot = false;
+        foreach ($chain as $ancestor) {
+            if ((int) $ancestor->id === $nodeId) {
+                return false;
+            }
+            if ($this->isRootTreeValue($ancestor->{$parentField} ?? null)) {
+                $reachesRoot = true;
+            }
         }
-        $seen = [$nodeId => true];
-        $current = $parentId;
-        while ($current > 0) {
-            if (isset($seen[$current])) {
-                return false;
-            }
-            $seen[$current] = true;
-            $row = $rowsById[$current] ?? null;
-            if (!$row) {
-                return false;
-            }
-            $next = $row->{$parentField} ?? null;
-            if ($this->isRootTreeValue($next)) {
-                return true;
-            }
-            $nextId = $idsByKey[(string) $next] ?? null;
-            if ($nextId === null) {
-                return false;
-            }
-            $current = (int) $nextId;
-        }
-        return true;
+
+        return $reachesRoot;
     }
 
     private function isRootTreeValue(mixed $value): bool

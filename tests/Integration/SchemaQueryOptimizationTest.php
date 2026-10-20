@@ -79,6 +79,74 @@ final class SchemaQueryOptimizationTest extends TestCase
         self::assertLessThanOrEqual($small + 1, $large);
     }
 
+    public function testTreeQueryChunksLargeParentValueSets(): void
+    {
+        $this->insertTreeRoots(1100);
+        $children = [];
+        foreach (range(1, 1100) as $parentId) {
+            $children[] = [
+                'id' => 1100 + $parentId,
+                'parent_id' => $parentId,
+                'sort' => 1100 + $parentId,
+                'title' => '子节点 '.$parentId,
+            ];
+        }
+        foreach (array_chunk($children, 200) as $chunk) {
+            DB::table('schema_tree_nodes')->insert($chunk);
+        }
+
+        $roots = (new TreeService())->listRoots(['resource' => 'test.tree']);
+        $tree = (new TreeService())->getTree(['resource' => 'test.tree']);
+
+        self::assertCount(1100, $roots['items']);
+        self::assertSame(1, $roots['items'][0]['children_count']);
+        self::assertCount(1100, $tree['items']);
+        self::assertCount(1, $tree['items'][0]['children']);
+    }
+
+    public function testSubtreeReadsOnlyDescendantsOfRequestedRoot(): void
+    {
+        DB::table('schema_tree_nodes')->insert([
+            ['id' => 1, 'parent_id' => null, 'sort' => 1, 'title' => '目标根'],
+            ['id' => 2, 'parent_id' => 1, 'sort' => 2, 'title' => '目标子节点'],
+            ['id' => 3, 'parent_id' => 2, 'sort' => 3, 'title' => '目标孙节点'],
+        ]);
+        $this->insertTreeNodes(1000);
+        $queries = [];
+        DB::listen(static function ($query) use (&$queries): void {
+            $queries[] = strtolower($query->sql);
+        });
+
+        $result = (new TreeService())->getSubtree(['resource' => 'test.tree', 'root_id' => 1]);
+
+        self::assertSame([2, 3], array_column($result['items'], 'id'));
+        self::assertNotEmpty(array_filter($queries, static fn (string $sql): bool => str_contains($sql, 'schema_tree_nodes') && str_contains($sql, 'parent_id') && str_contains($sql, ' in ')));
+        self::assertSame([], array_filter($queries, static fn (string $sql): bool => str_contains($sql, 'schema_tree_nodes') && str_starts_with($sql, 'select *') && !str_contains($sql, ' where ')));
+    }
+
+    public function testAncestorLookupDoesNotLoadUnrelatedTreeRows(): void
+    {
+        DB::table('schema_tree_nodes')->insert([
+            ['id' => 1, 'parent_id' => null, 'sort' => 1, 'title' => '根节点'],
+            ['id' => 2, 'parent_id' => 1, 'sort' => 2, 'title' => '父节点'],
+            ['id' => 3, 'parent_id' => 2, 'sort' => 3, 'title' => '当前节点'],
+        ]);
+        $this->insertTreeNodes(1000);
+        $queries = [];
+        DB::listen(static function ($query) use (&$queries): void {
+            $queries[] = strtolower($query->sql);
+        });
+
+        $result = (new TreeService())->getAncestors([
+            'resource' => 'test.tree',
+            'id' => 3,
+            'include_self' => true,
+        ]);
+
+        self::assertSame([1, 2, 3], array_column($result['items'], 'id'));
+        self::assertSame([], array_filter($queries, static fn (string $sql): bool => str_contains($sql, 'schema_tree_nodes') && str_starts_with($sql, 'select *') && !str_contains($sql, ' where ')));
+    }
+
     public function testResourceListLoadsVersionsInOneBatch(): void
     {
         $result = null;
@@ -254,6 +322,22 @@ final class SchemaQueryOptimizationTest extends TestCase
                 'sort' => $id,
                 'title' => '节点 '.$id,
             ]);
+        }
+    }
+
+    private function insertTreeRoots(int $count): void
+    {
+        $rows = [];
+        foreach (range(1, $count) as $id) {
+            $rows[] = [
+                'id' => $id,
+                'parent_id' => null,
+                'sort' => $id,
+                'title' => '根节点 '.$id,
+            ];
+        }
+        foreach (array_chunk($rows, 200) as $chunk) {
+            DB::table('schema_tree_nodes')->insert($chunk);
         }
     }
 }
