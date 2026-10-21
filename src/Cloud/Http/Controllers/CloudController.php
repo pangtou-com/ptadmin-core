@@ -131,7 +131,7 @@ final class CloudController extends Controller
     {
         try {
             $this->founders->assert($request);
-            return AdminResponse::success('', $catalog->catalog($request->only(['product_type', 'keyword', 'category', 'page', 'per_page'])));
+            return AdminResponse::success('', $catalog->catalog($request->only(['product_type', 'keyword', 'category', 'page', 'per_page', 'codes'])));
         } catch (CloudException $exception) {
             return $this->error($exception);
         }

@@ -7,10 +7,12 @@ namespace PTAdmin\Core\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Bus;
 use PTAdmin\Admin\Auth\AuthorizationService;
 use PTAdmin\Admin\Models\Admin;
 use PTAdmin\Core\Http\Responses\AdminResponse;
 use PTAdmin\Core\Tasks\TaskException;
+use PTAdmin\Core\Tasks\RunTaskAfterResponse;
 use PTAdmin\Core\Tasks\TaskManager;
 
 final class TaskController extends Controller
@@ -39,6 +41,7 @@ final class TaskController extends Controller
             }
             $idempotencyKey = $payload['idempotency_key'] ?? $request->header('Idempotency-Key');
             $result = $tasks->create($type, $data, $this->requestId($request), (int) ($payload['max_attempts'] ?? 1), is_string($idempotencyKey) ? $idempotencyKey : null);
+            $this->dispatchPendingTask($result);
             return AdminResponse::success('', $result, 201);
         } catch (TaskException $exception) {
             return $this->error($exception);
@@ -55,6 +58,7 @@ final class TaskController extends Controller
         try {
             $task = $tasks->get($taskId);
             $this->assertTaskPermissionForTask($task, $request, 'view');
+            $this->dispatchPendingTask($task);
             return AdminResponse::success('', $task);
         } catch (TaskException $exception) {
             return $this->error($exception);
@@ -78,9 +82,7 @@ final class TaskController extends Controller
             $task = $tasks->get($taskId);
             $this->assertTaskPermission($request, (string) ($task['type'] ?? ''), 'update');
             $result = $tasks->retry($taskId, $this->requestId($request));
-            if ($task['type'] === TaskManager::CLOUD_PACKAGE) {
-                \Illuminate\Support\Facades\Bus::dispatchAfterResponse(new \PTAdmin\Cloud\ExecuteCloudPackageTask($taskId));
-            }
+            $this->dispatchPendingTask($result);
             return AdminResponse::success('', $result);
         } catch (TaskException $exception) {
             return $this->error($exception);
@@ -128,6 +130,28 @@ final class TaskController extends Controller
     {
         $value = $request->attributes->get('ptadmin.request_id');
         return is_string($value) ? $value : null;
+    }
+
+    /** @param array<string, mixed> $task */
+    private function dispatchPendingTask(array $task): void
+    {
+        if (($task['status'] ?? null) !== 'pending') {
+            return;
+        }
+
+        $taskId = (string) ($task['task_id'] ?? '');
+        if ($taskId === '') {
+            return;
+        }
+
+        if (($task['type'] ?? null) === TaskManager::CLOUD_PACKAGE) {
+            Bus::dispatchAfterResponse(new \PTAdmin\Cloud\ExecuteCloudPackageTask($taskId));
+            return;
+        }
+
+        if (($task['type'] ?? null) === TaskManager::ADMIN_FRONTEND_UPDATE) {
+            Bus::dispatchAfterResponse(new RunTaskAfterResponse($taskId));
+        }
     }
 
     private function error(TaskException $exception): JsonResponse

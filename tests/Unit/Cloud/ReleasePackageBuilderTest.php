@@ -9,6 +9,7 @@ use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Application;
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
+use PTAdmin\Addon\Manifest\TrustPolicy;
 use PTAdmin\Cloud\CloudException;
 use PTAdmin\Cloud\ReleasePackageBuilder;
 use PTAdmin\Core\ApplicationIdentity;
@@ -72,6 +73,54 @@ final class ReleasePackageBuilderTest extends TestCase
         self::assertFileDoesNotExist($path);
         self::assertSame($manifest, json_decode(file_get_contents($this->root.'/source/manifest.json'), true));
         self::assertSame($frontend, json_decode(file_get_contents($this->root.'/source/frontend/frontend.json'), true));
+    }
+
+    public static function publishers(): array
+    {
+        return [[null], [''], ['local'], ['local:ptadmin-dev'], ['LOCAL:demo'], ['ptadmin']];
+    }
+
+    /** @dataProvider publishers */
+    public function testReleasePublisherIsReadyForProductionWithoutChangingDevelopmentSource(?string $publisher): void
+    {
+        $manifest = ['code' => 'demo', 'version' => '1.0.0', 'sandbox' => 'trusted'];
+        if ($publisher !== null) {
+            $manifest['publisher'] = $publisher;
+        }
+        $this->write('manifest.json', json_encode($manifest, JSON_THROW_ON_ERROR));
+        $this->write('src/Service.php', '<?php // 插件源码');
+        $identity = $this->identity->load();
+        $expected = $publisher === 'ptadmin' ? 'ptadmin' : 'instance:'.$identity['application_instance_id'];
+        $policy = new TrustPolicy([$identity['application_instance_id'] => $identity['public_key']], [$expected], false, 'production');
+        $messages = [];
+        $this->builder->withPackage('addon', $this->root.'/source', '1.1.0', function (array $package) use ($expected, $policy, $manifest): void {
+            $zip = new ZipArchive();
+            self::assertTrue($zip->open($package['path']));
+            $zip->extractTo($this->root.'/production');
+            $zip->close();
+            $verifier = new ManifestVerifier(trustPolicy: $policy);
+            $verified = $verifier->verify($this->root.'/production', true);
+            self::assertSame($expected, $verified['publisher']);
+            self::assertSame(hash_file('sha256', $package['source']['path']), $verified['release']['source_sha256']);
+
+            self::assertTrue($zip->open($package['source']['path']));
+            $source = json_decode($zip->getFromName('manifest.json'), true, 512, JSON_THROW_ON_ERROR);
+            self::assertSame($manifest['publisher'] ?? null, $source['publisher'] ?? null);
+            $zip->close();
+            unset($verified['verified_files']);
+            $verified['publisher'] = 'forged-publisher';
+            file_put_contents($this->root.'/production/manifest.json', json_encode($verified, JSON_THROW_ON_ERROR));
+            try {
+                $verifier->verify($this->root.'/production', true);
+                self::fail('发布者必须受包签名保护。');
+            } catch (\PTAdmin\Addon\Exception\AddonException $exception) {
+                self::assertSame('signature_invalid', $exception->errorCode);
+            }
+        }, false, static function (string $message) use (&$messages): void {
+            $messages[] = $message;
+        });
+        self::assertSame($manifest, json_decode(file_get_contents($this->root.'/source/manifest.json'), true));
+        self::assertCount($publisher === 'ptadmin' ? 0 : 1, $messages);
     }
 
     public function testBusinessCapabilitiesTravelWithVersionAndAreCoveredByAddonSignature(): void

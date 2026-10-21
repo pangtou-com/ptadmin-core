@@ -144,7 +144,7 @@ final class ReleasePackageBuilder
                     $manifest['signature'] = ['key_id' => $keyId];
                 }
                 $this->prepareFrontend($root);
-                $this->sign($root, $manifest);
+                $this->sign($root, $manifest, $log);
             } else {
                 (new ThemeManifestValidator())->validateDirectory($root, $identity['code'], $version, false, false);
             }
@@ -347,9 +347,20 @@ final class ReleasePackageBuilder
         $this->writeJson($path, $frontend);
     }
 
-    private function sign(string $root, array $manifest): void
+    private function sign(string $root, array $manifest, ?callable $log = null): void
     {
         $identity = $this->identity->load();
+        $publisher = $manifest['publisher'] ?? '';
+        if (!is_string($publisher)) {
+            throw new CloudException('插件发布者必须为字符串。', 'invalid_request');
+        }
+        // 本地声明只用于开发；安装包使用实际签名实例的稳定身份，源码包保留原声明。
+        if ($publisher === '' || strtolower($publisher) === 'local' || str_starts_with(strtolower($publisher), 'local:')) {
+            $manifest['publisher'] = 'instance:'.$identity['application_instance_id'];
+            if ($log !== null) {
+                $log('安装包发布者：'.$manifest['publisher'].'（根据签名实例自动生成）。');
+            }
+        }
         $keyId = $manifest['signature']['key_id'] ?? $identity['application_instance_id'];
         if (!is_string($keyId) || $keyId === '') {
             throw new CloudException('插件签名 key_id 必须为非空字符串。', 'invalid_request');

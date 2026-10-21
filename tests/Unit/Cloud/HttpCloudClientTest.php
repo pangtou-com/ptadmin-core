@@ -109,9 +109,10 @@ final class HttpCloudClientTest extends TestCase
             self::assertSame('2', (string) $request['page']);
             self::assertSame('content', $request['category']);
             self::assertSame('主题', $request['keyword']);
+            self::assertSame(['theme', 'classic'], $request['codes']);
             return Factory::response(['code' => 0, 'data' => ['results' => [['code' => 'theme']], 'total' => 13, 'page' => 2]]);
         });
-        $catalog = $this->client->catalog(['product_type' => 'template', 'page' => 2, 'category' => 'content', 'keyword' => '主题']);
+        $catalog = $this->client->catalog(['product_type' => 'template', 'page' => 2, 'category' => 'content', 'keyword' => '主题', 'codes' => ['theme', 'classic']]);
         self::assertSame(13, $catalog['total']);
         self::assertSame('theme', $catalog['results'][0]['code']);
     }
