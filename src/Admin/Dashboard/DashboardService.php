@@ -7,7 +7,6 @@ namespace PTAdmin\Admin\Dashboard;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Carbon;
 use PTAdmin\Admin\Models\Admin;
-use PTAdmin\Core\Install\AdminFrontendManifest;
 use PTAdmin\Notice\NoticeInboxService;
 use PTAdmin\Notice\NoticeReceiver;
 
@@ -15,7 +14,6 @@ final class DashboardService
 {
     public function __construct(
         private ConnectionInterface $database,
-        private AdminFrontendManifest $frontendManifest,
         private NoticeInboxService $noticeInbox,
     ) {
     }
@@ -304,20 +302,29 @@ final class DashboardService
     private function versionNotices(): array
     {
         $summary = $this->summary();
+        $items = [];
+        if (is_string($summary['frontend_version'])) {
+            $items[] = ['id' => 'frontend', 'title' => '后台前端 '.$summary['frontend_version'], 'meta' => '当前版本', 'status' => 'success'];
+        }
+        $items[] = ['id' => 'backend', 'title' => 'PTAdmin Core '.$summary['backend_version'], 'meta' => '当前版本', 'status' => 'success'];
 
-        return ['type' => 'list', 'items' => [
-            ['id' => 'frontend', 'title' => '后台前端 '.$summary['frontend_version'], 'meta' => '当前版本', 'status' => 'success'],
-            ['id' => 'backend', 'title' => 'PTAdmin Core '.$summary['backend_version'], 'meta' => '当前版本', 'status' => 'success'],
-        ]];
+        return ['type' => 'list', 'items' => $items];
     }
 
-    private function frontendVersion(): string
+    private function frontendVersion(): ?string
     {
         $webPrefix = (string) config('ptadmin.web_prefix', 'admin');
-        $published = public_path($webPrefix);
-        $directory = is_dir($published) ? $published : (string) config('ptadmin.frontend.bundled_path');
+        $path = public_path($webPrefix.'/manifest.json');
+        // 前端版本仅用于展示；清单缺失或不可读不应影响仪表盘接口。
+        $contents = is_file($path) ? @file_get_contents($path) : false;
+        if ($contents === false) {
+            return null;
+        }
 
-        return (string) $this->frontendManifest->verify($directory)['frontend_version'];
+        $manifest = json_decode($contents, true);
+        $version = is_array($manifest) ? ($manifest['frontend_version'] ?? null) : null;
+
+        return is_string($version) && trim($version) !== '' ? $version : null;
     }
 
     /** @return array<string,mixed> */
