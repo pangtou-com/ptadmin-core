@@ -63,7 +63,7 @@ final class MenuSynchronizer
     /** @return array{core:array<string,mixed>,addons:array<string,array<string,mixed>>,totals:array<string,int>} */
     public function syncAll(): array
     {
-        $discovery = $this->addons->scan(false);
+        $discovery = $this->addons->scan();
         if ($discovery['errors'] !== []) {
             $error = $discovery['errors'][0];
             throw new RuntimeException(sprintf(

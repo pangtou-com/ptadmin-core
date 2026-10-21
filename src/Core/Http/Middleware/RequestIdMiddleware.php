@@ -12,7 +12,8 @@ final class RequestIdMiddleware
 {
     public function handle(Request $request, Closure $next): Response
     {
-        $requestId = $this->resolveRequestId($request->header('X-Request-ID'));
+        $requestId = $request->attributes->get('ptadmin.request_id')
+            ?? $this->resolveRequestId($request->header('X-Request-ID'));
         $request->attributes->set('ptadmin.request_id', $requestId);
 
         $response = $next($request);

@@ -97,7 +97,7 @@ final class UnifiedSyncCommand extends Command
     private function syncAddons(): int
     {
         $count = 0;
-        $discovery = $this->addons->scan(false);
+        $discovery = $this->addons->scan();
         if ($discovery['errors'] !== []) {
             throw new RuntimeException('插件发现失败，不能执行统一同步。');
         }

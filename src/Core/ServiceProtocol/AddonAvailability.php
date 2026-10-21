@@ -4,18 +4,23 @@ declare(strict_types=1);
 
 namespace PTAdmin\Core\ServiceProtocol;
 
-use PTAdmin\Addon\Lifecycle\LifecycleStore;
+use PTAdmin\Addon\Catalog\AddonCatalog;
 
 final class AddonAvailability
 {
-    public function __construct(private LifecycleStore $lifecycle)
+    public function __construct(private readonly AddonCatalog $catalog)
     {
     }
 
     public function active(string $addonCode): bool
     {
         Input::code($addonCode, 'addon_code');
-        return ($this->lifecycle->read($addonCode)['state'] ?? null) === 'active';
+        foreach ($this->catalog->scan()['addons'] as $addon) {
+            if ($addon['code'] === $addonCode) {
+                return $addon['state'] === 'active';
+            }
+        }
+        return false;
     }
 
     public function assertActive(string $addonCode): void

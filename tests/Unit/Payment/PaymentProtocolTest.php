@@ -197,7 +197,7 @@ final class PaymentProtocolTest extends ProtocolTestCase
         $this->assertProtocolError('merchant_changed', fn () => $this->gateway->create(new PaymentContext($reference, 'pc_qr', PaymentTarget::Pc), $this->request()));
         $this->assertProtocolError('merchant_changed', fn () => $this->gateway->query($reference, new PaymentLookup('attempt-1')));
         $adapter->ready = new PaymentReadiness(true, 'merchant-original');
-        $this->lifecycle->transition('plugin_a', 'inactive');
+        $this->deactivate('plugin_a');
         self::assertCount(0, $this->registry->discover(new PaymentRequirements(PaymentTarget::Pc, 'CNY', availableOnly: false)));
         $this->assertProtocolError('addon_unavailable', fn () => $this->gateway->query($reference, new PaymentLookup('attempt-1')));
         self::assertSame(0, $adapter->writes + $adapter->queries);

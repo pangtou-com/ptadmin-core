@@ -28,7 +28,7 @@ final class AdminFrontendManifest
             throw new RuntimeException('The PTAdmin frontend directory is unavailable.');
         }
 
-        $manifestPath = $root.'/ptadmin-frontend-manifest.json';
+        $manifestPath = $root.'/manifest.json';
         $contents = is_file($manifestPath) ? file_get_contents($manifestPath) : false;
         if ($contents === false) {
             throw new RuntimeException('The PTAdmin frontend manifest is unavailable.');

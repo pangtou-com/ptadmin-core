@@ -71,8 +71,8 @@ final class AdminFrontendPublisher
                 }
             }
             if (!copy(
-                $this->source.'/ptadmin-frontend-manifest.json',
-                $staging.'/ptadmin-frontend-manifest.json'
+                $this->source.'/manifest.json',
+                $staging.'/manifest.json'
             )) {
                 throw new RuntimeException('Unable to publish the PTAdmin frontend manifest.');
             }
@@ -129,7 +129,7 @@ final class AdminFrontendPublisher
                     throw new RuntimeException(sprintf('Unable to stage frontend file: %s', $path));
                 }
             }
-            if (!copy($source.'/ptadmin-frontend-manifest.json', $staging.'/ptadmin-frontend-manifest.json')) {
+            if (!copy($source.'/manifest.json', $staging.'/manifest.json')) {
                 throw new RuntimeException('Unable to stage the PTAdmin frontend manifest.');
             }
             $modules = $target.'/modules';

@@ -104,8 +104,7 @@ PHP);
         $app->instance('migrator', $migrator);
         $registrar = new RuntimeRegistrar(
             $app,
-            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle), false),
-            new LifecycleStore($this->lifecycle),
+            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle)),
             $this->root,
         );
 
@@ -125,6 +124,28 @@ PHP);
         self::assertSame([$this->root.'/runtime-addon/database/migrations'], $migrator->paths);
         $events->dispatch('runtime-addon.test');
         self::assertTrue(\RuntimeAddon\RuntimeHook::$called);
+    }
+
+    /** @runInSeparateProcess */
+    public function testPublishedRoutesRemainAvailableWhileLifecycleIsValidating(): void
+    {
+        $lifecycle = new LifecycleStore($this->lifecycle);
+        $lifecycle->transition('runtime-addon', 'active');
+        $catalog = new AddonCatalog($this->root, new ManifestVerifier(), $lifecycle);
+        $catalog->rebuild();
+        $lifecycle->transition('runtime-addon', 'validating');
+        $before = $lifecycle->read('runtime-addon');
+        file_put_contents($this->root.'/runtime-addon/manifest.json', '{unpublished');
+        $app = new Application($this->root);
+        $events = new Dispatcher($app);
+        $app->instance('events', $events);
+        $app->instance('router', new Router($events, $app));
+        $registrar = new RuntimeRegistrar($app, $catalog, $this->root);
+
+        $registrar->registerMigrations();
+        self::assertSame(['loaded' => ['runtime-addon'], 'errors' => []], $registrar->register());
+        self::assertSame('runtime-addon', $app['router']->getRoutes()->match(\Illuminate\Http\Request::create('/runtime-addon'))->uri());
+        self::assertSame($before, $lifecycle->read('runtime-addon'));
     }
 
     /** @runInSeparateProcess */
@@ -154,8 +175,7 @@ PHP);
         $app = new Application($this->root);
         $registrar = new RuntimeRegistrar(
             $app,
-            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle), false),
-            new LifecycleStore($this->lifecycle),
+            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle)),
             $this->root,
         );
 
@@ -195,8 +215,7 @@ PHP);
         $app = new Application($this->root);
         $registrar = new RuntimeRegistrar(
             $app,
-            new AddonCatalog($this->root, new ManifestVerifier(), $lifecycle, false),
-            $lifecycle,
+            new AddonCatalog($this->root, new ManifestVerifier(), $lifecycle),
             $this->root,
         );
         self::assertFalse($app->bound('RuntimeAddon\\Services\\Probe'));
@@ -237,8 +256,7 @@ PHP);
         $app = new Application($this->root);
         $registrar = new RuntimeRegistrar(
             $app,
-            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle), false),
-            new LifecycleStore($this->lifecycle),
+            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle)),
             $this->root,
         );
 
@@ -276,8 +294,7 @@ PHP);
         $app->instance(RuntimeRegistry::class, $registry);
         $registrar = new RuntimeRegistrar(
             $app,
-            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle), false),
-            new LifecycleStore($this->lifecycle),
+            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle)),
             $this->root,
         );
 
@@ -313,8 +330,7 @@ PHP);
         $app = new Application($this->root);
         $registrar = new RuntimeRegistrar(
             $app,
-            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle), false),
-            new LifecycleStore($this->lifecycle),
+            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle)),
             $this->root,
             null,
             $registry,
@@ -345,15 +361,14 @@ final class Registrar implements RuntimeRegistrarInterface
 PHP);
         $this->writeRuntimeManifest();
         $lifecycle = new LifecycleStore($this->lifecycle);
-        (new AddonCatalog($this->root, new ManifestVerifier(), $lifecycle, false))->scan();
         $lifecycle->transition('runtime-addon', 'inactive', ['disabled_by_user' => true]);
+        (new AddonCatalog($this->root, new ManifestVerifier(), $lifecycle))->rebuild();
         $registry = new RuntimeRegistry();
         $app = new Application($this->root);
         $app->instance(RuntimeRegistry::class, $registry);
         $registrar = new RuntimeRegistrar(
             $app,
-            new AddonCatalog($this->root, new ManifestVerifier(), $lifecycle, false),
-            $lifecycle,
+            new AddonCatalog($this->root, new ManifestVerifier(), $lifecycle),
             $this->root,
         );
 
@@ -363,7 +378,7 @@ PHP);
     }
 
     /** @runInSeparateProcess */
-    public function testRuntimeRegistrationFailureMakesAddonInactiveWithDiagnostic(): void
+    public function testRuntimeRegistrationFailureReturnsDiagnosticWithoutChangingLifecycle(): void
     {
         mkdir($this->root.'/runtime-addon/src/Runtime', 0700, true);
         file_put_contents($this->root.'/runtime-addon/src/Runtime/Registrar.php', <<<'PHP'
@@ -384,8 +399,7 @@ PHP);
         $app = new Application($this->root);
         $registrar = new RuntimeRegistrar(
             $app,
-            new AddonCatalog($this->root, new ManifestVerifier(), $lifecycle, false),
-            $lifecycle,
+            new AddonCatalog($this->root, new ManifestVerifier(), $lifecycle),
             $this->root,
             null,
             new RuntimeRegistry(),
@@ -394,10 +408,8 @@ PHP);
         $result = $registrar->register();
         self::assertSame([], $result['loaded']);
         self::assertSame('addon_runtime_registration_failed', $result['errors'][0]['error_code']);
-        $state = $lifecycle->read('runtime-addon');
-        self::assertSame('inactive', $state['state']);
-        self::assertSame('addon_runtime_registration_failed', $state['runtime_error_code']);
-        self::assertSame('runtime registration failed', $state['runtime_error']);
+        self::assertNull($lifecycle->read('runtime-addon'));
+        self::assertSame('runtime registration failed', $result['errors'][0]['message']);
     }
 
     /** @runInSeparateProcess */
@@ -418,8 +430,7 @@ PHP);
         $lifecycle = new LifecycleStore($this->lifecycle);
         $registrar = new RuntimeRegistrar(
             new Application($this->root),
-            new AddonCatalog($this->root, new ManifestVerifier(), $lifecycle, false),
-            $lifecycle,
+            new AddonCatalog($this->root, new ManifestVerifier(), $lifecycle),
             $this->root,
         );
 
@@ -427,27 +438,27 @@ PHP);
 
         self::assertSame([], $result['loaded']);
         self::assertSame('runtime_registry_unavailable', $result['errors'][0]['error_code']);
-        self::assertSame('inactive', $lifecycle->read('runtime-addon')['state']);
+        self::assertNull($lifecycle->read('runtime-addon'));
     }
 
     /** @runInSeparateProcess */
-    public function testInvalidBootstrapMakesAddonInactiveWithoutBlockingScan(): void
+    public function testInvalidBootstrapDoesNotChangePublishedPluginState(): void
     {
         file_put_contents($this->root.'/runtime-addon/manifest.json', json_encode([
             'code' => 'runtime-addon', 'version' => '1.0.0', 'namespace' => 'Missing',
         ], JSON_THROW_ON_ERROR));
         $app = new Application($this->root);
-        $registrar = new RuntimeRegistrar($app, new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle), false), new LifecycleStore($this->lifecycle), $this->root);
+        $registrar = new RuntimeRegistrar($app, new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle)), $this->root);
         $result = $registrar->register();
 
         self::assertSame([], $result['loaded']);
         self::assertSame('bootstrap_class_unavailable', $result['errors'][0]['error_code']);
         $state = (new LifecycleStore($this->lifecycle))->read('runtime-addon');
-        self::assertSame('inactive', $state['state']);
-        self::assertSame('bootstrap_class_unavailable', $state['runtime_error_code']);
-        $diagnostic = (new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle), false))->scan();
-        self::assertSame('inactive', $diagnostic['addons'][0]['state']);
-        self::assertSame('bootstrap_class_unavailable', $diagnostic['addons'][0]['diagnostic_code']);
+        self::assertNull($state);
+        $diagnostic = (new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle)))->scan();
+        self::assertSame('active', $diagnostic['addons'][0]['state']);
+        self::assertNull($diagnostic['addons'][0]['diagnostic_code']);
+        self::assertSame($result, $registrar->register());
     }
 
     /** @runInSeparateProcess */
@@ -511,8 +522,7 @@ PHP);
         $app->instance('events', new Dispatcher($app));
         $registrar = new RuntimeRegistrar(
             $app,
-            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle), false),
-            new LifecycleStore($this->lifecycle),
+            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle)),
             $this->root,
             new TemplateDirectiveLoader($app, new DirectiveRegistry()),
         );
@@ -545,8 +555,7 @@ PHP);
         $app = new Application($this->root);
         $registrar = new RuntimeRegistrar(
             $app,
-            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle), false),
-            new LifecycleStore($this->lifecycle),
+            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle)),
             $this->root,
         );
 
@@ -570,8 +579,7 @@ PHP);
         $app = new Application($this->root);
         $registrar = new RuntimeRegistrar(
             $app,
-            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle), false),
-            new LifecycleStore($this->lifecycle),
+            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle)),
             $this->root,
         );
 
@@ -598,8 +606,7 @@ PHP);
         $app = new Application($this->root);
         $registrar = new RuntimeRegistrar(
             $app,
-            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle), false),
-            new LifecycleStore($this->lifecycle),
+            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle)),
             $this->root,
         );
 
@@ -640,8 +647,7 @@ PHP);
         $registry = new DirectiveRegistry();
         $registrar = new RuntimeRegistrar(
             $app,
-            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle), false),
-            new LifecycleStore($this->lifecycle),
+            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle)),
             $this->root,
             new TemplateDirectiveLoader($app, $registry),
         );
@@ -670,8 +676,7 @@ PHP);
         $app = new Application($this->root);
         $registrar = new RuntimeRegistrar(
             $app,
-            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle), false),
-            new LifecycleStore($this->lifecycle),
+            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle)),
             $this->root,
         );
 

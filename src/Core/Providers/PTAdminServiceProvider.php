@@ -453,7 +453,6 @@ final class PTAdminServiceProvider extends ServiceProvider
                 (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
                 $app->make(ManifestVerifier::class),
                 $app->make(LifecycleStore::class),
-                (bool) $app['config']->get('ptadmin.addon.require_signature', true)
             );
         });
         $this->app->singleton(TemplateDirectiveLoader::class);
@@ -461,7 +460,6 @@ final class PTAdminServiceProvider extends ServiceProvider
             return new RuntimeRegistrar(
                 $app,
                 $app->make(AddonCatalog::class),
-                $app->make(LifecycleStore::class),
                 (string) $app['config']->get('ptadmin.addon.path', base_path('addons')),
                 $app->make(TemplateDirectiveLoader::class),
                 $app->make(RuntimeRegistry::class),
@@ -517,6 +515,14 @@ final class PTAdminServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        $this->app->make(\Illuminate\Contracts\Debug\ExceptionHandler::class)->renderable(
+            [new \PTAdmin\Core\Http\Responses\AdminExceptionRenderer(), 'render'],
+        );
+        $this->app->make(HttpKernel::class)->prependMiddleware(\PTAdmin\Core\Http\Middleware\AdminApiMiddleware::class);
+        $this->commands([\PTAdmin\Addon\Console\Commands\AddonCacheCommand::class]);
+        // 缓存损坏时也必须能启动重建命令；该命令不执行任何插件 PHP 入口。
+        $loadAddonRuntime = (bool) $this->app['config']->get('ptadmin.addon.runtime.enabled', true)
+            && !($this->app->runningInConsole() && ($_SERVER['argv'][1] ?? null) === 'ptadmin:addon:cache');
         $installState = $this->app->make(InstallStateStore::class);
         $isInstalled = $installState->isInstalled();
         if ($isInstalled) {
@@ -536,7 +542,7 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->loadTranslationsFrom(__DIR__.'/../../../lang', 'ptadmin');
         $this->loadMigrationsFrom(__DIR__.'/../../../database/migrations');
         // 插件迁移必须在首次安装执行 migrate 前注册。
-        if ((bool) $this->app['config']->get('ptadmin.addon.runtime.enabled', true)) {
+        if ($loadAddonRuntime) {
             $this->app->make(RuntimeRegistrar::class)->registerMigrations();
         }
         // 安装时也要同步内置 Schema；这里只注册描述符，不解析数据库连接。
@@ -575,12 +581,14 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app['router']->aliasMiddleware('ptadmin.permission', RequirePermissionMiddleware::class);
         $this->app['router']->aliasMiddleware('ptadmin.audit', RecordAdminOperationMiddleware::class);
         $this->loadRoutesFrom(__DIR__.'/../../../routes/ptadmin.php');
-        if ((bool) $this->app['config']->get('ptadmin.addon.runtime.enabled', true)) {
-            $this->app->make(RuntimeRegistrar::class)->register();
+        if ($loadAddonRuntime) {
+            $runtimeResult = $this->app->make(RuntimeRegistrar::class)->register();
+            foreach ($runtimeResult['errors'] as $error) {
+                $this->app['log']->error('插件启动失败。', $error);
+            }
         }
         if (!$this->app->runningInConsole()) {
-            // Cloud package tasks are dispatched after the HTTP response and invoke
-            // this command in the same application process.
+            // 云交付、插件及主题文件任务均在 HTTP 响应结束后通过同一命令执行。
             $this->commands([TaskRunCommand::class]);
             return;
         }

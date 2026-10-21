@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PTAdmin\Addon\Lifecycle;
 
 use PTAdmin\Addon\Exception\AddonException;
+use PTAdmin\Addon\Catalog\AddonCatalog;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
 use PTAdmin\Addon\Resource\ResourceSynchronizerInterface;
 use PTAdmin\Addon\Runtime\RuntimeLifecycleValidator;
@@ -31,9 +32,11 @@ final class StateManager
         private ?RuntimeLifecycleValidator $runtimeValidator = null,
         private ?LifecycleRegistrar $lifecycleRegistrar = null,
         private ?AddonAutoloader $autoloader = null,
+        private ?AddonCatalog $catalog = null,
     ) {
         $this->addonsPath = rtrim($addonsPath, '/');
         $this->autoloader ??= new AddonAutoloader();
+        $this->catalog ??= new AddonCatalog($this->addonsPath, $this->verifier, $this->lifecycle);
     }
 
     /**
@@ -87,6 +90,7 @@ final class StateManager
         $runtimeValidationStarted = false;
         $resourcesChanged = false;
         try {
+            $catalogLock = $this->catalog->beginOperation();
             $manifest = $this->verifier->verifyRuntime($directory);
             $previousMapping = $this->autoloader->snapshot($code);
             $mappingCaptured = true;
@@ -154,6 +158,7 @@ final class StateManager
                 $runtimeValidationStarted = true;
                 $this->runtimeValidator?->assertActivated($directory, $code, $manifest);
             }
+            $this->catalog->publish($code);
             return ['code' => $code, 'enabled' => $enabled, 'state' => $result['state'], 'version' => $manifest['version']];
         } catch (\Throwable $exception) {
             if ($runtimeValidationStarted || $resourcesChanged) {
@@ -177,6 +182,9 @@ final class StateManager
             }
             throw $exception;
         } finally {
+            if (isset($catalogLock) && is_resource($catalogLock)) {
+                $this->catalog->endOperation($catalogLock);
+            }
             $this->locks->release($lock);
         }
     }

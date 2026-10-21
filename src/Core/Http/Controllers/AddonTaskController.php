@@ -10,9 +10,14 @@ use Illuminate\Routing\Controller;
 use PTAdmin\Core\Http\Responses\AdminResponse;
 use PTAdmin\Core\Tasks\TaskException;
 use PTAdmin\Core\Tasks\TaskManager;
+use PTAdmin\Core\Tasks\PendingTaskDispatcher;
 
 final class AddonTaskController extends Controller
 {
+    public function __construct(private readonly PendingTaskDispatcher $dispatcher)
+    {
+    }
+
     public function download(Request $request, TaskManager $tasks): JsonResponse
     {
         $source = $request->input('source', $request->input('url'));
@@ -106,6 +111,7 @@ final class AddonTaskController extends Controller
                 max(1, min(20, (int) $request->input('max_attempts', 1))),
                 $request->header('Idempotency-Key')
             );
+            $this->dispatcher->dispatch($result);
             return AdminResponse::success('', $result, 202);
         } catch (TaskException $exception) {
             $status = $exception->errorCode === 'task_in_progress' ? 409 : 422;

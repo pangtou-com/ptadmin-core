@@ -27,13 +27,13 @@ final class AddonCapabilityRegistrationTest extends ProtocolTestCase
         parent::setUp();
         $this->app = new Application($this->temporary);
         $this->app->instance(LifecycleStore::class, $this->lifecycle);
+        $this->app->instance(AddonCatalog::class, $this->catalog);
         $this->app->singleton(AddonRegistration::class);
         $this->app->register(ServiceProtocolServiceProvider::class);
         $this->payments = $this->app->make(PaymentRegistry::class);
         $this->auth = $this->app->make(SocialAuthRegistry::class);
         $this->registrar = new RuntimeRegistrar($this->app,
-            new AddonCatalog($this->temporary.'/addons', new ManifestVerifier(), $this->lifecycle, false),
-            $this->lifecycle, $this->temporary.'/addons');
+            new AddonCatalog($this->temporary.'/addons', new ManifestVerifier(), $this->lifecycle), $this->temporary.'/addons');
     }
 
     /** @return array{string,string} */
@@ -158,14 +158,14 @@ PHP;
         self::assertCount(2, $this->payments->definitions()['provider-plugin']);
     }
 
-    public function testInvalidSecondDomainLeavesNoChannelsAndMarksPluginInactive(): void
+    public function testInvalidSecondDomainLeavesNoChannelsWithoutChangingLifecycle(): void
     {
         $this->providers(true);
         $this->activate('provider-plugin');
         $result = $this->registrar->register();
         self::assertSame([], $result['loaded']);
         self::assertCount(1, $result['errors']);
-        self::assertSame('inactive', $this->lifecycle->read('provider-plugin')['state']);
+        self::assertSame('active', $this->lifecycle->read('provider-plugin')['state']);
         self::assertSame([], $this->payments->definitions());
         self::assertSame([], $this->auth->definitions());
     }
@@ -314,7 +314,7 @@ PHP;
             }
         }
         self::assertSame([], $this->payments->definitions());
-        $this->lifecycle->transition('provider-plugin', 'inactive');
+        $this->deactivate('provider-plugin');
         $this->assertProtocolError('addon_unavailable', fn () => $this->payments->register('provider-plugin', $provider));
     }
 

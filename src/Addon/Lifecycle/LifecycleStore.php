@@ -73,6 +73,12 @@ final class LifecycleStore
         }
     }
 
+    /** 插件注册快照与生命周期文件使用同一宿主私有存储边界。 */
+    public function catalogPath(): string
+    {
+        return $this->root.'/catalog.json';
+    }
+
     /**
      * 读取插件当前快照；插件从未进入生命周期时返回 null。
      *

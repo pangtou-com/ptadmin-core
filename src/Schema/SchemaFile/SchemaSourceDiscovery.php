@@ -30,7 +30,7 @@ final class SchemaSourceDiscovery
         $this->appendDirectory($sources, $this->corePath, 'core', 'ptadmin', 'core');
         $this->appendDirectory($sources, $this->applicationPath, 'app', $this->applicationOwner, 'application');
 
-        $scan = $this->addons->scan(false);
+        $scan = $this->addons->scan();
         if ($scan['errors'] !== []) {
             $diagnostics = array_map(
                 static fn (array $error): string => (string) ($error['code'] ?? 'unknown').': '.(string) ($error['message'] ?? 'discovery failed'),

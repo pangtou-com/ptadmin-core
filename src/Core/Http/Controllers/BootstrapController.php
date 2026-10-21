@@ -8,13 +8,11 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use PTAdmin\Core\ApplicationIdentity;
 use PTAdmin\Core\Http\Responses\AdminResponse;
-use PTAdmin\Core\Install\AdminFrontendManifest;
 
 final class BootstrapController extends Controller
 {
     public function __construct(
-        private ApplicationIdentity $identity,
-        private AdminFrontendManifest $frontendManifest,
+        private readonly ApplicationIdentity $identity,
     )
     {
     }
@@ -48,12 +46,16 @@ final class BootstrapController extends Controller
     private function frontendVersion(): string
     {
         $webPrefix = (string) config('ptadmin.web_prefix', 'admin');
-        $published = public_path($webPrefix);
-        $directory = is_dir($published)
-            ? $published
-            : (string) config('ptadmin.frontend.bundled_path');
-        $manifest = $this->frontendManifest->verify($directory);
+        $path = public_path($webPrefix.'/manifest.json');
+        // 运行时只读取版本元信息；手动部署缺少清单或读取失败不阻断启动。
+        $contents = is_file($path) ? @file_get_contents($path) : false;
+        if ($contents === false) {
+            return 'unknown';
+        }
 
-        return (string) $manifest['frontend_version'];
+        $manifest = json_decode($contents, true);
+        $version = is_array($manifest) ? ($manifest['frontend_version'] ?? null) : null;
+
+        return is_string($version) && trim($version) !== '' ? $version : 'unknown';
     }
 }

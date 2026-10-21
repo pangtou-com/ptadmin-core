@@ -130,7 +130,7 @@ final class SocialAuthProtocolTest extends ProtocolTestCase
         $adapter->ready = new SocialAuthReadiness(true, 'issuer:app-new');
         self::assertCount(0, $this->registry->discover(new SocialAuthRequirements()));
         $this->assertProtocolError('identity_namespace_changed', fn () => $this->gateway->handleCallback($reference, $request));
-        $this->lifecycle->transition('plugin_a', 'inactive');
+        $this->deactivate('plugin_a');
         $this->assertProtocolError('addon_unavailable', fn () => $this->gateway->handleCallback($reference, $request));
         self::assertSame(0, $adapter->exchanges);
     }

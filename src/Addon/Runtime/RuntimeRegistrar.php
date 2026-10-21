@@ -10,7 +10,6 @@ use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\ServiceProvider;
 use PTAdmin\Addon\Catalog\AddonCatalog;
 use PTAdmin\Addon\Exception\AddonException;
-use PTAdmin\Addon\Lifecycle\LifecycleStore;
 use PTAdmin\Addon\Manifest\AddonNamespace;
 use PTAdmin\Addon\Runtime\Contracts\BootstrapInterface;
 use PTAdmin\Addon\Runtime\Contracts\CapabilityProviderInterface;
@@ -24,7 +23,7 @@ use PTAdmin\Template\Directive\DirectiveRegistry;
  * 将 active 插件接入当前 Laravel 应用生命周期。
  *
  * 入口按固定顺序注册 migration、函数、Bootstrap、路由、Provider、配置、视图语言、模板指令、Hook 和
- * Schema Runtime 贡献，最后调用 Provider 的能力注册入口。单个插件失败时会被标记为 inactive 并记录诊断，
+ * Schema Runtime 贡献，最后调用 Provider 的能力注册入口。单个插件失败时返回本次启动诊断，不改写全局生命周期状态，
  * 本次能力注册不生效，但不会阻断核心或其他插件启动。
  */
 final class RuntimeRegistrar
@@ -35,7 +34,6 @@ final class RuntimeRegistrar
     public function __construct(
         private Application $app,
         private AddonCatalog $discovery,
-        private LifecycleStore $lifecycle,
         private string $addonsPath,
         private ?TemplateDirectiveLoader $templateDirectives = null,
         private ?RuntimeRegistry $runtimeRegistry = null,
@@ -52,7 +50,7 @@ final class RuntimeRegistrar
      */
     public function register(): array
     {
-        $scan = $this->startupScan ?? $this->prepareAutoload($this->discovery->scan(true));
+        $scan = $this->startupScan ?? $this->prepareAutoload($this->discovery->scan());
         $this->startupScan = null;
         $loaded = [];
         $errors = $scan['errors'];
@@ -98,14 +96,6 @@ final class RuntimeRegistrar
                 $errorCode = $exception instanceof AddonException
                     ? $exception->errorCode
                     : 'addon_runtime_registration_failed';
-                try {
-                    $this->lifecycle->transition($code, 'inactive', [
-                        'runtime_error_code' => $errorCode,
-                        'runtime_error' => $exception->getMessage(),
-                    ]);
-                } catch (\Throwable) {
-                    // 生命周期诊断写入失败时仍保留最初的 Runtime 异常，避免次生错误掩盖插件故障原因。
-                }
                 $errors[] = [
                     'code' => $code,
                     'error_code' => $errorCode,
@@ -119,7 +109,7 @@ final class RuntimeRegistrar
     /** Register active addon migration paths before the application's migration run. */
     public function registerMigrations(): void
     {
-        $scan = $this->startupScan = $this->prepareAutoload($this->discovery->scan(true));
+        $scan = $this->startupScan = $this->prepareAutoload($this->discovery->scan());
         foreach ($scan['addons'] as $addon) {
             if (($addon['state'] ?? 'active') !== 'active') {
                 continue;
@@ -211,13 +201,6 @@ final class RuntimeRegistrar
                 $addons[] = $addon;
             } catch (\Throwable $exception) {
                 $errorCode = $exception instanceof AddonException ? $exception->errorCode : 'addon_autoload_failed';
-                try {
-                    $this->lifecycle->transition($code, 'inactive', [
-                        'runtime_error_code' => $errorCode, 'runtime_error' => $exception->getMessage(),
-                    ]);
-                } catch (\Throwable) {
-                    // 诊断文件写入失败时仍返回最初的映射异常，不阻断其他插件启动。
-                }
                 $scan['errors'][] = ['code' => $code, 'error_code' => $errorCode, 'message' => $exception->getMessage()];
             }
         }

@@ -93,7 +93,7 @@ final class CaptchaGatewayTest extends ProtocolTestCase
     public function testDisabledPluginsCannotVerifyExistingChallenges(): void
     {
         $id = $this->create()['challenge_id'];
-        $this->lifecycle->transition('captcha-test', 'inactive');
+        $this->deactivate('captcha-test');
         self::assertSame([], $this->registry->definitions());
         $this->assertProtocolError('addon_unavailable', fn () => $this->gateway->verify($id, 'sms', 'session-a', ['answer' => 'secret-answer']));
         $this->assertProtocolError('addon_unavailable', fn () => $this->create());

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace PTAdmin\Core\Tests\Unit\Addon\Frontend;
 
+use GuzzleHttp\Psr7\Uri;
+use GuzzleHttp\Psr7\UriResolver;
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Addon\Catalog\AddonCatalog;
 use PTAdmin\Addon\Exception\AddonException;
@@ -52,9 +54,15 @@ final class FrontendRegistryTest extends TestCase
         self::assertSame('/ptadmin/demo-addon', $plugin['api_base']);
         self::assertSame(['schema.runtime'], $plugin['entries'][0]['capabilities']);
         self::assertSame(
-            '/plugins/demo-addon/index.html?v=1.0.0',
+            './plugins/demo-addon/index.html?v=1.0.0',
             $plugin['entries'][0]['entry'],
         );
+        foreach (['https://site.example/admintest/', 'https://site.example/project/admintest/', 'http://localhost:5167/'] as $base) {
+            self::assertSame(
+                $base.'plugins/demo-addon/index.html?v=1.0.0',
+                (string) UriResolver::resolve(new Uri($base.'#/plugins/demo-addon/pages'), new Uri($plugin['entries'][0]['entry'])),
+            );
+        }
 
         self::assertSame([], $registry->resolve([['key' => 'another.page']])['plugins']);
         self::assertCount(1, $registry->resolve([[
@@ -95,7 +103,7 @@ final class FrontendRegistryTest extends TestCase
 
         self::assertSame('cms', $plugin['code']);
         self::assertSame('/ptadmin/cms', $plugin['api_base']);
-        self::assertSame('/plugins/cms/index.html?v=1.0.0', $plugin['entries'][0]['entry']);
+        self::assertSame('./plugins/cms/index.html?v=1.0.0', $plugin['entries'][0]['entry']);
     }
 
     public function testTrustedLocalEntryNeedsExplicitPolicyAndIsNeverDowngraded(): void
@@ -355,7 +363,14 @@ final class FrontendRegistryTest extends TestCase
         $resolved = $publish($build);
         self::assertSame([], $resolved['errors']);
         $styles = $resolved['plugins'][0]['entries'][0]['styles'];
-        self::assertSame(['/plugins/demo-addon/page.css?v='.hash_file('sha256', $source.'/page.css')], $styles);
+        self::assertSame(['./plugins/demo-addon/page.css?v='.hash_file('sha256', $source.'/page.css')], $styles);
+        $base = new Uri('https://site.example/admintest/#/plugins/demo-addon/pages');
+        $entry = $resolved['plugins'][0]['entries'][0]['entry'];
+        foreach ([$entry, ...$styles] as $asset) {
+            $path = UriResolver::resolve($base, new Uri($asset))->getPath();
+            self::assertStringStartsWith('/admintest/plugins/demo-addon/', $path);
+            self::assertFileExists($this->publicPath.$path);
+        }
         file_put_contents($source.'/page.css', '.page { color: blue }');
         self::assertNotSame($styles, $publish($build)['plugins'][0]['entries'][0]['styles']);
         foreach (['../page.css', '/page.css', 'https://example.test/page.css', 'page.css?x=1'] as $invalid) {
@@ -380,7 +395,7 @@ final class FrontendRegistryTest extends TestCase
         $verifier = new ManifestVerifier('0.1.0', 1, $trustPolicy);
 
         return new FrontendRegistry(
-            new AddonCatalog($this->addonsPath, $verifier, $lifecycle, false),
+            new AddonCatalog($this->addonsPath, $verifier, $lifecycle),
             $verifier,
             $trustPolicy,
             $lifecycle,

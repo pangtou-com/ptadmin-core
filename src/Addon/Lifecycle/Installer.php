@@ -7,6 +7,7 @@ namespace PTAdmin\Addon\Lifecycle;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Migrations\Migrator;
 use PTAdmin\Addon\Exception\AddonException;
+use PTAdmin\Addon\Catalog\AddonCatalog;
 use PTAdmin\Addon\Frontend\FrontendPublisher;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
 use PTAdmin\Addon\Package\PackageExtractor;
@@ -40,10 +41,12 @@ final class Installer
         private ?LifecycleRegistrar $lifecycleRegistrar = null,
         private ?Migrator $migrator = null,
         private ?AddonAutoloader $autoloader = null,
+        private ?AddonCatalog $catalog = null,
     ) {
         $this->addonsPath = rtrim($addonsPath, '/');
         $this->stagingPath = rtrim($stagingPath, '/');
         $this->autoloader ??= new AddonAutoloader();
+        $this->catalog ??= new AddonCatalog($this->addonsPath, $this->verifier, $this->lifecycle);
     }
 
     /**
@@ -94,6 +97,7 @@ final class Installer
                 throw new AddonException('The addon code does not match the requested operation.', 'addon_code_mismatch');
             }
             $lockHandle = $this->locks?->acquire($code);
+            $catalogLock = $this->catalog->beginOperation();
             $this->runtimeCache?->clear();
             $target = $this->addonsPath.'/'.$code;
             $previousMapping = $this->autoloader->snapshot($code);
@@ -157,6 +161,7 @@ final class Installer
                 return $synced;
             };
             $synced = null !== $this->database ? $this->database->transaction($activate) : $activate();
+            $this->catalog->publish($code);
             if (is_dir($backup)) {
                 $this->deleteDirectory($backup);
             }
@@ -184,6 +189,9 @@ final class Installer
             }
             throw $exception;
         } finally {
+            if (isset($catalogLock) && is_resource($catalogLock)) {
+                $this->catalog->endOperation($catalogLock);
+            }
             if (is_dir($stage)) {
                 $this->deleteDirectory($stage);
             }
@@ -215,6 +223,7 @@ final class Installer
         }
 
         $previousLifecycle = null;
+        $lifecycleCaptured = false;
         $previousMapping = null;
         $mappingCaptured = false;
         $resourcesChanged = false;
@@ -228,7 +237,9 @@ final class Installer
             }
             $code = $manifestCode;
             $lockHandle = $this->locks?->acquire($code);
+            $catalogLock = $this->catalog->beginOperation();
             $previousLifecycle = $this->lifecycle->read($code);
+            $lifecycleCaptured = true;
             $previousState = (string) ($previousLifecycle['state'] ?? 'discovered');
             $previousMapping = $this->autoloader->snapshot($code);
             $mappingCaptured = true;
@@ -253,6 +264,7 @@ final class Installer
                     'manifest' => $manifest,
                 ]);
                 $this->runtimeValidator?->assertDeactivated($code);
+                $this->catalog->publish($code);
 
                 return [
                     'code' => $code,
@@ -289,6 +301,7 @@ final class Installer
                 $this->frontend->remove($webPrefix, $code);
             }
 
+            $this->catalog->publish($code);
             return [
                 'code' => $code,
                 'version' => $manifest['version'],
@@ -310,24 +323,31 @@ final class Installer
                 }
             }
             try {
-                $this->lifecycle->restore($code, $previousLifecycle);
+                if ($lifecycleCaptured) {
+                    $this->lifecycle->restore($code, $previousLifecycle);
+                }
             } catch (\Throwable) {
                 // 生命周期快照恢复失败不能覆盖触发回滚的原始错误。
             }
-            try {
-                if (($previousLifecycle['state'] ?? null) === 'active' && is_dir($frontendSource)) {
-                    $this->frontend->publish($webPrefix, $code, $frontendSource);
-                } else {
-                    $this->frontend->remove($webPrefix, $code);
+            if ($lifecycleCaptured) {
+                try {
+                    if (($previousLifecycle['state'] ?? null) === 'active' && is_dir($frontendSource)) {
+                        $this->frontend->publish($webPrefix, $code, $frontendSource);
+                    } else {
+                        $this->frontend->remove($webPrefix, $code);
+                    }
+                } catch (\Throwable) {
+                    // 前端补偿失败不能覆盖触发回滚的原始错误；下一次 Setup 会重新发布。
                 }
-            } catch (\Throwable) {
-                // 前端补偿失败不能覆盖触发回滚的原始错误；下一次 Setup 会重新发布。
             }
             if ($mappingCaptured) {
                 $this->autoloader->restore($code, $previousMapping);
             }
             throw $exception;
         } finally {
+            if (isset($catalogLock) && is_resource($catalogLock)) {
+                $this->catalog->endOperation($catalogLock);
+            }
             if (is_resource($lockHandle)) {
                 $this->locks?->release($lockHandle);
             }
@@ -347,6 +367,7 @@ final class Installer
         }
         $lockHandle = $this->locks?->acquire($code);
         try {
+            $catalogLock = $this->catalog->beginOperation();
             $this->runtimeCache?->clear();
             $target = $this->addonsPath.'/'.$code;
             if (!is_dir($target)) {
@@ -370,6 +391,7 @@ final class Installer
                     $this->runtimeValidator?->assertDeactivated($code);
                 };
                 null !== $this->database ? $this->database->transaction($dispose) : $dispose();
+                $this->catalog->publish($code);
                 $this->deleteDirectory($backup);
                 $this->autoloader->restore($code, null);
             } catch (\Throwable $exception) {
@@ -386,6 +408,9 @@ final class Installer
             }
             return ['code' => $code, 'removed' => true, 'data_preserved' => true];
         } finally {
+            if (isset($catalogLock) && is_resource($catalogLock)) {
+                $this->catalog->endOperation($catalogLock);
+            }
             if (isset($lockHandle) && is_resource($lockHandle)) {
                 $this->locks?->release($lockHandle);
             }
@@ -453,6 +478,7 @@ final class Installer
         }
         $lockHandle = $this->locks?->acquire($code);
         try {
+            $catalogLock = $this->catalog->beginOperation();
             $source = $this->addonsPath.'/'.$code.'/frontend/dist';
             if (!is_dir($source)) {
                 throw new AddonException('The addon frontend source is unavailable.', 'source_unavailable');
@@ -460,6 +486,9 @@ final class Installer
             $this->validateFrontendSource($this->addonsPath.'/'.$code, $source);
             return $this->frontend->publish($webPrefix, $code, $source);
         } finally {
+            if (isset($catalogLock) && is_resource($catalogLock)) {
+                $this->catalog->endOperation($catalogLock);
+            }
             if (isset($lockHandle) && is_resource($lockHandle)) {
                 $this->locks?->release($lockHandle);
             }

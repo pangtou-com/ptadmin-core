@@ -10,6 +10,7 @@ use Illuminate\Routing\Controller;
 use PTAdmin\Core\Http\Responses\AdminResponse;
 use PTAdmin\Core\Tasks\TaskException;
 use PTAdmin\Core\Tasks\TaskManager;
+use PTAdmin\Core\Tasks\PendingTaskDispatcher;
 use PTAdmin\Core\Theme\ActiveThemeResolver;
 use PTAdmin\Core\Theme\ThemeCatalog;
 use PTAdmin\Core\Theme\ThemeDescriptor;
@@ -22,6 +23,10 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 final class ThemeController extends Controller
 {
+    public function __construct(private readonly PendingTaskDispatcher $dispatcher)
+    {
+    }
+
     public function index(ThemeCatalog $catalog, ActiveThemeResolver $active, ThemeDataPackValidator $dataPacks, ThemeDataPackImporter $importer): JsonResponse
     {
         $scan = $catalog->scan();
@@ -83,6 +88,7 @@ final class ThemeController extends Controller
                 is_string($idempotencyKey) ? $idempotencyKey : null,
             );
 
+            $this->dispatcher->dispatch($task);
             return AdminResponse::success('', $task, 202);
         } catch (TaskException $exception) {
             $status = in_array($exception->errorCode, ['idempotency_key_conflict', 'task_in_progress'], true) ? 409 : 422;
@@ -205,6 +211,7 @@ final class ThemeController extends Controller
             $idempotencyKey = $request->input('idempotency_key', $request->header('Idempotency-Key'));
             $task = $tasks->create($type, ['code' => $code, 'version' => $version, 'operation' => $operation], $this->requestId($request), (int) $request->input('max_attempts', 1), is_string($idempotencyKey) ? $idempotencyKey : null);
 
+            $this->dispatcher->dispatch($task);
             return AdminResponse::success('', $task, 202);
         } catch (TaskException $exception) {
             $status = in_array($exception->errorCode, ['idempotency_key_conflict', 'task_in_progress'], true) ? 409 : 422;

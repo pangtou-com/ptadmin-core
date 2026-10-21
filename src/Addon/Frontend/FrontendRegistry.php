@@ -252,7 +252,7 @@ final class FrontendRegistry
             $entry = [
                 'key' => $key,
                 'title' => $title,
-                'entry' => '/plugins/'.rawurlencode($code).'/'.$entryPath.'?v='.rawurlencode((string) ($manifest['version'] ?? 'dev')),
+                'entry' => './plugins/'.rawurlencode($code).'/'.$entryPath.'?v='.rawurlencode((string) ($manifest['version'] ?? 'dev')),
                 'sandbox' => $sandbox,
                 'host_api' => $hostApi,
             ];
@@ -278,7 +278,7 @@ final class FrontendRegistry
                     $entry['styles'] = (new PublishedBuildStyles())->resolve(
                         $this->publicRoot.'/'.$this->webPrefix.'/plugins/'.$code,
                         $entryPath,
-                        '/plugins/'.rawurlencode($code),
+                        './plugins/'.rawurlencode($code),
                     );
                 }
                 // trusted 模块与宿主同一执行上下文，必须同时满足包声明、Runtime Profile 和部署信任策略。

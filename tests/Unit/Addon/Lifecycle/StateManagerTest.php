@@ -62,11 +62,14 @@ final class StateManagerTest extends TestCase
         self::assertFalse($states->disable('state-addon')['enabled']);
         self::assertFileDoesNotExist($this->root.'/cache/ptadmin-runtime.php');
         self::assertTrue($lifecycle->read('state-addon')['disabled_by_user']);
+        $catalog = new AddonCatalog($this->root.'/addons', new ManifestVerifier(), $lifecycle);
+        self::assertSame('inactive', $catalog->scan()['addons'][0]['state']);
         $this->writeRuntimeCache($cache);
         self::assertTrue($states->enable('state-addon')['enabled']);
         self::assertFileDoesNotExist($this->root.'/cache/ptadmin-runtime.php');
         self::assertFalse($lifecycle->read('state-addon')['disabled_by_user']);
         self::assertSame('active', $lifecycle->read('state-addon')['state']);
+        self::assertSame('active', $catalog->scan()['addons'][0]['state']);
         self::assertSame('deactivate', $synchronizer->calls[0][0]);
         self::assertSame('sync', $synchronizer->calls[1][0]);
     }
@@ -79,7 +82,7 @@ final class StateManagerTest extends TestCase
         $states = new StateManager($this->root.'/addons', new ManifestVerifier(), $lifecycle, new OperationLock($this->root.'/locks'), false);
         $states->disable('state-addon');
 
-        $result = (new AddonCatalog($this->root.'/addons', new ManifestVerifier(), $lifecycle, false))->scan();
+        $result = (new AddonCatalog($this->root.'/addons', new ManifestVerifier(), $lifecycle))->scan();
         self::assertSame('inactive', $result['addons'][0]['state']);
         self::assertTrue($result['addons'][0]['disabled_by_user']);
     }

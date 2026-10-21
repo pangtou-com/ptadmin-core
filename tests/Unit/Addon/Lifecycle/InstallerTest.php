@@ -10,6 +10,7 @@ use PTAdmin\Addon\Lifecycle\Installer;
 use PTAdmin\Addon\Lifecycle\LifecycleStore;
 use PTAdmin\Addon\Exception\AddonException;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
+use PTAdmin\Addon\Catalog\AddonCatalog;
 use PTAdmin\Addon\Package\PackageExtractor;
 use PTAdmin\Addon\Resource\ResourceSynchronizerInterface;
 use PTAdmin\Addon\Runtime\AddonAutoloader;
@@ -113,6 +114,7 @@ final class InstallerTest extends TestCase
         mkdir($versionOne.'/src');
         $installer->install($versionOne, 'admintest');
         $previousMapping = $autoloader->snapshot('demo-addon');
+        $previousCatalog = file_get_contents($state->catalogPath());
 
         $failingSync = new class implements ResourceSynchronizerInterface {
             public function sync(string $directory, string $code): array
@@ -138,6 +140,25 @@ final class InstallerTest extends TestCase
         self::assertSame('1.0.0', $state->read('demo-addon')['version']);
         self::assertSame('active', $state->read('demo-addon')['state']);
         self::assertSame($previousMapping, $autoloader->snapshot('demo-addon'));
+        self::assertSame($previousCatalog, file_get_contents($state->catalogPath()));
+    }
+
+    public function testLifecycleOperationsPublishSnapshotsOnlyAfterSuccess(): void
+    {
+        $state = new LifecycleStore($this->root.'/state');
+        $catalog = new AddonCatalog($this->root.'/addons', new ManifestVerifier(), $state);
+        $installer = new Installer(new ManifestVerifier(), new PackageExtractor(), $state, new FrontendPublisher($this->root.'/public'), $this->root.'/addons', $this->root.'/staging', false);
+        self::assertSame([], $catalog->scan()['addons']);
+        $installer->install($this->package('v1', '1.0.0', 'backend-v1', 'frontend-v1'), 'admintest');
+        self::assertSame('1.0.0', $catalog->scan()['addons'][0]['version']);
+        $installer->install($this->package('v2', '2.0.0', 'backend-v2', 'frontend-v2'), 'admintest', true, onProgress: function () use ($catalog): void {
+            // 更新文件与资源时，其他请求仍读到上一份已提交清单。
+            self::assertSame('1.0.0', $catalog->scan()['addons'][0]['version']);
+        });
+        self::assertSame('2.0.0', $catalog->scan()['addons'][0]['version']);
+        $installer->uninstall('demo-addon', 'admintest');
+        self::assertSame([], $catalog->scan()['addons']);
+        self::assertSame([], $catalog->scan()['errors']);
     }
 
     public function testUpdatingTheSameDirectoryLoadsAPreviouslyMissingNewClass(): void
