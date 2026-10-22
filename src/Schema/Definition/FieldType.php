@@ -17,6 +17,7 @@ final class FieldType
     public const DATE = 'date';
     public const DATETIME = 'datetime';
     public const JSON = 'json';
+
     /** @return array<string, array<string, mixed>> */
     public static function specs(): array
     {

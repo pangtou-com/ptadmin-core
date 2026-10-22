@@ -116,21 +116,9 @@ parameters:
 			path: src/Admin/Schema/AdminRuntimeHook.php
 
 		-
-			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\AdminResource\:\:\$page_key\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Admin/Schema/AdminRuntimeHook.php
-
-		-
 			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\AdminResource\:\:\$resource_key\.$#'
 			identifier: property.notFound
 			count: 4
-			path: src/Admin/Schema/AdminRuntimeHook.php
-
-		-
-			message: '#^Access to an undefined property PTAdmin\\Admin\\Models\\AdminResource\:\:\$type\.$#'
-			identifier: property.notFound
-			count: 5
 			path: src/Admin/Schema/AdminRuntimeHook.php
 
 		-
@@ -160,12 +148,6 @@ parameters:
 		-
 			message: '#^Method PTAdmin\\Admin\\Schema\\AdminRuntimeHook\:\:admin\(\) should return PTAdmin\\Admin\\Models\\Admin but returns array\<Illuminate\\Database\\Eloquent\\Builder\>\|Illuminate\\Database\\Eloquent\\Builder\|Illuminate\\Database\\Eloquent\\Collection\|Illuminate\\Database\\Eloquent\\Model\.$#'
 			identifier: return.type
-			count: 1
-			path: src/Admin/Schema/AdminRuntimeHook.php
-
-		-
-			message: '#^Method PTAdmin\\Admin\\Schema\\AdminRuntimeHook\:\:menuPageTypes\(\) is unused\.$#'
-			identifier: method.unused
 			count: 1
 			path: src/Admin/Schema/AdminRuntimeHook.php
 
@@ -410,12 +392,6 @@ parameters:
 			path: src/Schema/Meta/Service/ResourceService.php
 
 		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$description\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Schema/Meta/Service/ResourceService.php
-
-		-
 			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$migration_owner\.$#'
 			identifier: property.notFound
 			count: 1
@@ -429,30 +405,6 @@ parameters:
 
 		-
 			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$namespace\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Schema/Meta/Service/ResourceService.php
-
-		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$owner_code\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Schema/Meta/Service/ResourceService.php
-
-		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$owner_type\.$#'
-			identifier: property.notFound
-			count: 2
-			path: src/Schema/Meta/Service/ResourceService.php
-
-		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$source_type\.$#'
-			identifier: property.notFound
-			count: 2
-			path: src/Schema/Meta/Service/ResourceService.php
-
-		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$title\.$#'
 			identifier: property.notFound
 			count: 1
 			path: src/Schema/Meta/Service/ResourceService.php
@@ -609,36 +561,6 @@ parameters:
 
 		-
 			message: '#^Access to an undefined property PTAdmin\\Schema\\Definition\\Schema\:\:\$title\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Schema/Render/Projector.php
-
-		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$description\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Schema/Render/Projector.php
-
-		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$owner_code\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Schema/Render/Projector.php
-
-		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$owner_type\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Schema/Render/Projector.php
-
-		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$source_type\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Schema/Render/Projector.php
-
-		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\Resource\:\:\$title\.$#'
 			identifier: property.notFound
 			count: 1
 			path: src/Schema/Render/Projector.php

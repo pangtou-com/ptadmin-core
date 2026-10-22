@@ -17,7 +17,11 @@ final class LifecycleRegistrar
     {
     }
 
-    /** @param 'install'|'uninstall'|'enable'|'disable' $event @param array<string,mixed> $manifest */
+    /**
+     * 校验事件名称后调用对应生命周期，未知事件在加载插件前拒绝。
+     *
+     * @param array<string,mixed> $manifest
+     */
     public function invoke(string $event, string $directory, string $code, array $manifest): void
     {
         if (!in_array($event, ['install', 'uninstall', 'enable', 'disable'], true)) {

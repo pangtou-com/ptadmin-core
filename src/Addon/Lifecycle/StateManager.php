@@ -26,7 +26,7 @@ final class StateManager
         private ManifestVerifier $verifier,
         private LifecycleStore $lifecycle,
         private OperationLock $locks,
-        private bool $requireSignature = true,
+        bool $requireSignature = true,
         private ?ResourceSynchronizerInterface $resourceSynchronizer = null,
         private ?RuntimeCacheStore $runtimeCache = null,
         private ?RuntimeLifecycleValidator $runtimeValidator = null,
@@ -34,6 +34,8 @@ final class StateManager
         private ?AddonAutoloader $autoloader = null,
         private ?AddonCatalog $catalog = null,
     ) {
+        // 保留已有构造参数位置；签名在安装阶段校验，启停读取已安装插件的运行时清单。
+        unset($requireSignature);
         $this->addonsPath = rtrim($addonsPath, '/');
         $this->autoloader ??= new AddonAutoloader();
         $this->catalog ??= new AddonCatalog($this->addonsPath, $this->verifier, $this->lifecycle);

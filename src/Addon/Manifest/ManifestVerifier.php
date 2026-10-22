@@ -231,13 +231,6 @@ final class ManifestVerifier
         }
     }
 
-    private function safePath(string $path): bool
-    {
-        $segments = explode('/', $path);
-        return '' !== $path && !str_starts_with($path, '/') && !str_contains($path, '\\')
-            && !in_array('..', $segments, true) && !in_array('.', $segments, true) && !in_array('', $segments, true);
-    }
-
     private function containsSymlink(string $root, string $path): bool
     {
         $current = $root;

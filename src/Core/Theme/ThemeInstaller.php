@@ -59,7 +59,7 @@ final class ThemeInstaller
                 'public' => false,
             ];
         } catch (\Throwable $exception) {
-            if ($installed && is_string($target) && is_dir($target)) {
+            if ($installed && is_dir($target)) {
                 $this->deleteDirectory($target);
             }
             throw $exception;

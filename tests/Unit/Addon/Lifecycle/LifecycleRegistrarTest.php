@@ -58,6 +58,15 @@ PHP);
         ], $GLOBALS['ptadmin_lifecycle_events']);
     }
 
+    public function testRejectsUnknownEventBeforeLoadingAddon(): void
+    {
+        $registrar = new LifecycleRegistrar(new Application($this->root));
+
+        $this->expectException(\PTAdmin\Addon\Exception\AddonException::class);
+        $this->expectExceptionMessage('Addon lifecycle event is invalid.');
+        $registrar->invoke('unknown', $this->root.'/missing', 'missing', []);
+    }
+
     private function remove(string $path): void
     {
         if (!is_dir($path)) {
