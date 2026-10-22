@@ -316,6 +316,9 @@ Route::middleware($authenticatedMiddleware)
         Route::get('{task_id}/events', [TaskController::class, 'events'])
             ->where('task_id', '[A-Za-z0-9][A-Za-z0-9._-]{7,127}')
             ->name('events');
+        Route::get('{task_id}/stream', [TaskController::class, 'stream'])
+            ->where('task_id', '[A-Za-z0-9][A-Za-z0-9._-]{7,127}')
+            ->name('stream');
         Route::post('{task_id}/retry', [TaskController::class, 'retry'])
             ->where('task_id', '[A-Za-z0-9][A-Za-z0-9._-]{7,127}')
             ->name('retry');

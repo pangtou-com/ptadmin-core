@@ -367,7 +367,17 @@ final class TaskManager
         if (!in_array($status, self::TRANSITIONS[(string) ($state['status'] ?? '')] ?? [], true)) {
             throw new TaskException('The task status transition is invalid.', 'invalid_task_transition', ['from' => $state['status'] ?? null, 'to' => $status]);
         }
-        $updated = $this->store->updateState($taskId, function (array $current) use ($status, $stage, $progress, $message, $mutator, $requestId): array {
+        $attemptCursor = null;
+        $previousChildren = [];
+        if ($status === 'pending' && $stage === 'queued') {
+            $attemptCursor = 0;
+            do {
+                $page = $this->events->read($taskId, $attemptCursor, 500);
+                $attemptCursor = $page['next_cursor'];
+            } while ($page['has_more']);
+            $previousChildren = array_column($this->descendants($taskId), 'task_id');
+        }
+        $updated = $this->store->updateState($taskId, function (array $current) use ($status, $stage, $progress, $message, $mutator, $requestId, $attemptCursor, $previousChildren): array {
             if (!in_array($status, self::TRANSITIONS[(string) ($current['status'] ?? '')] ?? [], true)) {
                 throw new TaskException('The task status transition is invalid.', 'invalid_task_transition');
             }
@@ -380,6 +390,12 @@ final class TaskManager
             $current['message'] = TaskRedactor::message($message);
             $current['updated_at'] = $this->timestamp();
             $current['heartbeat_at'] = 'running' === $status ? $this->timestamp() : null;
+            if ($attemptCursor !== null) {
+                $current['attempt_start_cursor'] = $attemptCursor;
+                $current['previous_child_task_ids'] = $previousChildren;
+                $current['started_at'] = null;
+                $current['finished_at'] = null;
+            }
             if ('running' === $status && null === ($current['started_at'] ?? null)) {
                 $current['started_at'] = $this->timestamp();
             }

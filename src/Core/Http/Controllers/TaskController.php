@@ -13,6 +13,8 @@ use PTAdmin\Core\Http\Responses\AdminResponse;
 use PTAdmin\Core\Tasks\TaskException;
 use PTAdmin\Core\Tasks\PendingTaskDispatcher;
 use PTAdmin\Core\Tasks\TaskManager;
+use PTAdmin\Core\Tasks\TaskEventStream;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class TaskController extends Controller
 {
@@ -73,6 +75,34 @@ final class TaskController extends Controller
         } catch (TaskException $exception) {
             return $this->error($exception);
         }
+    }
+
+    public function stream(string $taskId, Request $request, TaskManager $tasks, TaskEventStream $stream): StreamedResponse|JsonResponse
+    {
+        try {
+            $task = $tasks->get($taskId);
+            $this->assertTaskPermissionForTask($task, $request, 'view');
+        } catch (TaskException $exception) {
+            return $this->error($exception);
+        }
+        $cursor = max(0, (int) $request->query('cursor', $request->header('Last-Event-ID', '0')));
+        // 执行由创建/详情接口调度；长连接只读文件，不能把 after-response 执行拖到流结束后。
+        return response()->stream(static function () use ($stream, $taskId, $cursor): void {
+            foreach ($stream->frames($taskId, $cursor) as $frame) {
+                if (connection_aborted()) {
+                    break;
+                }
+                echo $frame;
+                if (ob_get_level() > 0) {
+                    ob_flush();
+                }
+                flush();
+            }
+        }, 200, [
+            'Content-Type' => 'text/event-stream; charset=UTF-8',
+            'Cache-Control' => 'no-cache, no-store, no-transform',
+            'X-Accel-Buffering' => 'no',
+        ]);
     }
 
     public function retry(string $taskId, Request $request, TaskManager $tasks): JsonResponse
