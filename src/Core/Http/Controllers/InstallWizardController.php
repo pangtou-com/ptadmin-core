@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 use PTAdmin\Core\Install\Exceptions\InvalidInstallStateException;
 use PTAdmin\Core\Install\InstallRequirementService;
+use PTAdmin\Core\Install\InstallDatabaseDrivers;
 use PTAdmin\Core\Install\InstallService;
 use PTAdmin\Core\Install\InstallStateStore;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -83,6 +84,8 @@ final class InstallWizardController extends Controller
 
         return view('ptadmin-install::env', $this->viewData(2, [
             'appUrl' => $request->root(),
+            'databaseOptions' => $this->app->make(InstallDatabaseDrivers::class)->options(),
+            'databaseDriver' => $this->app->make(InstallDatabaseDrivers::class)->defaultDriver(),
         ]));
     }
 
@@ -118,7 +121,7 @@ final class InstallWizardController extends Controller
                     'app_name' => ['nullable', 'string', 'max:100'],
                     'app_url' => ['nullable', 'url', 'max:2048'],
                     'ptadmin_web_prefix' => ['nullable', 'string', 'max:128'],
-                    'db_connection' => ['nullable', 'string', 'in:sqlite,mysql'],
+                    'db_connection' => ['nullable', 'string', 'in:sqlite,mysql,pgsql'],
                     'db_database' => ['nullable', 'string', 'max:255'],
                     'db_host' => ['nullable', 'string', 'max:255'],
                     'db_port' => ['nullable', 'integer', 'between:1,65535'],

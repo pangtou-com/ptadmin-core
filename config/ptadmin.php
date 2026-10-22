@@ -87,7 +87,7 @@ return [
     ],
     'install' => [
         'database_default' => 'mysql',
-        'database_drivers' => ['sqlite', 'mysql'],
+        'database_drivers' => ['sqlite', 'mysql', 'pgsql'],
         'extensions' => ['json', 'mbstring', 'openssl', 'pdo'],
         'folders' => [
             'addons' => 'ptadmin::install.requirement_descriptions.folders.addons',

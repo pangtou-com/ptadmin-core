@@ -68,6 +68,7 @@ return [
         'db_prefix' => 'Table Prefix',
     ],
     'help' => [
+        'database_driver' => 'Databases without the required PDO extension are disabled. Create the PostgreSQL database in advance; its default port is 5432.',
         'web_prefix' => 'Use a lowercase path such as manage or manage/console, or leave it empty to generate a random admin URL.',
     ],
     'placeholders' => [
@@ -88,9 +89,15 @@ return [
         'db_password' => 'Please enter the database password',
         'db_prefix' => 'Please enter the table prefix',
     ],
+    'database_driver_missing_extension' => ':database (missing :extension)',
+    'database_driver_unavailable' => ':database unavailable: the current PHP process requires the :extension extension.',
+    'database_driver_unsupported' => 'Installation supports only configured SQLite, MySQL and PostgreSQL drivers.',
+    'database_extensions' => 'Database driver extensions',
+    'database_extensions_required' => 'Enable at least one supported PDO driver: pdo_sqlite, pdo_mysql or pdo_pgsql.',
     'database_options' => [
         'sqlite' => 'SQLite',
         'mysql' => 'MySQL',
+        'pgsql' => 'PostgreSQL',
     ],
     'writable' => 'Writable',
     'creatable' => 'Creatable',

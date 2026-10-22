@@ -2,9 +2,8 @@
 
 @section('content')
     @php
-        $databaseDriver = 'mysql';
         $databaseConfig = (array) config('database.connections.'.$databaseDriver, []);
-        $databaseValue = 'ptadmin';
+        $databaseValue = $databaseDriver === 'sqlite' ? 'ptadmin.db' : 'ptadmin';
     @endphp
     <form id="install-form">
         <div id="install-form-alert" class="install-alert install-alert-warning" style="display: none;"></div>
@@ -33,27 +32,29 @@
                 <label class="install-field">
                     <span class="install-field-label"><span class="required">*</span> {{ __('ptadmin::install.fields.db_connection') }}</span>
                     <select name="db_connection" class="install-select" required>
-                        <option value="sqlite" @selected($databaseDriver === 'sqlite')>{{ __('ptadmin::install.database_options.sqlite') }}</option>
-                        <option value="mysql" @selected($databaseDriver === 'mysql')>{{ __('ptadmin::install.database_options.mysql') }}</option>
+                        @foreach ($databaseOptions as $option)
+                            <option value="{{ $option['driver'] }}" @selected($databaseDriver === $option['driver']) @disabled(!$option['available']) data-port="{{ $option['port'] }}">{{ $option['available'] ? $option['label'] : __('ptadmin::install.database_driver_missing_extension', ['database' => $option['label'], 'extension' => $option['extension']]) }}</option>
+                        @endforeach
                     </select>
+                    <small class="install-field-help">{{ __('ptadmin::install.help.database_driver') }}</small>
                 </label>
-                <label class="install-field" data-mysql-only>
+                <label class="install-field" data-server-database-only>
                     <span class="install-field-label"><span class="required">*</span> {{ __('ptadmin::install.fields.db_host') }}</span>
                     <input type="text" name="db_host" value="{{ $databaseConfig['host'] ?? '127.0.0.1' }}" placeholder="{{ __('ptadmin::install.placeholders.db_host') }}" autocomplete="off" class="install-input">
                 </label>
-                <label class="install-field" data-mysql-only>
+                <label class="install-field" data-server-database-only>
                     <span class="install-field-label"><span class="required">*</span> {{ __('ptadmin::install.fields.db_port') }}</span>
-                    <input type="number" name="db_port" value="{{ $databaseConfig['port'] ?? '3306' }}" min="1" max="65535" placeholder="{{ __('ptadmin::install.placeholders.db_port') }}" autocomplete="off" class="install-input">
+                    <input type="number" name="db_port" value="{{ ($databaseConfig['port'] ?? '') ?: ($databaseDriver === 'pgsql' ? '5432' : '3306') }}" min="1" max="65535" placeholder="{{ __('ptadmin::install.placeholders.db_port') }}" autocomplete="off" class="install-input">
                 </label>
                 <label class="install-field">
                     <span class="install-field-label"><span class="required">*</span> {{ __('ptadmin::install.fields.db_database') }}</span>
                     <input type="text" name="db_database" value="{{ $databaseValue }}" placeholder="{{ __('ptadmin::install.placeholders.db_database') }}" autocomplete="off" class="install-input" required>
                 </label>
-                <label class="install-field" data-mysql-only>
+                <label class="install-field" data-server-database-only>
                     <span class="install-field-label"><span class="required">*</span> {{ __('ptadmin::install.fields.db_username') }}</span>
                     <input type="text" name="db_username" value="{{ $databaseConfig['username'] ?? '' }}" placeholder="{{ __('ptadmin::install.placeholders.db_username') }}" autocomplete="username" class="install-input">
                 </label>
-                <label class="install-field" data-mysql-only>
+                <label class="install-field" data-server-database-only>
                     <span class="install-field-label">{{ __('ptadmin::install.fields.db_password') }}</span>
                     <input type="password" name="db_password" value="" placeholder="{{ __('ptadmin::install.placeholders.db_password') }}" autocomplete="current-password" class="install-input">
                 </label>

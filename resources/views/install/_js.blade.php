@@ -149,21 +149,30 @@
         const formFields = Array.prototype.slice.call(form.querySelectorAll('input, select'));
         const driverField = form.querySelector('[name="db_connection"]');
         const databaseField = form.querySelector('[name="db_database"]');
-        const mysqlOnlyFields = Array.prototype.slice.call(form.querySelectorAll('[data-mysql-only]'));
+        const serverDatabaseFields = Array.prototype.slice.call(form.querySelectorAll('[data-server-database-only]'));
+        const portField = form.querySelector('[name="db_port"]');
+        const driverPorts = {};
+        let previousDriver = driverField ? driverField.value : '';
         let automaticDatabaseValue = databaseField ? databaseField.value : '';
 
         function syncDatabaseFields() {
-            const isMysql = driverField && driverField.value === 'mysql';
-            mysqlOnlyFields.forEach(function (wrapper) {
-                wrapper.style.display = isMysql ? '' : 'none';
+            const isServerDatabase = driverField && ['mysql', 'pgsql'].includes(driverField.value);
+            if (portField && driverField) {
+                driverPorts[previousDriver] = portField.value;
+                const option = driverField.selectedOptions[0];
+                portField.value = driverPorts[driverField.value] || (option ? option.dataset.port : '');
+                previousDriver = driverField.value;
+            }
+            serverDatabaseFields.forEach(function (wrapper) {
+                wrapper.style.display = isServerDatabase ? '' : 'none';
                 const field = wrapper.querySelector('input, select');
                 if (field) {
-                    field.disabled = !isMysql;
-                    field.required = isMysql && field.name !== 'db_password';
+                    field.disabled = !isServerDatabase;
+                    field.required = isServerDatabase && field.name !== 'db_password';
                 }
             });
             if (databaseField && databaseField.value === automaticDatabaseValue) {
-                automaticDatabaseValue = isMysql ? 'ptadmin' : 'ptadmin.db';
+                automaticDatabaseValue = isServerDatabase ? 'ptadmin' : 'ptadmin.db';
                 databaseField.value = automaticDatabaseValue;
             }
         }

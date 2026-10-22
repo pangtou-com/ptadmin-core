@@ -11,7 +11,7 @@ use Throwable;
 
 /**
  * 将安装表单中的数据库设置转换为 Laravel 连接配置，并在迁移前验证连接。
- * SQLite 固定使用宿主 storage/database 目录，MySQL 使用安装表单提供的连接信息。
+ * SQLite 固定使用宿主 storage/database 目录，服务端数据库使用安装表单提供的连接信息。
  */
 final class InstallDatabaseConfigurator
 {
@@ -43,8 +43,10 @@ final class InstallDatabaseConfigurator
         'admin_operation_records',
     ];
 
-    public function __construct(private DatabaseManager $database)
-    {
+    public function __construct(
+        private readonly DatabaseManager $database,
+        private readonly InstallDatabaseDrivers $drivers,
+    ) {
     }
 
     /**
@@ -54,9 +56,7 @@ final class InstallDatabaseConfigurator
     public function configure(array $input): array
     {
         $driver = strtolower(trim((string) ($input['db_connection'] ?? $input['database_driver'] ?? config('ptadmin.install.database_default', 'mysql'))));
-        if (!in_array($driver, ['sqlite', 'mysql'], true)) {
-            throw new InvalidInstallStateException('安装数据库仅支持 SQLite 和 MySQL。');
-        }
+        $this->drivers->assertAvailable($driver);
 
         $current = (array) config('database.connections.'.$driver, []);
         $database = trim((string) ($input['db_database'] ?? ($driver === 'sqlite' ? self::DEFAULT_SQLITE_DATABASE : 'ptadmin')));
@@ -91,33 +91,42 @@ final class InstallDatabaseConfigurator
             $environmentDatabase = $this->environmentDatabaseValue($databasePath);
         } else {
             $host = trim((string) ($input['db_host'] ?? ($current['host'] ?? '127.0.0.1')));
-            $port = trim((string) ($input['db_port'] ?? ($current['port'] ?? '3306')));
+            $port = trim((string) ($input['db_port'] ?? (($current['port'] ?? '') ?: ($driver === 'pgsql' ? '5432' : '3306'))));
             $username = (string) ($input['db_username'] ?? ($current['username'] ?? ''));
             $password = (string) ($input['db_password'] ?? ($current['password'] ?? ''));
             if (preg_match('/[\x00-\x1F\x7F]/', $database) === 1) {
                 throw new InvalidInstallStateException('数据库名称包含非法字符。');
             }
             if (preg_match('/[\x00-\x1F\x7F]/', $host.$username.$password) === 1 || str_contains($host, ';')) {
-                throw new InvalidInstallStateException('MySQL 连接信息包含非法字符。');
+                throw new InvalidInstallStateException('数据库连接信息包含非法字符。');
             }
             if ($database === '' || $host === '' || $username === '' || !ctype_digit($port) || (int) $port < 1 || (int) $port > 65535) {
-                throw new InvalidInstallStateException('MySQL 主机、端口、数据库名称和账户不能为空。');
+                throw new InvalidInstallStateException('数据库主机、端口、数据库名称和账户不能为空。');
             }
-            if (preg_match('/^[A-Za-z0-9_-]{1,64}$/', $database) !== 1) {
-                throw new InvalidInstallStateException('MySQL 数据库名称只能包含字母、数字、下划线和短横线。');
+            $maximumLength = $driver === 'pgsql' ? 63 : 64;
+            if (preg_match('/^[A-Za-z0-9_-]{1,'.$maximumLength.'}$/', $database) !== 1) {
+                throw new InvalidInstallStateException('数据库名称只能包含字母、数字、下划线和短横线，长度不能超过 '.$maximumLength.' 个字符。');
             }
-            $this->ensureMysqlDatabase($host, $port, $database, $username, $password);
+            if ($driver === 'mysql') {
+                $this->ensureMysqlDatabase($host, $port, $database, $username, $password);
+            }
             $settings = [
-                'driver' => 'mysql',
+                'driver' => $driver,
                 'host' => $host,
                 'port' => $port,
                 'database' => $database,
                 'username' => $username,
                 'password' => $password,
+                'prefix' => $prefix,
+            ];
+            $settings += $driver === 'pgsql' ? [
+                'charset' => 'utf8',
+                'search_path' => $current['search_path'] ?? 'public',
+                'sslmode' => $current['sslmode'] ?? 'prefer',
+            ] : [
                 'unix_socket' => '',
                 'charset' => 'utf8mb4',
                 'collation' => 'utf8mb4_unicode_ci',
-                'prefix' => $prefix,
                 'strict' => true,
                 'engine' => null,
             ];
@@ -220,9 +229,15 @@ final class InstallDatabaseConfigurator
         }
 
         $connection = $this->database->connection($driver);
-        $tables = $driver === 'sqlite'
-            ? array_map(static fn (object $row): string => (string) $row->name, $connection->select("select name from sqlite_master where type = 'table' and name not like 'sqlite_%'"))
-            : array_map(static fn (object $row): string => (string) array_values(get_object_vars($row))[0], $connection->select('show tables'));
+        $query = match ($driver) {
+            'sqlite' => "select name from sqlite_master where type = 'table' and name not like 'sqlite_%'",
+            'pgsql' => 'select tablename from pg_catalog.pg_tables where schemaname = current_schema()',
+            default => 'show tables',
+        };
+        $tables = array_map(
+            static fn (object $row): string => (string) array_values(get_object_vars($row))[0],
+            $connection->select($query),
+        );
 
         foreach ($tables as $table) {
             $unprefixed = $prefix !== '' && str_starts_with($table, $prefix) ? substr($table, strlen($prefix)) : $table;

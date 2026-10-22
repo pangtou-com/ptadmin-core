@@ -96,21 +96,22 @@ return new class() extends Migration {
             if (!Schema::hasTable($tableName) || !Schema::hasColumn($tableName, 'channel')) {
                 continue;
             }
+            $wrappedTable = DB::connection()->getQueryGrammar()->wrapTable($tableName);
             if ($driver === 'mysql') {
                 DB::statement(sprintf(
-                    'ALTER TABLE `%s` MODIFY `channel` VARCHAR(150) NOT NULL COMMENT %s',
-                    $tableName,
+                    'ALTER TABLE %s MODIFY `channel` VARCHAR(150) NOT NULL COMMENT %s',
+                    $wrappedTable,
                     DB::connection()->getPdo()->quote($comment),
                 ));
             } elseif ($driver === 'pgsql') {
-                DB::statement(sprintf('ALTER TABLE "%s" ALTER COLUMN "channel" TYPE VARCHAR(150)', $tableName));
+                DB::statement(sprintf('ALTER TABLE %s ALTER COLUMN "channel" TYPE VARCHAR(150)', $wrappedTable));
                 DB::statement(sprintf(
-                    'COMMENT ON COLUMN "%s"."channel" IS %s',
-                    $tableName,
+                    'COMMENT ON COLUMN %s."channel" IS %s',
+                    $wrappedTable,
                     DB::connection()->getPdo()->quote($comment),
                 ));
             } elseif ($driver === 'sqlsrv') {
-                DB::statement(sprintf('ALTER TABLE [%s] ALTER COLUMN [channel] NVARCHAR(150) NOT NULL', $tableName));
+                DB::statement(sprintf('ALTER TABLE %s ALTER COLUMN [channel] NVARCHAR(150) NOT NULL', $wrappedTable));
             }
         }
     }

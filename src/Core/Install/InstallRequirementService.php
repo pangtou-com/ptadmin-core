@@ -10,6 +10,7 @@ final class InstallRequirementService
 {
     public function __construct(
         private Application $app,
+        private readonly InstallDatabaseDrivers $databaseDrivers,
     ) {
     }
 
@@ -78,11 +79,18 @@ final class InstallRequirementService
     {
         $extensions = (array) config('ptadmin.install.extensions', ['json', 'mbstring', 'openssl', 'pdo']);
 
-        return array_map(static fn (string $extension): array => [
+        $results = array_map(static fn (string $extension): array => [
             'title' => $extension,
             'config' => '',
             'state' => extension_loaded($extension),
         ], $extensions);
+        $results[] = [
+            'title' => __('ptadmin::install.database_extensions'),
+            'config' => __('ptadmin::install.database_extensions_required'),
+            'state' => $this->databaseDrivers->defaultDriver() !== null,
+        ];
+
+        return $results;
     }
 
     /** @return list<array{title:string,config:string,state:bool,description:string}> */

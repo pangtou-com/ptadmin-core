@@ -68,6 +68,7 @@ return [
         'db_prefix' => '数据表前缀',
     ],
     'help' => [
+        'database_driver' => '缺少 PDO 扩展的数据库不可选。PostgreSQL 需提前创建数据库，默认端口为 5432。',
         'web_prefix' => '可自定义为英文小写路径，例如 manage 或 manage/console；留空则自动生成随机后台地址。',
     ],
     'placeholders' => [
@@ -88,9 +89,15 @@ return [
         'db_password' => '请输入数据库密码',
         'db_prefix' => '请输入数据表前缀',
     ],
+    'database_driver_missing_extension' => ':database（缺少 :extension）',
+    'database_driver_unavailable' => ':database 不可用：当前 PHP 未安装或启用 :extension 扩展。',
+    'database_driver_unsupported' => '安装数据库仅支持已配置的 SQLite、MySQL 和 PostgreSQL。',
+    'database_extensions' => '数据库驱动扩展',
+    'database_extensions_required' => '至少启用一种受支持的 PDO 驱动：pdo_sqlite、pdo_mysql 或 pdo_pgsql。',
     'database_options' => [
         'sqlite' => 'SQLite',
         'mysql' => 'MySQL',
+        'pgsql' => 'PostgreSQL',
     ],
     'writable' => '可写入',
     'creatable' => '可创建',
