@@ -12,6 +12,8 @@ return [
     'shortcut_keys' => [],
     // 宿主可实现 DashboardDataProviderInterface，批量提供自有组件数据。
     'provider' => null,
+    // 按稳定编码隐藏插件区块，不删除管理员已有布局。
+    'disabled_widgets' => [],
     'widgets' => [
         'ptadmin.workspace-summary' => ['title' => '个人概览', 'type' => 'stats'],
         'ptadmin.operation-trend' => [

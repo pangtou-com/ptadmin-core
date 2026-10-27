@@ -58,8 +58,11 @@ final class TaskController extends Controller
     {
         try {
             $task = $tasks->get($taskId);
-            $this->assertTaskPermissionForTask($task, $request, 'view');
-            $this->dispatcher->dispatch($task);
+            $admin = $this->assertTaskPermissionForTask($task, $request, 'view');
+            if (!in_array($task['type'], [TaskManager::CORE_UPDATE, TaskManager::ADMIN_FRONTEND_UPDATE], true)
+                || (bool) $admin->getAttribute('is_founder')) {
+                $this->dispatcher->dispatch($task);
+            }
             return AdminResponse::success('', $task);
         } catch (TaskException $exception) {
             return $this->error($exception);
@@ -129,7 +132,7 @@ final class TaskController extends Controller
         }
     }
 
-    private function assertTaskPermission(Request $request, string $type, string $ability): void
+    private function assertTaskPermission(Request $request, string $type, string $ability): Admin
     {
         if ($type === TaskManager::CLOUD_PACKAGE) {
             try {
@@ -143,16 +146,22 @@ final class TaskController extends Controller
         if (!$admin instanceof Admin) {
             throw new TaskException('The administrator account is unavailable.', 'unauthorized');
         }
+        if ($ability !== 'view'
+            && in_array($type, [TaskManager::CORE_UPDATE, TaskManager::ADMIN_FRONTEND_UPDATE], true)
+            && !(bool) $admin->getAttribute('is_founder')) {
+            throw new TaskException('只有创始人可以执行系统更新操作。', 'forbidden');
+        }
         $resource = app(TaskManager::class)->resourceFor($type);
         if (!$this->authorization->allows($admin, $ability, $resource)) {
             throw new TaskException('You are not allowed to manage this task.', 'forbidden', ['resource' => $resource, 'ability' => $ability]);
         }
+        return $admin;
     }
 
     /** @param array<string, mixed> $task */
-    private function assertTaskPermissionForTask(array $task, Request $request, string $ability): void
+    private function assertTaskPermissionForTask(array $task, Request $request, string $ability): Admin
     {
-        $this->assertTaskPermission($request, (string) ($task['type'] ?? ''), $ability);
+        return $this->assertTaskPermission($request, (string) ($task['type'] ?? ''), $ability);
     }
 
     private function requestId(Request $request): ?string

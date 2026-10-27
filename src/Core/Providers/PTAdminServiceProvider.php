@@ -9,6 +9,7 @@ use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use PTAdmin\Admin\Auth\AuthorizationService;
 use PTAdmin\Admin\Auth\AdminAuthenticator;
 use PTAdmin\Admin\Dashboard\DashboardService;
+use PTAdmin\Admin\Dashboard\DashboardWidgetRegistry;
 use PTAdmin\Admin\Schema\AdminRuntimeHook;
 use PTAdmin\Admin\Console\Commands\AdminSyncCommand;
 use PTAdmin\Admin\Console\Commands\MenuSyncCommand;
@@ -286,6 +287,7 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app->singleton(AuthorizationService::class);
         $this->app->bind(\PTAdmin\Admin\Auth\AuthorizationIdentityResolverInterface::class, \PTAdmin\Admin\Auth\AccountAuthorizationIdentityResolver::class);
         $this->app->singleton(DataScopeRegistry::class);
+        $this->app->singleton(DashboardWidgetRegistry::class);
         $this->app->singleton(DashboardService::class);
         $this->app->singleton(MenuSynchronizer::class, static function ($app): MenuSynchronizer {
             return new MenuSynchronizer(

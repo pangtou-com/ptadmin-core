@@ -104,9 +104,10 @@ final class FrontendRegistry
      * 根据当前管理员权限和可见菜单生成插件模块列表；单个插件声明无效时只记录该插件错误。
      *
      * @param array<int, array<string, mixed>> $menus
+     * @param array<string,array<string,list<string>>> $dashboardReferences 来自已授权区块注册表的入口绑定。
      * @return array{plugins:array<int,array<string,mixed>>,errors:array<int,array<string,string>>}
      */
-    public function resolve(array $menus): array
+    public function resolve(array $menus, array $dashboardReferences = []): array
     {
         $result = $this->discovery->scan();
         $plugins = [];
@@ -127,6 +128,7 @@ final class FrontendRegistry
                     $manifest,
                     isset($referencedAddonCodes[$pluginCode]),
                     $registeredKeys,
+                    $dashboardReferences[$pluginCode] ?? [],
                 );
                 $entries = $frontend['entries'];
                 if ($entries === []) {
@@ -173,8 +175,9 @@ final class FrontendRegistry
         array $manifest,
         bool $referencedByMenu,
         array $registeredKeys,
+        array $dashboardReferences = [],
     ): array {
-        if (!$referencedByMenu) {
+        if (!$referencedByMenu && $dashboardReferences === []) {
             return ['entries' => [], 'design_flows' => []];
         }
         $descriptor = $this->descriptor($this->addonsPath.'/'.$code);
@@ -226,6 +229,10 @@ final class FrontendRegistry
             }
             $localKeys[] = $key;
 
+            if (!$referencedByMenu && !isset($dashboardReferences[$key])) {
+                continue;
+            }
+
             $sandbox = (string) ($declaredEntry['sandbox'] ?? '');
             if (!in_array($sandbox, ['trusted', 'iframe'], true)) {
                 throw new AddonException('The addon frontend sandbox is invalid.', 'frontend_sandbox_invalid');
@@ -256,6 +263,9 @@ final class FrontendRegistry
                 'sandbox' => $sandbox,
                 'host_api' => $hostApi,
             ];
+            if (isset($dashboardReferences[$key])) {
+                $entry['dashboard_widgets'] = $dashboardReferences[$key];
+            }
             if ($capabilities !== []) {
                 $entry['capabilities'] = $capabilities;
             }
@@ -297,7 +307,7 @@ final class FrontendRegistry
 
         return [
             'entries' => $resolved,
-            'design_flows' => $resolved === []
+            'design_flows' => !$referencedByMenu || $resolved === []
                 ? []
                 : $this->designFlows($code, $this->declaredDesignFlows($manifest, $descriptor), $resolved),
         ];

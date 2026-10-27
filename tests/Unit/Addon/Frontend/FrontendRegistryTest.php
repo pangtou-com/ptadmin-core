@@ -106,6 +106,47 @@ final class FrontendRegistryTest extends TestCase
         self::assertSame('./plugins/cms/index.html?v=1.0.0', $plugin['entries'][0]['entry']);
     }
 
+    public function testDashboardOnlyAccessResolvesOnlyBoundEntriesWithoutMenusOrDesignFlows(): void
+    {
+        $this->writeAddon('iframe', 'index.html', false, true);
+        $path = $this->addonsPath.'/demo-addon/frontend/frontend.json';
+        $descriptor = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+        $descriptor['entries'][] = array_replace($descriptor['entries'][0], ['key' => 'demo-addon.private', 'entry' => 'unpublished.html']);
+        file_put_contents($path, json_encode($descriptor, JSON_THROW_ON_ERROR));
+        $registry = $this->registry(new TrustPolicy());
+        $references = ['demo-addon' => ['demo-addon.page' => ['demo-addon.custom']]];
+        $resolved = $registry->resolve([], $references);
+        self::assertSame([], $resolved['errors']);
+        self::assertCount(1, $resolved['plugins']);
+        $plugin = $resolved['plugins'][0];
+        self::assertCount(1, $plugin['entries']);
+        self::assertSame(['demo-addon.custom'], $plugin['entries'][0]['dashboard_widgets']);
+        self::assertArrayNotHasKey('design_flows', $plugin);
+        self::assertArrayNotHasKey('icons', $plugin);
+        self::assertSame([], $registry->resolve([])['plugins']);
+        self::assertSame([], $registry->resolve([], ['demo-addon' => ['demo-addon.missing' => ['demo-addon.custom']]])['plugins']);
+        (new LifecycleStore($this->lifecyclePath))->restore('demo-addon', ['state' => 'inactive']);
+        (new AddonCatalog($this->addonsPath, new ManifestVerifier(), new LifecycleStore($this->lifecyclePath)))->rebuild();
+        self::assertSame([], $registry->resolve([], $references)['plugins']);
+    }
+
+    public function testDashboardReferencesKeepProductionTrustCapabilitiesAndPublishedPathValidation(): void
+    {
+        $this->writeAddon('trusted', 'frontend.mjs', true);
+        $references = ['demo-addon' => ['demo-addon.page' => ['demo-addon.custom']]];
+        $denied = $this->registry(new TrustPolicy([], [], false, 'testing'))->resolve([], $references);
+        self::assertSame('trusted_publisher_denied', $denied['errors'][0]['error_code']);
+        $registry = $this->registry(new TrustPolicy([], [], true, 'testing'));
+        self::assertSame(['demo-addon.custom'], $registry->resolve([], $references)['plugins'][0]['entries'][0]['dashboard_widgets']);
+        $path = $this->addonsPath.'/demo-addon/frontend/frontend.json';
+        $descriptor = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+        $descriptor['entries'][0]['capabilities'][] = 'unsupported.capability';
+        file_put_contents($path, json_encode($descriptor, JSON_THROW_ON_ERROR));
+        self::assertSame('frontend_capability_unsupported', $registry->resolve([], $references)['errors'][0]['error_code']);
+        unlink($this->publicPath.'/admintest/plugins/demo-addon/frontend.mjs');
+        self::assertSame('frontend_entry_unavailable', $registry->resolve([], $references)['errors'][0]['error_code']);
+    }
+
     public function testTrustedLocalEntryNeedsExplicitPolicyAndIsNeverDowngraded(): void
     {
         $this->writeAddon('trusted', 'frontend.mjs', true);

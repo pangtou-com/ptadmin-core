@@ -10,6 +10,7 @@ use Illuminate\Routing\Controller;
 use PTAdmin\Admin\Auth\AdminAuthenticator;
 use PTAdmin\Admin\Auth\AuthorizationService;
 use PTAdmin\Admin\Models\Admin;
+use PTAdmin\Admin\Dashboard\DashboardService;
 use PTAdmin\Addon\Frontend\FrontendRegistry;
 use PTAdmin\Admin\Frontend\ApplicationFrontendRegistry;
 use PTAdmin\Core\Auth\Exceptions\InvalidSessionException;
@@ -24,6 +25,7 @@ final class SessionController extends Controller
         private AuthorizationService $authorization,
         private FrontendRegistry $addonFrontends,
         private ApplicationFrontendRegistry $applicationFrontends,
+        private DashboardService $dashboard,
     )
     {
     }
@@ -39,7 +41,7 @@ final class SessionController extends Controller
 
         $permissions = $this->authorization->permissions($admin);
         $menus = $this->authorization->menus($admin);
-        $plugins = $this->addonFrontends->resolve($menus);
+        $plugins = $this->addonFrontends->resolve($menus, $this->dashboard->frontendReferences($admin));
         $applications = $this->applicationFrontends->resolve($menus);
         $modules = array_merge($applications['modules'], $plugins['plugins']);
         $identity = $this->authorization->identity($admin)->attributes;
