@@ -7,14 +7,16 @@ namespace PTAdmin\Admin\Dashboard;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Carbon;
 use PTAdmin\Admin\Models\Admin;
+use PTAdmin\Admin\Auth\AuthorizationService;
 use PTAdmin\Notice\NoticeInboxService;
 use PTAdmin\Notice\NoticeReceiver;
 
 final class DashboardService
 {
     public function __construct(
-        private ConnectionInterface $database,
-        private NoticeInboxService $noticeInbox,
+        private readonly ConnectionInterface $database,
+        private readonly NoticeInboxService $noticeInbox,
+        private readonly AuthorizationService $authorization,
     ) {
     }
 
@@ -23,8 +25,11 @@ final class DashboardService
     {
         return [
             'key' => 'dashboard',
-            'title' => 'PTAdmin 工作台',
-            'description' => '平台核心状态与工作概览',
+            'title' => (string) config('ptadmin-dashboard.title', '工作概览'),
+            'description' => (string) config('ptadmin-dashboard.description', ''),
+            'editable' => (bool) config('ptadmin-dashboard.editable', true),
+            'overview_widget' => (string) config('ptadmin-dashboard.overview_widget', 'ptadmin.workspace-summary'),
+            'welcome' => $this->welcome($admin),
             'summary' => $this->summary(),
             'widgets' => $this->selectedWidgets($admin),
         ];
@@ -34,15 +39,15 @@ final class DashboardService
     public function settings(Admin $admin): array
     {
         return [
-            'available_widgets' => $this->availableWidgets(),
+            'available_widgets' => $this->availableWidgets($admin),
             'selected_widgets' => $this->selectedWidgets($admin),
         ];
     }
 
-    /** @param list<array<string,mixed>> $widgets @return array{saved:int} */
+    /** @param list<mixed> $widgets @return array{saved:int} */
     public function saveSettings(Admin $admin, array $widgets): array
     {
-        $definitions = array_column($this->availableWidgets(), null, 'code');
+        $definitions = array_column($this->availableWidgets($admin), null, 'code');
         $seen = [];
         $normalized = [];
         foreach ($widgets as $index => $widget) {
@@ -66,57 +71,84 @@ final class DashboardService
             ];
         }
 
+        if (!(bool) config('ptadmin-dashboard.editable', true)) {
+            throw new \InvalidArgumentException('当前应用不允许调整仪表盘布局。');
+        }
         $now = now()->timestamp;
-        $this->database->transaction(function () use ($admin, $normalized, $now): void {
-            foreach ($normalized as $widget) {
-                $identity = [
-                    'subject_type' => 'admin',
-                    'subject_id' => (int) $admin->getKey(),
-                    'widget_code' => $widget['widget_code'],
-                ];
-                $existing = $this->database->table('admin_dashboard_widgets')
-                    ->where('subject_type', 'admin')
-                    ->where('subject_id', (int) $admin->getKey())
-                    ->where('widget_code', $widget['widget_code'])
-                    ->first();
-                if (null === $existing) {
-                    $this->database->table('admin_dashboard_widgets')->insert($identity + $widget + [
-                        'created_at' => $now,
-                        'updated_at' => $now,
-                    ]);
-                } else {
-                    $this->database->table('admin_dashboard_widgets')->where('id', $existing->id)->update($widget + [
-                        'updated_at' => $now,
-                    ]);
-                }
-            }
-        });
+        $rows = array_map(static fn (array $widget): array => [
+            'subject_type' => 'admin', 'subject_id' => (int) $admin->getKey(),
+            ...$widget, 'created_at' => $now, 'updated_at' => $now,
+        ], $normalized);
+        if ($rows !== []) {
+            $this->database->table('admin_dashboard_widgets')->upsert(
+                $rows,
+                ['subject_type', 'subject_id', 'widget_code'],
+                ['enabled', 'sort', 'layout_json', 'config_json', 'updated_at'],
+            );
+        }
 
         return ['saved' => count($normalized)];
     }
 
-    /** @param list<array<string,mixed>> $requests @return array{results:list<array<string,mixed>>} */
+    /** @param list<mixed> $requests @return array{results:list<array<string,mixed>>} */
     public function query(Admin $admin, array $requests): array
     {
-        $definitions = array_column($this->availableWidgets(), null, 'code');
+        $definitions = array_column($this->availableWidgets($admin), null, 'code');
+        $codes = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $request): string => is_array($request) ? (string) ($request['code'] ?? '') : '',
+            $requests,
+        ), static fn (string $code): bool => isset($definitions[$code]))));
+        $datasets = [];
+        $errors = [];
+        $providerClass = config('ptadmin-dashboard.provider');
+        if (is_string($providerClass) && $providerClass !== '' && $codes !== []) {
+            $provider = app($providerClass);
+            if (!$provider instanceof DashboardDataProviderInterface) {
+                throw new \LogicException('仪表盘数据提供器必须实现 DashboardDataProviderInterface：'.$providerClass);
+            }
+            try {
+                $datasets = $provider->query($admin, $codes);
+            } catch (\Throwable $exception) {
+                report($exception);
+                $errors = array_fill_keys($codes, ['message' => '仪表盘业务数据读取失败，请稍后重试。']);
+            }
+        }
+        $needs = static fn (string $code): bool => in_array($code, $codes, true)
+            && !array_key_exists($code, $datasets) && !isset($errors[$code]);
+        $menus = [];
+        if ($needs('ptadmin.workspace-summary') || $needs('ptadmin.quick-actions')) {
+            $menus = $this->functionMenus($admin);
+        }
+        // 固定组件在映射结果前查询；循环只组装响应，不逐项访问数据库。
+        if ($needs('ptadmin.workspace-summary')) {
+            $this->readWidget($datasets, $errors, 'ptadmin.workspace-summary', fn (): array => $this->workspaceSummary($admin, $menus));
+        }
+        if ($needs('ptadmin.quick-actions')) {
+            $datasets['ptadmin.quick-actions'] = $this->quickActions($menus);
+        }
+        if ($needs('ptadmin.recent-operations')) {
+            $this->readWidget($datasets, $errors, 'ptadmin.recent-operations', fn (): array => $this->recentOperations($admin));
+        }
+        if ($needs('ptadmin.operation-trend')) {
+            $this->readWidget($datasets, $errors, 'ptadmin.operation-trend', fn (): array => $this->operationTrend($admin));
+        }
+        if ($needs('ptadmin.version-notices')) {
+            $datasets['ptadmin.version-notices'] = $this->versionNotices();
+        }
+        if ($needs('ptadmin.notifications')) {
+            $this->readWidget($datasets, $errors, 'ptadmin.notifications', fn (): array => $this->notifications($admin));
+        }
         $results = [];
         foreach ($requests as $request) {
             $code = is_array($request) ? (string) ($request['code'] ?? '') : '';
-            if (!isset($definitions[$code])) {
-                $results[] = [
-                    'code' => $code,
-                    'widget' => null,
-                    'data' => null,
-                    'error' => ['message' => '仪表盘组件不存在。'],
-                    'queried_at' => (int) floor(microtime(true) * 1000),
-                ];
-                continue;
-            }
+            $definition = $definitions[$code] ?? null;
+            $data = $definition !== null ? ($datasets[$code] ?? null) : null;
             $results[] = [
                 'code' => $code,
-                'widget' => $definitions[$code],
-                'data' => $this->widgetData($code, $admin),
-                'error' => null,
+                'widget' => $definition,
+                'data' => $data,
+                'error' => $definition === null ? ['message' => '仪表盘组件不存在或无权访问。']
+                    : ($errors[$code] ?? ($data === null ? ['message' => '仪表盘组件尚未提供数据。'] : null)),
                 'queried_at' => (int) floor(microtime(true) * 1000),
             ];
         }
@@ -146,7 +178,7 @@ final class DashboardService
     /** @return list<array<string,mixed>> */
     private function selectedWidgets(Admin $admin): array
     {
-        $definitions = array_column($this->availableWidgets(), null, 'code');
+        $definitions = array_column($this->availableWidgets($admin), null, 'code');
         $rows = $this->database->table('admin_dashboard_widgets')
             ->where('subject_type', 'admin')
             ->where('subject_id', (int) $admin->getKey())
@@ -178,79 +210,126 @@ final class DashboardService
     }
 
     /** @return list<array<string,mixed>> */
-    private function availableWidgets(): array
+    private function availableWidgets(Admin $admin): array
     {
+        $configured = (array) config('ptadmin-dashboard.widgets', []);
+        $requiresPermissions = array_filter($configured, static fn (array $widget): bool => isset($widget['permission']));
+        $permissions = $requiresPermissions !== [] ? $this->authorization->permissions($admin) : [];
+        $widgets = [];
+        foreach ($configured as $code => $widget) {
+            if (($widget['enabled'] ?? true) === false) {
+                continue;
+            }
+            if (isset($widget['permission']) && !in_array('*', $permissions, true)
+                && !in_array($widget['permission'], $permissions, true)) {
+                continue;
+            }
+            $widgets[] = [
+                ...$widget,
+                'code' => $code,
+                'default_enabled' => (bool) ($widget['default_enabled'] ?? true),
+                'enabled' => (bool) ($widget['default_enabled'] ?? true),
+                'default_layout' => array_replace([
+                    'x' => 0, 'y' => 0, 'w' => 6, 'h' => 4, 'min_w' => 4, 'min_h' => 3, 'max_w' => 12, 'max_h' => 8,
+                ], $widget['default_layout'] ?? []),
+            ];
+        }
+
+        return $widgets;
+    }
+
+    /**
+     * @param array<string,array<string,mixed>> $datasets
+     * @param array<string,array{message:string}> $errors
+     * @param callable(): array<string,mixed> $read
+     */
+    private function readWidget(array &$datasets, array &$errors, string $code, callable $read): void
+    {
+        try {
+            $datasets[$code] = $read();
+        } catch (\Throwable $exception) {
+            report($exception);
+            $errors[$code] = ['message' => '组件数据读取失败，请稍后重试。'];
+        }
+    }
+
+    /** @return array<string,mixed> */
+    private function welcome(Admin $admin): array
+    {
+        $logins = $this->database->table('admin_login_logs')->where('admin_id', $admin->getKey())->where('successful', true);
+        $count = (clone $logins)->count();
+        $previous = $logins->orderByDesc('id')->skip(1)->first(['created_at', 'ip_address']);
+
         return [
-            $this->widget('ptadmin.workspace-summary', '我的工作概览', 'stats', 0, 0, true),
-            $this->widget('ptadmin.quick-actions', '快捷入口', 'card', 6, 0, true),
-            $this->widget('ptadmin.recent-operations', '最近操作', 'list', 0, 4, true),
-            $this->widget('ptadmin.operation-trend', '操作趋势', 'trend', 6, 4, true),
-            $this->widget('ptadmin.version-notices', '版本与更新', 'list', 0, 8, false),
-            $this->widget('ptadmin.notifications', '我的通知/待办', 'list', 6, 8, false),
+            'name' => $admin->getAttribute('nickname') ?: $admin->getAttribute('username'),
+            'identity' => (bool) $admin->getAttribute('is_founder') ? '创始人' : '管理员',
+            'login_count' => $count,
+            'previous_login_at' => $previous !== null ? Carbon::parse((string) $previous->created_at)->toIso8601String() : null,
+            'previous_login_ip' => $previous?->ip_address ?: null,
+            'can_manage_system' => (bool) $admin->getAttribute('is_founder'),
         ];
     }
 
-    /** @return array<string,mixed> */
-    private function widget(string $code, string $title, string $type, int $x, int $y, bool $enabled): array
+    /** @return list<array<string,mixed>> */
+    private function functionMenus(Admin $admin): array
     {
-        return [
-            'code' => $code,
-            'title' => $title,
-            'type' => $type,
-            'group' => 'core',
-            'addon_code' => 'ptadmin',
-            'default_enabled' => $enabled,
-            'enabled' => $enabled,
-            'default_layout' => [
-                'x' => $x,
-                'y' => $y,
-                'w' => 6,
-                'h' => 4,
-                'min_w' => 4,
-                'min_h' => 4,
-                'max_w' => 12,
-                'max_h' => 8,
-            ],
-        ];
+        $pending = $this->authorization->menus($admin);
+        $functions = [];
+        while ($pending !== []) {
+            $menu = array_shift($pending);
+            if (($menu['children'] ?? []) !== []) {
+                array_push($pending, ...$menu['children']);
+            }
+            if (in_array($menu['type'], ['page', 'schema'], true) && $menu['key'] !== 'dashboard' && $menu['path'] !== '') {
+                $functions[] = $menu;
+            }
+        }
+
+        return $functions;
     }
 
-    /** @return array<string,mixed> */
-    private function widgetData(string $code, Admin $admin): array
+    /** @param list<array<string,mixed>> $menus @return array<string,mixed> */
+    private function workspaceSummary(Admin $admin, array $menus): array
     {
-        return match ($code) {
-            'ptadmin.workspace-summary' => $this->workspaceSummary($admin),
-            'ptadmin.quick-actions' => $this->quickActions(),
-            'ptadmin.recent-operations' => $this->recentOperations($admin),
-            'ptadmin.operation-trend' => $this->operationTrend($admin),
-            'ptadmin.version-notices' => $this->versionNotices(),
-            'ptadmin.notifications' => ['type' => 'list', 'items' => []],
-            default => ['type' => 'list', 'items' => []],
-        };
-    }
-
-    /** @return array<string,mixed> */
-    private function workspaceSummary(Admin $admin): array
-    {
-        $roleCount = $this->database->table('admin_user_roles')->where('admin_id', $admin->getKey())->count();
-        $resourceCount = $this->database->table('admin_resources')->where('status', true)->whereNull('deleted_at')->count();
+        $operations = $this->database->table('admin_operation_records')->where('admin_id', $admin->getKey())
+            ->where('created_at', '>=', now()->subDays(6)->startOfDay());
+        $weekCount = (clone $operations)->count();
+        $todayCount = $operations->where('created_at', '>=', now()->startOfDay())->count();
         $unreadCount = $this->noticeInbox->unreadCount(NoticeReceiver::admin((int) $admin->getKey()));
 
         return ['type' => 'stats', 'items' => [
-            ['id' => 'roles', 'label' => '我的角色', 'value' => $roleCount, 'unit' => '个', 'tone' => 'success'],
-            ['id' => 'resources', 'label' => '可访问资源', 'value' => $resourceCount, 'unit' => '项', 'tone' => 'success'],
-            ['id' => 'unread_notifications', 'label' => '未读通知', 'value' => $unreadCount, 'unit' => '条', 'tone' => $unreadCount > 0 ? 'warning' : 'default'],
+            ['id' => 'today_operations', 'label' => '今日操作', 'value' => $todayCount, 'unit' => '次', 'description' => '今日个人操作记录', 'icon' => 'activity'],
+            ['id' => 'week_operations', 'label' => '近七天操作', 'value' => $weekCount, 'unit' => '次', 'description' => '含今日的七天累计', 'icon' => 'chart'],
+            ['id' => 'unread_notifications', 'label' => '未读通知', 'value' => $unreadCount, 'unit' => '条', 'description' => '尚未阅读的站内通知', 'icon' => 'bell', 'tone' => $unreadCount > 0 ? 'warning' : 'default'],
+            ['id' => 'available_functions', 'label' => '可用功能', 'value' => count($menus), 'unit' => '项', 'description' => '当前账号获授权的功能', 'icon' => 'grid'],
         ]];
     }
 
-    /** @return array<string,mixed> */
-    private function quickActions(): array
+    /** @param list<array<string,mixed>> $menus @return array<string,mixed> */
+    private function quickActions(array $menus): array
     {
-        return ['type' => 'card', 'items' => [
-            ['id' => 'shortcut-users', 'label' => '管理员管理', 'description' => '账号和权限', 'target' => '/admin/users'],
-            ['id' => 'shortcut-schema', 'label' => '模型管理', 'description' => '表单与数据模型', 'target' => '/schema/resources'],
-            ['id' => 'shortcut-cloud', 'label' => '云市场', 'description' => '扩展与安装', 'target' => '/cloud/market'],
-            ['id' => 'shortcut-tasks', 'label' => '任务中心', 'description' => '发布任务', 'target' => '/tasks'],
-        ]];
+        $keys = (array) config('ptadmin-dashboard.shortcut_keys', []);
+        if ($keys !== []) {
+            $indexed = array_column($menus, null, 'key');
+            $menus = array_values(array_filter(array_map(static fn (string $key): ?array => $indexed[$key] ?? null, $keys)));
+        }
+
+        return ['type' => 'card', 'items' => array_map(static fn (array $menu): array => [
+            'id' => $menu['key'], 'label' => $menu['title'], 'description' => '打开'.$menu['title'],
+            'target' => $menu['path'], 'icon' => $menu['icon'] ?? 'grid',
+        ], array_slice($menus, 0, 8))];
+    }
+
+    /** @return array<string,mixed> */
+    private function notifications(Admin $admin): array
+    {
+        $messages = $this->noticeInbox->paginate(NoticeReceiver::admin((int) $admin->getKey()), 'unread', 1, 6);
+
+        return ['type' => 'list', 'items' => array_map(static fn (array $message): array => [
+            'id' => (string) $message['id'], 'title' => $message['title'],
+            'meta' => Carbon::createFromTimestamp($message['created_at'])->format('m-d H:i'),
+            'status' => $message['level'] === 'error' ? 'danger' : ($message['level'] === 'warning' ? 'warning' : 'default'),
+        ], $messages['results'])];
     }
 
     /** @return array<string,mixed> */
@@ -282,11 +361,13 @@ final class DashboardService
         $rows = $this->database->table('admin_operation_records')
             ->where('admin_id', $admin->getKey())
             ->where('created_at', '>=', now()->subDays(6)->startOfDay())
-            ->get(['created_at']);
+            ->selectRaw('DATE(created_at) as operation_day, COUNT(*) as operation_count')
+            ->groupByRaw('DATE(created_at)')
+            ->get();
         foreach ($rows as $row) {
-            $key = Carbon::parse((string) $row->created_at)->format('Y-m-d');
+            $key = (string) $row->operation_day;
             if (isset($days[$key])) {
-                ++$days[$key]['value'];
+                $days[$key]['value'] = (int) $row->operation_count;
             }
         }
 
@@ -295,6 +376,8 @@ final class DashboardService
             'categories' => array_column($days, 'label'),
             'series' => array_column($days, 'value'),
             'chart' => 'line',
+            'unit' => '次',
+            'period_label' => '最近七天',
         ];
     }
 

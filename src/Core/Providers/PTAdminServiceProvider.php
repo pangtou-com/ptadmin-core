@@ -128,6 +128,7 @@ final class PTAdminServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../../../config/ptadmin.php', 'ptadmin');
+        $this->mergeConfigFrom(__DIR__.'/../../../config/ptadmin-dashboard.php', 'ptadmin-dashboard');
         $this->app->register(SchemaServiceProvider::class);
         $this->app->register(ServiceProtocolServiceProvider::class);
 
@@ -537,6 +538,7 @@ final class PTAdminServiceProvider extends ServiceProvider
 
         $this->publishes([
             __DIR__.'/../../../config/ptadmin.php' => config_path('ptadmin.php'),
+            __DIR__.'/../../../config/ptadmin-dashboard.php' => config_path('ptadmin-dashboard.php'),
         ], 'ptadmin-config');
 
         $this->loadTranslationsFrom(__DIR__.'/../../../lang', 'ptadmin');
