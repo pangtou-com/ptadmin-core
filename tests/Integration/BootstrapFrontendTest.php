@@ -74,6 +74,73 @@ final class BootstrapFrontendTest extends TestCase
             ->assertJsonPath('data.runtime.frontend_version', 'unknown');
     }
 
+    public function testDeploymentBrandIsPublicWithoutReadingDatabaseSettings(): void
+    {
+        config([
+            'database.default' => 'unavailable-brand-database',
+            'ptadmin.brand' => [
+                'name' => '企业运营后台',
+                'logo_url' => '/branding/admin-logo.svg',
+                'private_key' => 'must-not-be-public',
+            ],
+        ]);
+
+        $this->getJson('/ptadmin/bootstrap')->assertOk()
+            ->assertJsonPath('data.brand.name', '企业运营后台')
+            ->assertJsonPath('data.brand.logo_url', asset('/branding/admin-logo.svg'))
+            ->assertJsonPath('data.brand.logos.sidebar', ['url' => asset('/branding/admin-logo.svg'), 'width' => 40, 'height' => 40])
+            ->assertJsonPath('data.brand.logos.login_panel', ['url' => asset('/branding/admin-logo.svg'), 'width' => 110, 'height' => 64])
+            ->assertJsonPath('data.brand.logos.login_art', ['url' => asset('/branding/admin-logo.svg'), 'width' => 250, 'height' => 160])
+            ->assertDontSee('must-not-be-public');
+    }
+
+    public function testAbsoluteBrandLogoIsPreservedAndEmptyBrandUsesDefaults(): void
+    {
+        config(['ptadmin.brand.name' => '部署后台', 'ptadmin.brand.logo_url' => 'https://cdn.example.com/logo.svg']);
+        $this->getJson('/ptadmin/bootstrap')->assertOk()
+            ->assertJsonPath('data.brand.logo_url', 'https://cdn.example.com/logo.svg');
+
+        config(['ptadmin.brand.name' => '  ', 'ptadmin.brand.logo_url' => '']);
+        $this->getJson('/ptadmin/bootstrap')->assertOk()
+            ->assertJsonPath('data.brand.name', 'PTAdmin')
+            ->assertJsonPath('data.brand.logo_url', '')
+            ->assertJsonPath('data.brand.logos.sidebar.url', '')
+            ->assertJsonPath('data.brand.logos.login_panel.url', '')
+            ->assertJsonPath('data.brand.logos.login_art.url', '');
+    }
+
+    public function testBrandLogoTypesAndLoginTitleAreConfiguredIndependently(): void
+    {
+        config(['ptadmin.brand' => [
+            'name' => '运营后台', 'logo_url' => '/branding/common.svg', 'login_title' => '登录企业工作台',
+            'logos' => [
+                'sidebar' => ['url' => '/branding/icon.svg', 'width' => 32, 'height' => 36, 'private' => 'must-not-be-public'],
+                'login_panel' => ['url' => 'https://cdn.example.com/dark.svg', 'width' => 140, 'height' => 56],
+                'login_art' => ['url' => '/branding/white.svg', 'width' => 300, 'height' => 180],
+                'unknown' => ['url' => 'must-not-be-public'],
+            ],
+        ]]);
+
+        $this->getJson('/ptadmin/bootstrap')->assertOk()
+            ->assertJsonPath('data.brand.name', '运营后台')
+            ->assertJsonPath('data.brand.login_title', '登录企业工作台')
+            ->assertJsonPath('data.brand.logos.sidebar', ['url' => asset('/branding/icon.svg'), 'width' => 32, 'height' => 36])
+            ->assertJsonPath('data.brand.logos.login_panel', ['url' => 'https://cdn.example.com/dark.svg', 'width' => 140, 'height' => 56])
+            ->assertJsonPath('data.brand.logos.login_art', ['url' => asset('/branding/white.svg'), 'width' => 300, 'height' => 180])
+            ->assertDontSee('must-not-be-public');
+    }
+
+    public function testInvalidLogoDimensionsAndBlankTitleUseThePositionDefaults(): void
+    {
+        config(['ptadmin.brand.login_title' => ' ', 'ptadmin.brand.logos.sidebar.width' => 0,
+            'ptadmin.brand.logos.sidebar.height' => -12]);
+
+        $this->getJson('/ptadmin/bootstrap')->assertOk()
+            ->assertJsonPath('data.brand.login_title', '登录管理后台')
+            ->assertJsonPath('data.brand.logos.sidebar.width', 40)
+            ->assertJsonPath('data.brand.logos.sidebar.height', 40);
+    }
+
     public function testMissingManifestDoesNotBlockManualDeployment(): void
     {
         mkdir(public_path('manual_admin'), 0700, true);

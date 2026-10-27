@@ -10,6 +10,33 @@ return [
     'backend_version' => env('PTADMIN_CORE_VERSION', '0.1.0'),
     'api_protocol' => (int) env('PTADMIN_API_PROTOCOL', 1),
     'schema_protocol' => (int) env('PTADMIN_SCHEMA_PROTOCOL', 1),
+    // 后台部署品牌通过 Bootstrap 公开，与前台站点设置独立。
+    'brand' => [
+        'name' => env('PTADMIN_BRAND_NAME', 'PTAdmin'),
+        'logo_url' => env('PTADMIN_BRAND_LOGO_URL', ''),
+        'login_title' => env('PTADMIN_LOGIN_TITLE', '登录管理后台'),
+        // 专用 URL 留空时使用共用 Logo；width 为目标宽度、height 为最大高度（px），保留图片原色与比例。
+        'logos' => [
+            // 侧栏小图标，建议使用方形图案。
+            'sidebar' => [
+                'url' => env('PTADMIN_BRAND_SIDEBAR_LOGO_URL', ''),
+                'width' => 40,
+                'height' => 40,
+            ],
+            // 登录表单上方的品牌 Logo，适合浅色背景。
+            'login_panel' => [
+                'url' => env('PTADMIN_BRAND_LOGIN_PANEL_LOGO_URL', ''),
+                'width' => 110,
+                'height' => 64,
+            ],
+            // 登录页左侧展示区 Logo，适合深色背景，可使用反白版本。
+            'login_art' => [
+                'url' => env('PTADMIN_BRAND_LOGIN_ART_LOGO_URL', ''),
+                'width' => 250,
+                'height' => 160,
+            ],
+        ],
+    ],
     'config_groups' => [
         'system' => '系统配置',
         'security' => '安全',

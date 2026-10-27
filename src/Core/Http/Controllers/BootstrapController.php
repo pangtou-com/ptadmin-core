@@ -7,12 +7,14 @@ namespace PTAdmin\Core\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use PTAdmin\Core\ApplicationIdentity;
+use PTAdmin\Core\Config\AdminBrandConfiguration;
 use PTAdmin\Core\Http\Responses\AdminResponse;
 
 final class BootstrapController extends Controller
 {
     public function __construct(
         private readonly ApplicationIdentity $identity,
+        private readonly AdminBrandConfiguration $brand,
     )
     {
     }
@@ -32,7 +34,7 @@ final class BootstrapController extends Controller
                 'api_protocol' => (int) config('ptadmin.api_protocol', 1),
                 'schema_protocol' => (int) config('ptadmin.schema_protocol', 1),
             ],
-            'brand' => ['name' => 'PTAdmin'],
+            'brand' => $this->brand->publicValues(),
             'auth' => [
                 'login_path' => (string) config('ptadmin.auth.login_path', '/login'),
                 'session_path' => (string) config('ptadmin.auth.session_path', '/session'),
