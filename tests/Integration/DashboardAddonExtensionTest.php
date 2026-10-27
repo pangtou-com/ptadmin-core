@@ -278,6 +278,45 @@ final class DashboardAddonExtensionTest extends TestCase
         }
     }
 
+    public function testStatsAndListNavigationOnlyAcceptInternalTargets(): void
+    {
+        $validator = app(DashboardWidgetValidator::class);
+        foreach (['stats' => ['label' => '待审核', 'value' => 4], 'list' => ['id' => '1', 'title' => '版本']] as $type => $item) {
+            $result = $validator->dataset(['type' => $type, 'items' => [$item + ['target' => '/app/release-reviews?route=%2Frelease-reviews%2Faddon%2F1']]], $type, 'site.review');
+            self::assertSame('/app/release-reviews?route=%2Frelease-reviews%2Faddon%2F1', $result['items'][0]['target']);
+            foreach (['https://evil.example', '//evil.example', '/\\evil.example', '/bad path', '/bad'.chr(10).'path'] as $target) {
+                try {
+                    $validator->dataset(['type' => $type, 'items' => [$item + ['target' => $target]]], $type, 'site.review');
+                    self::fail('非法导航地址必须被拒绝');
+                } catch (\InvalidArgumentException $error) {
+                    self::assertStringContainsString('site.review', $error->getMessage());
+                }
+            }
+        }
+    }
+
+    public function testStatsComparisonIsOptionalValidatedAndProjectsOnlyPublicFields(): void
+    {
+        $validator = app(DashboardWidgetValidator::class);
+        $dataset = ['type' => 'stats', 'items' => [['label' => '支付金额', 'value' => '12.00', 'comparison' => [
+            'label' => '较昨日同时段', 'value' => '↑ 20.0%', 'tone' => 'success', 'private' => 'secret',
+        ]]]];
+        $result = $validator->dataset($dataset, 'stats', 'site.summary');
+        self::assertSame(['label' => '较昨日同时段', 'value' => '↑ 20.0%', 'tone' => 'success'], $result['items'][0]['comparison']);
+        foreach ([[], ['value' => '持平'], ['label' => '较昨日'], ['label' => '较昨日', 'value' => []],
+            ['label' => '较昨日', 'value' => '持平', 'tone' => 'unknown'],
+            ['label' => '较昨日', 'value' => str_repeat('a', 121)],
+        ] as $comparison) {
+            $dataset['items'][0]['comparison'] = $comparison;
+            try {
+                $validator->dataset($dataset, 'stats', 'site.summary');
+                self::fail('非法对比应被拒绝');
+            } catch (\InvalidArgumentException $error) {
+                self::assertStringContainsString('site.summary', $error->getMessage());
+            }
+        }
+    }
+
     private function register(string $owner, array $codes): void
     {
         app(AddonRegistration::class)->run($owner, fn () => app(DashboardWidgetRegistry::class)->registerAddon(

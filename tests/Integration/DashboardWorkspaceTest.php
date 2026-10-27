@@ -42,6 +42,66 @@ final class DashboardWorkspaceTest extends TestCase
         (new Filesystem())->deleteDirectory($this->storage);
     }
 
+    public function testCompositeVisibilityRequiresAnyPermissionAndRetainsSinglePermission(): void
+    {
+        config(['ptadmin-dashboard.widgets' => [
+            'site.any' => ['title' => '复合概览', 'type' => 'stats', 'permissions_any' => ['site.orders.list', 'site.users.list']],
+            'site.both' => ['title' => '双重约束', 'type' => 'stats', 'permission' => 'site.orders.detail', 'permissions_any' => ['site.orders.list']],
+        ]]);
+        $admin = $this->admin();
+        $service = app(DashboardService::class);
+        self::assertSame([], $service->settings($admin)['available_widgets']);
+        $id = DB::table('admin_resources')->insertGetId(['resource_key' => 'site.orders', 'title' => '订单', 'type' => 'schema', 'status' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        $grant = DB::table('admin_grants')->insertGetId([
+            'subject_type' => 'admin', 'subject_id' => (string) $admin->id, 'resource_id' => $id,
+            'abilities_json' => '["list"]', 'effect' => 'allow', 'scope_type' => 'all', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        self::assertSame(['site.any'], array_column($service->settings($admin)['available_widgets'], 'code'));
+        DB::table('admin_grants')->where('id', $grant)->update(['abilities_json' => '["list","detail"]']);
+        self::assertSame(['site.any', 'site.both'], array_column($service->settings($admin)['available_widgets'], 'code'));
+        DB::table('admin_grants')->where('id', $grant)->delete();
+        self::assertSame('widget_unavailable', $service->query($admin, [['code' => 'site.any']])['results'][0]['error']['reason']);
+        $admin->forceFill(['is_founder' => true])->save();
+        self::assertCount(2, $service->settings($admin)['available_widgets']);
+    }
+
+    public function testCompositePermissionsRejectEmptyDuplicateAndObjectValues(): void
+    {
+        $validator = app(\PTAdmin\Admin\Dashboard\DashboardWidgetValidator::class);
+        foreach ([[], ['site.orders.list', 'site.orders.list'], ['first' => 'site.orders.list'], ['site/orders']] as $permissions) {
+            try {
+                $validator->definition('site.summary', ['title' => '概览', 'type' => 'stats', 'permissions_any' => $permissions]);
+                self::fail('非法权限条件应被拒绝');
+            } catch (\InvalidArgumentException $error) {
+                self::assertStringContainsString('site.summary', $error->getMessage());
+            }
+        }
+    }
+
+    public function testSwitchableTrendValidatesEveryMetricAndProjectsPublicFields(): void
+    {
+        $validator = app(\PTAdmin\Admin\Dashboard\DashboardWidgetValidator::class);
+        $data = ['type' => 'trend', 'categories' => ['今天'], 'series' => [1.25], 'unit' => '元', 'metrics' => [
+            ['id' => 'amount', 'label' => '金额', 'series' => [1.25], 'unit' => '元', 'secret' => 'hidden'],
+            ['id' => 'orders', 'label' => '订单', 'series' => [2], 'unit' => '笔'],
+        ]];
+        self::assertArrayNotHasKey('secret', $validator->dataset($data, 'trend', 'site.trend')['metrics'][0]);
+        foreach ([[], ['bad' => $data['metrics'][0]], [$data['metrics'][0], $data['metrics'][0]],
+            [$data['metrics'][0], ['id' => 'orders', 'label' => '订单', 'series' => ['2']]],
+            [$data['metrics'][0], ['id' => 'orders', 'label' => '订单', 'series' => [INF]]],
+            [['id' => 'amount', 'label' => '金额', 'series' => [9], 'unit' => '元']],
+        ] as $metrics) {
+            try {
+                $validator->dataset(array_replace($data, ['metrics' => $metrics]), 'trend', 'site.trend');
+                self::fail('非法切换指标应被拒绝');
+            } catch (\InvalidArgumentException $error) {
+                self::assertStringContainsString('site.trend', $error->getMessage());
+            }
+        }
+        $this->expectException(\InvalidArgumentException::class);
+        $validator->definition('demo.widget', ['title' => '插件', 'type' => 'stats', 'permissions_any' => ['demo.list']], true);
+    }
+
     public function testWelcomeAndMetricsArePersonalAndShortcutsOnlyUseAuthorizedMenus(): void
     {
         $admin = $this->admin();

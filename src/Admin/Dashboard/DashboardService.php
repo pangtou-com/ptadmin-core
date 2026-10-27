@@ -224,7 +224,7 @@ final class DashboardService
     private function availableWidgets(Admin $admin, ?array $entries = null): array
     {
         $configured = array_map(static fn (array $entry): array => $entry['definition'], $entries ?? $this->registry->entries());
-        $requiresPermissions = array_filter($configured, static fn (array $widget): bool => isset($widget['permission']));
+        $requiresPermissions = array_filter($configured, static fn (array $widget): bool => isset($widget['permission']) || isset($widget['permissions_any']));
         $permissions = $requiresPermissions !== [] ? $this->authorization->permissions($admin) : [];
         $widgets = [];
         foreach ($configured as $code => $widget) {
@@ -233,6 +233,10 @@ final class DashboardService
             }
             if (isset($widget['permission']) && !in_array('*', $permissions, true)
                 && !in_array($widget['permission'], $permissions, true)) {
+                continue;
+            }
+            if (isset($widget['permissions_any']) && !in_array('*', $permissions, true)
+                && array_intersect($widget['permissions_any'], $permissions) === []) {
                 continue;
             }
             $widgets[] = [...$widget, 'enabled' => $widget['default_enabled']];
