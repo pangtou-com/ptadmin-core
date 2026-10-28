@@ -22,6 +22,22 @@ final class DirectiveParameter
             throw new InvalidArgumentException('Template parameter item_type requires an array parameter.');
         }
     }
+    /** @param array<string, mixed> $declaration 参数的校验与文档声明 */
+    public static function fromArray(string $name, array $declaration): self
+    {
+        $unknown = array_diff(array_keys($declaration), ['type', 'required', 'default', 'description', 'example', 'enum', 'min', 'max', 'item_type', 'deprecated']);
+        if ($unknown !== []) {
+            throw new InvalidArgumentException('模板参数 '.$name.' 包含未知声明字段：'.implode(', ', $unknown));
+        }
+        $options = $declaration + [
+            'type' => 'string', 'required' => false, 'default' => null, 'description' => '',
+            'example' => null, 'enum' => null, 'min' => null, 'max' => null, 'item_type' => null, 'deprecated' => false,
+        ];
+        return new self($name, $options['type'], $options['required'], $options['default'], $options['description'],
+            $options['example'], $options['enum'], $options['min'], $options['max'], $options['item_type'],
+            $options['deprecated'], array_key_exists('default', $declaration));
+    }
+
     public function name(): string
     {
         return $this->name;
@@ -78,6 +94,19 @@ final class DirectiveParameter
     /** @return array<string,mixed> */
     public function toArray(): array
     {
-        return ['name'=>$this->name,'type'=>$this->type,'required'=>$this->required,'default'=>$this->default,'description'=>$this->description,'example'=>$this->example,'enum'=>$this->enum,'min'=>$this->min,'max'=>$this->max,'item_type'=>$this->itemType,'deprecated'=>$this->deprecated];
+        return [
+            'name' => $this->name,
+            'type' => $this->type,
+            'required' => $this->required,
+            'default' => $this->default,
+            'has_default' => $this->hasDefault,
+            'description' => $this->description,
+            'example' => $this->example,
+            'enum' => $this->enum,
+            'min' => $this->min,
+            'max' => $this->max,
+            'item_type' => $this->itemType,
+            'deprecated' => $this->deprecated,
+        ];
     }
 }

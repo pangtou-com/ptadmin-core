@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PTAdmin\Template\Directive;
 
+use InvalidArgumentException;
 use RuntimeException;
 
 final class DirectiveRegistration
@@ -23,6 +24,24 @@ final class DirectiveRegistration
         $this->assertPending();
 
         return new DirectiveBuilder($this, $name);
+    }
+
+    /**
+     * 数组与链式入口共用定义对象；整次转换成功后才加入当前注册事务。
+     *
+     * @param array<array-key, mixed> $declarations 入口校验短名称及声明数组，不能静默接收非法结构
+     */
+    public function registerMany(array $declarations): void
+    {
+        $this->assertPending();
+        $definitions = [];
+        foreach ($declarations as $name => $declaration) {
+            if (!is_string($name) || !is_array($declaration)) {
+                throw new InvalidArgumentException('模板指令声明必须以短名称为键、声明数组为值。');
+            }
+            $definitions[] = DirectiveDefinition::fromArray($name, $this->namespace, $declaration);
+        }
+        array_push($this->definitions, ...$definitions);
     }
 
     public function namespace(): string
