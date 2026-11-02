@@ -65,6 +65,7 @@ final class FrontendPublisher
                 }
                 $count++;
             }
+            (new PublishedMenuIcons())->prepare($staging, $code);
             if (is_dir($target) && !rename($target, $backup)) {
                 throw new RuntimeException('Unable to stage current addon frontend.');
             }

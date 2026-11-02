@@ -11,6 +11,7 @@ use PTAdmin\Admin\Auth\AdminAuthenticator;
 use PTAdmin\Admin\Auth\AuthorizationService;
 use PTAdmin\Admin\Models\Admin;
 use PTAdmin\Admin\Dashboard\DashboardService;
+use PTAdmin\Admin\Navigation\MenuIconResolver;
 use PTAdmin\Addon\Frontend\FrontendRegistry;
 use PTAdmin\Admin\Frontend\ApplicationFrontendRegistry;
 use PTAdmin\Core\Auth\Exceptions\InvalidSessionException;
@@ -50,7 +51,7 @@ final class SessionController extends Controller
             'user' => $this->authenticator->userPayload($admin),
             'permissions' => $permissions,
             'roles' => $this->authorization->roles($admin),
-            'menus' => $menus,
+            'menus' => (new MenuIconResolver())->resolve($menus, $plugins['plugins']),
             'theme' => (array) config('ptadmin.theme', []),
             'layout' => (array) config('ptadmin.layout', []),
             'plugins' => $plugins['plugins'],

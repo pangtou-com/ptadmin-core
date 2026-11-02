@@ -131,7 +131,14 @@ final class FrontendRegistry
                     $dashboardReferences[$pluginCode] ?? [],
                 );
                 $entries = $frontend['entries'];
-                if ($entries === []) {
+                $icons = isset($referencedAddonCodes[$pluginCode])
+                    ? (new PublishedMenuIcons())->resolve(
+                        $this->publicRoot.'/'.$this->webPrefix.'/plugins/'.$directoryCode,
+                        $pluginCode,
+                        './plugins/'.rawurlencode($directoryCode),
+                    )
+                    : [];
+                if ($entries === [] && $icons === []) {
                     continue;
                 }
                 foreach ($entries as $entry) {
@@ -148,6 +155,9 @@ final class FrontendRegistry
                 ];
                 if ($frontend['design_flows'] !== []) {
                     $plugin['design_flows'] = $frontend['design_flows'];
+                }
+                if ($icons !== []) {
+                    $plugin['icons'] = $icons;
                 }
                 $plugins[] = $plugin;
             } catch (AddonException $exception) {

@@ -94,6 +94,8 @@ final class FrontendRegistryTest extends TestCase
         $descriptor['entries'][0]['key'] = 'cms.page';
         file_put_contents($descriptorPath, json_encode($descriptor, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
 
+        (new FrontendPublisher($this->publicPath))->publish('admintest', 'cms', $this->addonsPath.'/cms/frontend/dist');
+
         $plugin = $this->registry(new TrustPolicy())->resolve([[
             'key' => 'cms.page',
             'type' => 'page',
@@ -145,6 +147,34 @@ final class FrontendRegistryTest extends TestCase
         self::assertSame('frontend_capability_unsupported', $registry->resolve([], $references)['errors'][0]['error_code']);
         unlink($this->publicPath.'/admintest/plugins/demo-addon/frontend.mjs');
         self::assertSame('frontend_entry_unavailable', $registry->resolve([], $references)['errors'][0]['error_code']);
+    }
+
+    public function testPublishedIconsAreAvailableWithoutJavascriptAndFollowMenuAccessAndLifecycle(): void
+    {
+        $this->writeAddon('iframe', 'index.html');
+        $source = $this->addonsPath.'/demo-addon/frontend/dist';
+        mkdir($source.'/.vite', 0700, true);
+        file_put_contents($source.'/article.svg', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 3h18v18H3z"/></svg>');
+        file_put_contents($source.'/.vite/ptadmin-icons.json', json_encode([
+            'schema' => 'ptadmin.menu-icons/v1', 'icons' => ['article' => 'article.svg'],
+        ], JSON_THROW_ON_ERROR));
+        (new FrontendPublisher($this->publicPath))->publish('admintest', 'demo-addon', $source);
+        $registry = $this->registry(new TrustPolicy());
+        $plugin = $registry->resolve($this->addonMenu())['plugins'][0];
+        self::assertSame('./plugins/demo-addon/article.svg?v='.hash_file('sha256', $source.'/article.svg'), $plugin['icons']['demo-addon:article']);
+        self::assertSame([], $registry->resolve([])['plugins']);
+
+        $descriptorPath = $this->addonsPath.'/demo-addon/frontend/frontend.json';
+        $descriptor = json_decode((string) file_get_contents($descriptorPath), true, 512, JSON_THROW_ON_ERROR);
+        $descriptor['entries'] = [];
+        file_put_contents($descriptorPath, json_encode($descriptor, JSON_THROW_ON_ERROR));
+        $iconsOnly = $registry->resolve($this->addonMenu())['plugins'][0];
+        self::assertSame([], $iconsOnly['entries']);
+        self::assertSame($plugin['icons'], $iconsOnly['icons']);
+
+        (new LifecycleStore($this->lifecyclePath))->restore('demo-addon', ['state' => 'inactive']);
+        (new AddonCatalog($this->addonsPath, new ManifestVerifier(), new LifecycleStore($this->lifecyclePath)))->rebuild();
+        self::assertSame([], $this->registry(new TrustPolicy())->resolve($this->addonMenu())['plugins']);
     }
 
     public function testTrustedLocalEntryNeedsExplicitPolicyAndIsNeverDowngraded(): void
