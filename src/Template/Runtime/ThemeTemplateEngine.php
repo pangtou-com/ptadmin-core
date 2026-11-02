@@ -15,6 +15,8 @@ final class ThemeTemplateEngine implements Engine
 {
     /** @var array<string, true> */
     private array $rendering = [];
+    /** @var array<string, true> 插件显式启用指令的视图目录；普通宿主 Blade 不受影响。 */
+    private array $directories = [];
     private ?TemplateRenderer $runtime = null;
 
     public function __construct(private readonly CompilerEngine $blade, private readonly ThemeViewLoader $themes, private readonly TemplateRenderer $renderer)
@@ -24,12 +26,31 @@ final class ThemeTemplateEngine implements Engine
             throw new InvalidArgumentException('主题引擎需要 Laravel Blade 编译器。');
         }
         $compiler->precompiler(function (string $source) use ($compiler): string {
-            $root = $this->themes->directory();
-            if ($root === null || !str_starts_with($compiler->getPath(), rtrim($root, '/').'/')) {
+            if ($this->directiveRoot($compiler->getPath()) === null) {
                 return $source;
             }
             return (new ThemeBladeCompiler($this->renderer))->compile($source);
         });
+    }
+
+    public function registerDirectory(string $directory): void
+    {
+        $this->directories[rtrim($directory, '/')] = true;
+    }
+
+    private function directiveRoot(string $path): ?string
+    {
+        $directories = array_keys($this->directories);
+        $theme = $this->themes->directory();
+        if ($theme !== null) {
+            array_unshift($directories, rtrim($theme, '/'));
+        }
+        foreach ($directories as $directory) {
+            if (str_starts_with($path, $directory.'/')) {
+                return $directory;
+            }
+        }
+        return null;
     }
 
     /** Laravel view:clear 需要清理被包装 Blade 引擎的编译状态，安装收尾也使用该命令。 */
@@ -46,14 +67,14 @@ final class ThemeTemplateEngine implements Engine
 
     public function get($path, array $data = [])
     {
-        $root = $this->themes->directory();
-        if ($root === null || !str_starts_with($path, rtrim($root, '/').'/')) {
+        $root = $this->directiveRoot($path);
+        if ($root === null) {
             return $this->blade->get($path, $data);
         }
         $real = realpath($path);
         $base = realpath($root);
         if ($real === false || $base === false || !str_starts_with($real, $base.'/') || is_link($path)) {
-            throw new InvalidArgumentException('模板引用必须位于当前主题内。');
+            throw new InvalidArgumentException('模板引用必须位于当前主题或已注册的指令目录内。');
         }
         if (isset($this->rendering[$real]) || count($this->rendering) >= 20) {
             throw new InvalidArgumentException('模板包含或布局存在循环，或超过 20 层。');

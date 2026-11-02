@@ -88,6 +88,34 @@ final class ThemeTemplateEngineTest extends TestCase
         self::assertSame('', $this->engine->get($view, ['visible' => false, 'title' => '隐藏']));
     }
 
+    public function testRegisteredPluginViewsSupportDirectivesWithoutAnActiveTheme(): void
+    {
+        $directory = $this->root.'/plugin';
+        $this->files->makeDirectory($directory);
+        $this->viewFactory->addNamespace('plugin', $directory);
+        $this->engine->registerDirectory($directory);
+        $this->files->put($directory.'/layout.blade.php', '<main>@yield("content")</main>');
+        $this->files->put($directory.'/item.blade.php', '@pt:test_label(value=$row.title)');
+        $this->files->put($directory.'/index.blade.php', '@extends("plugin::layout")@section("content")@pt:test_rows(items=$items,as=row)@include("plugin::item")@pt:empty暂无@pt:end@endsection');
+        $this->engine->getCompiler()->compile($directory.'/index.blade.php');
+        self::assertSame('<main>&lt;标题&gt;</main>', $this->viewFactory->make('plugin::index', ['items' => [['title' => '<标题>']]])->render());
+        self::assertSame('<main>暂无</main>', $this->viewFactory->make('plugin::index', ['items' => []])->render());
+        $this->files->put($this->root.'/host.blade.php', '@pt:test_label(value="普通视图")');
+        self::assertSame('@pt:test_label(value="普通视图")', $this->engine->get($this->root.'/host.blade.php'));
+    }
+
+    public function testRegisteredPluginViewCannotEscapeThroughSymlinks(): void
+    {
+        $directory = $this->root.'/plugin';
+        $this->files->makeDirectory($directory);
+        $this->engine->registerDirectory($directory);
+        $this->files->put($this->root.'/outside.blade.php', '@pt:test_label(value="越界")');
+        symlink($this->root.'/outside.blade.php', $directory.'/escape.blade.php');
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('已注册的指令目录');
+        $this->engine->get($directory.'/escape.blade.php');
+    }
+
     public function testActiveThemeKeepsNativeBladeSyntaxAndObjectData(): void
     {
         $this->themes->load(new ThemeDescriptor('test', '1.0.0', $this->root, []));
