@@ -50,7 +50,6 @@ final class ProductDeliveryController
                 'options' => $this->options($request, $token),
                 'project' => $this->delivery->project($token, $request->all()),
                 'bind' => $this->delivery->bindLicense($token, $request->all()),
-                'release' => $this->delivery->releaseLicense($token, $request->all()),
                 'package' => $this->package($request),
                 default => throw new CloudException('未知交付操作。', 'invalid_request'),
             };
@@ -82,6 +81,13 @@ final class ProductDeliveryController
     private function describeOptions(array $options): array
     {
         $policy = app(\PTAdmin\Cloud\CloudInstallationPolicy::class);
+        if (($options['delivery_mode'] ?? 'licensed') === 'free') {
+            foreach ($options['releases'] as &$release) {
+                $release += $policy->describe($options['product']['code'], $options['product']['product_type'],
+                    $release['version'], $release['core_version_range']);
+            }
+            unset($release);
+        }
         foreach ($options['licenses'] as &$license) {
             foreach ($license['releases'] as &$release) {
                 $release += $policy->describe($options['product']['code'], $options['product']['product_type'],
@@ -98,11 +104,15 @@ final class ProductDeliveryController
         // 会员交付先检查云会话，再校验选包参数；只有独立授权码交付不依赖会员会话。
         $codeCredentialRequested = $request->input('code_credential_id') !== null;
         $memberToken = $codeCredentialRequested ? null : $this->sessions->token();
-        $values = $request->validate(['license_id' => ['required', 'integer', 'min:1'], 'release_id' => ['required', 'integer', 'min:1'],
-            'code_credential_id' => ['sometimes', 'integer', 'min:1'],
+        $values = $request->validate(['delivery_mode' => ['sometimes', 'in:free,licensed'],
+            'license_id' => ['required_unless:delivery_mode,free', 'prohibited_if:delivery_mode,free', 'integer', 'min:1'], 'release_id' => ['required', 'integer', 'min:1'],
+            'code_credential_id' => ['sometimes', 'prohibited_if:delivery_mode,free', 'integer', 'min:1'],
             'package_kind' => ['required', 'in:install,source'], 'operation' => ['required', 'in:install,update,download']]);
         if ($values['operation'] !== 'download' && $values['package_kind'] !== 'install') {
             throw new CloudException('源码包只能下载用于二次开发。', 'invalid_request');
+        }
+        if (($values['delivery_mode'] ?? 'licensed') === 'free' && $values['package_kind'] !== 'install') {
+            throw new CloudException('免费交付仅提供安装包，源码下载需要单独授权。', 'forbidden');
         }
         $preview = isset($values['code_credential_id'])
             ? $this->codes->request((int) $values['code_credential_id'], 'prepare', $values)

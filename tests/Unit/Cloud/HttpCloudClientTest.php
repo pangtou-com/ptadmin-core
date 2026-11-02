@@ -117,6 +117,41 @@ final class HttpCloudClientTest extends TestCase
         self::assertSame('theme', $catalog['results'][0]['code']);
     }
 
+    public function testFreeDeliveryUsesSeparateEndpointsAndVerifiesPackageWithoutLicense(): void
+    {
+        $bytes = 'free signed package';
+        $selection = ['delivery_mode' => 'free', 'release_id' => 12, 'package_kind' => 'install'];
+        $this->http->fake(function ($request) use ($bytes) {
+            self::assertSame(['Bearer member-session'], $request->header('Authorization'));
+            self::assertStringStartsWith(CloudProtocol::SITE_URL.'/api/cloud/free-delivery/', $request->url());
+            self::assertArrayNotHasKey('license_id', $request->data());
+            self::assertArrayNotHasKey('project_id', $request->data());
+            if (str_ends_with($request->url(), '/ticket')) {
+                return Factory::response(['code' => 0, 'data' => ['ticket' => str_repeat('a', 64),
+                    'sha256' => hash('sha256', $bytes), 'size' => strlen($bytes)]]);
+            }
+            if (str_ends_with($request->url(), '/download')) {
+                self::assertSame([str_repeat('a', 64)], $request->header('X-PTAdmin-Download-Ticket'));
+                return Factory::response($bytes);
+            }
+            return Factory::response(['code' => 0, 'data' => ['delivery_mode' => 'free', 'release_id' => 12]]);
+        });
+        self::assertSame('free', $this->client->prepareDelivery('member-session', $selection)['delivery_mode']);
+        self::assertSame('free', $this->client->previewLicense('member-session', $selection)['delivery_mode']);
+        $destination = $this->path.'.zip';
+        try {
+            $result = $this->client->downloadPackage('member-session', $selection, $destination);
+            self::assertSame($bytes, file_get_contents($destination));
+            self::assertSame(hash('sha256', $bytes), $result['sha256']);
+            self::assertArrayNotHasKey('ticket', $result);
+        } finally {
+            if (is_file($destination)) {
+                unlink($destination);
+            }
+        }
+        $this->http->assertSentCount(4);
+    }
+
     public function testInvalidTicketIsRejectedBeforeAnyDownload(): void
     {
         $bytes = 'verified package';

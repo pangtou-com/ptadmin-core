@@ -90,12 +90,12 @@ final class HttpCloudClient implements CloudClientInterface, \PTAdmin\Cloud\Cont
 
     public function previewLicense(string $accessToken, array $payload): array
     {
-        return $this->transport->request('POST', '/licenses/preview', $payload, $accessToken);
+        return $this->transport->request('POST', $this->deliveryPath($payload).'/preview', $payload, $accessToken);
     }
 
     public function issueDownloadTicket(string $accessToken, array $payload): array
     {
-        return $this->transport->request('POST', '/licenses/ticket', $payload, $accessToken);
+        return $this->transport->request('POST', $this->deliveryPath($payload).'/ticket', $payload, $accessToken);
     }
 
     public function migrateIp(string $accessToken, array $payload): array
@@ -120,7 +120,7 @@ final class HttpCloudClient implements CloudClientInterface, \PTAdmin\Cloud\Cont
 
     public function prepareDelivery(string $accessToken, array $payload): array
     {
-        return $this->transport->request('POST', '/licenses/prepare', $payload, $accessToken);
+        return $this->transport->request('POST', $this->deliveryPath($payload).'/prepare', $payload, $accessToken);
     }
 
     public function project(string $accessToken, array $payload): array
@@ -133,15 +133,15 @@ final class HttpCloudClient implements CloudClientInterface, \PTAdmin\Cloud\Cont
         return $this->transport->request('POST', '/licenses/bind', $payload, $accessToken);
     }
 
-    public function releaseLicense(string $accessToken, array $payload): array
-    {
-        return $this->transport->request('POST', '/licenses/release', $payload, $accessToken);
-    }
-
     public function downloadPackage(string $accessToken, array $payload, string $destination): array
     {
         $ticket = $this->issueDownloadTicket($accessToken, $payload);
-        return (new VerifiedPackageDownloader($this->transport))->download($accessToken, $ticket, $destination);
+        return (new VerifiedPackageDownloader($this->transport))->download($accessToken, $ticket, $destination, $this->deliveryPath($payload).'/download');
+    }
+
+    private function deliveryPath(array $payload): string
+    {
+        return ($payload['delivery_mode'] ?? 'licensed') === 'free' ? '/free-delivery' : '/licenses';
     }
 
     private function unavailable(): CloudException

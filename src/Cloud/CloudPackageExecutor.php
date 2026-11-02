@@ -27,13 +27,14 @@ final class CloudPackageExecutor implements TaskExecutorInterface
     {
         $id = $task['task_id'];
         $payload = $task['payload'];
-        $tasks->heartbeat($id, 'download', 5, '正在检查当前应用授权并下载版本包。');
+        $tasks->heartbeat($id, 'download', 5, '正在检查版本交付资格并下载版本包。');
         $credentialId = $payload['code_credential_id'] ?? null;
         $token = $credentialId === null ? $this->sessions->token() : null;
-        $selection = array_intersect_key($payload, array_flip(['license_id', 'release_id', 'package_kind']));
+        $selection = array_intersect_key($payload, array_flip(['delivery_mode', 'license_id', 'release_id', 'package_kind']));
         $preview = $credentialId === null ? $this->client->previewLicense($token, $selection)
             : $this->codes->request((int) $credentialId, 'preview', $selection);
-        if ($preview['project_id'] !== $payload['project_id'] || $preview['code'] !== $payload['code']
+        if (($preview['delivery_mode'] ?? 'licensed') !== ($payload['delivery_mode'] ?? 'licensed')
+            || ($preview['project_id'] ?? null) !== ($payload['project_id'] ?? null) || $preview['code'] !== $payload['code']
             || $preview['version'] !== $payload['version'] || $preview['product_type'] !== $payload['product_type']) {
             throw new CloudException('应用关联或版本已变化，请重新发起下载。', 'invalid_request');
         }
