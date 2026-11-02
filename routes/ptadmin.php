@@ -155,7 +155,7 @@ Route::middleware($authenticatedMiddleware)
         Route::get('session', [CloudController::class, 'session'])->name('session');
         Route::get('session/authorize', [CloudController::class, 'authorize'])->name('session.authorize');
         Route::post('session/logout', [CloudController::class, 'logout'])->name('session.logout');
-        foreach (['code-options', 'options', 'redeem', 'project', 'bind', 'release', 'package'] as $operation) {
+        foreach (['code-options', 'options', 'redeem', 'project', 'bind', 'package'] as $operation) {
             Route::post('delivery/'.$operation, \PTAdmin\Cloud\Http\Controllers\ProductDeliveryController::class)->defaults('operation', $operation);
         }
         Route::get('delivery/tasks/{taskId}/package', \PTAdmin\Cloud\Http\Controllers\ProductDeliveryController::class)->defaults('operation', 'artifact')->whereUuid('taskId');
@@ -309,6 +309,8 @@ Route::middleware($authenticatedMiddleware)
         Route::get('/', [TaskController::class, 'list'])
             ->middleware('ptadmin.permission:core.tasks,view')
             ->name('list');
+        Route::post('history/cleanup', [TaskController::class, 'cleanup'])
+            ->middleware('ptadmin.permission:core.tasks,remove')->name('cleanup');
         Route::post('/', [TaskController::class, 'create'])->name('create');
         Route::get('{task_id}', [TaskController::class, 'show'])
             ->where('task_id', '[A-Za-z0-9][A-Za-z0-9._-]{7,127}')
@@ -328,7 +330,7 @@ Route::middleware($authenticatedMiddleware)
     });
 
 $schemaPrefix = trim((string) config('ptadmin-schema.routes.prefix', 'ptadmin/schema'), '/');
-$schemaMiddleware = array_merge($authenticatedMiddleware, (array) config('ptadmin-schema.routes.middleware', ['api']));
+$schemaMiddleware = array_merge($authenticatedMiddleware, (array) config('ptadmin-schema.routes.middleware', [\Illuminate\Routing\Middleware\SubstituteBindings::class]));
 $schemaNamePrefix = (string) config('ptadmin-schema.routes.name_prefix', 'ptadmin.schema.');
 
 Route::middleware($schemaMiddleware)

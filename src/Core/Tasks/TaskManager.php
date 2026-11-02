@@ -184,21 +184,50 @@ final class TaskManager
     /** @return array{total:int, results:array<int, array<string, mixed>>} */
     public function list(int $limit = 50): array
     {
-        $snapshots = [];
-        foreach (glob($this->store->root().'/*/state.json') ?: [] as $path) {
-            $taskId = basename(dirname($path));
-            $state = $this->store->readState($taskId);
-            if (is_array($state)) {
-                $snapshots[] = $this->snapshot($taskId, $state);
-            }
-        }
-        usort($snapshots, static function (array $left, array $right): int {
-            $leftActive = in_array($left['status'], ['pending', 'running'], true) && ($left['parent_task_id'] ?? null) === null;
-            $rightActive = in_array($right['status'], ['pending', 'running'], true) && ($right['parent_task_id'] ?? null) === null;
-            return ($rightActive <=> $leftActive) ?: strcmp($right['created_at'], $left['created_at']);
+        $states = array_values($this->store->summaries());
+        usort($states, static function (array $left, array $right): int {
+            $leftActive = in_array($left['status'], ['pending', 'running'], true) && empty($left['parent_task_id']);
+            $rightActive = in_array($right['status'], ['pending', 'running'], true) && empty($right['parent_task_id']);
+            return ($rightActive <=> $leftActive) ?: strcmp($right['created_at'], $left['created_at']) ?: strcmp($right['task_id'], $left['task_id']);
         });
-        $total = count($snapshots);
-        return ['total' => $total, 'results' => array_slice($snapshots, 0, max(1, min(200, $limit)))];
+        return ['total' => count($states), 'results' => array_map(fn (array $state): array => $this->get($state['task_id']), array_slice($states, 0, max(1, min(200, $limit))))];
+    }
+
+    /**
+     * 历史游标只依赖不可变的创建时间和 ID，新增任务不会导致后续页重复或漏项。
+     * @return array<string, mixed>
+     */
+    public function history(int $limit = 20, ?string $cursor = null, ?string $status = null): array
+    {
+        $limit = max(1, min(100, $limit));
+        $roots = array_values(array_filter($this->store->summaries(), static fn (array $task): bool =>
+            empty($task['parent_task_id']) && isset(self::TASK_PERMISSIONS[$task['type']])
+        ));
+        $active = array_values(array_filter($roots, static fn (array $task): bool => in_array($task['status'], ['pending', 'running'], true)));
+        $history = array_values(array_filter($roots, static fn (array $task): bool =>
+            !in_array($task['status'], ['pending', 'running'], true) && ($status === null || $task['status'] === $status)
+        ));
+        $sort = static fn (array $left, array $right): int => strcmp($right['created_at'], $left['created_at']) ?: strcmp($right['task_id'], $left['task_id']);
+        usort($active, $sort);
+        usort($history, $sort);
+        $total = count($history);
+        if ($cursor !== null) {
+            $decoded = json_decode(base64_decode($cursor, true) ?: '', true);
+            if (!is_array($decoded) || count($decoded) !== 2 || !is_string($decoded[0] ?? null) || !is_string($decoded[1] ?? null)) {
+                throw new TaskException('历史任务游标无效，请刷新列表。', 'invalid_task_cursor');
+            }
+            $history = array_values(array_filter($history, static fn (array $task): bool =>
+                strcmp($task['created_at'], $decoded[0]) < 0 || ($task['created_at'] === $decoded[0] && strcmp($task['task_id'], $decoded[1]) < 0)
+            ));
+        }
+        $hasMore = count($history) > $limit;
+        $page = array_slice($history, 0, $limit);
+        $last = end($page);
+        return [
+            'total' => $total, 'results' => $page, 'active' => $active,
+            'has_more' => $hasMore,
+            'next_cursor' => $hasMore && $last !== false ? base64_encode(json_encode([$last['created_at'], $last['task_id']], JSON_THROW_ON_ERROR)) : null,
+        ];
     }
 
     /** @return array<string, mixed> */
@@ -408,6 +437,10 @@ final class TaskManager
             return null !== $mutator ? $mutator($current) : $current;
         });
         $this->events->append($taskId, (string) $updated['type'], $stage, $status, $updated['progress'], $message, $data, $requestId ?? ($updated['request_id'] ?? null));
+        if ($attemptCursor !== null) {
+            // 重试不能把上次结果误认为本次执行已完成，旧诊断记录仍留在 JSONL 中。
+            $this->store->writeResult($taskId, []);
+        }
         return $this->snapshot($taskId, $updated);
     }
 
@@ -432,11 +465,9 @@ final class TaskManager
 
         if ($includeChildren) {
             $children = [];
-            foreach (glob($this->store->root().'/*/state.json') ?: [] as $path) {
-                $childId = basename(dirname($path));
-                $childState = $this->store->readState($childId);
-                if (is_array($childState) && ($childState['parent_task_id'] ?? null) === $taskId) {
-                    $children[] = $this->snapshot($childId, $childState, false);
+            foreach ($this->store->summaries() as $childId => $summary) {
+                if (($summary['parent_task_id'] ?? null) === $taskId) {
+                    $children[] = $this->snapshot($childId, null, false);
                 }
             }
             usort($children, static fn (array $left, array $right): int => strcmp((string) ($left['created_at'] ?? ''), (string) ($right['created_at'] ?? '')));
@@ -467,13 +498,7 @@ final class TaskManager
     /** @return list<array<string, mixed>> */
     private function descendants(string $taskId): array
     {
-        $states = [];
-        foreach (glob($this->store->root().'/*/state.json') ?: [] as $path) {
-            $state = $this->store->readState(basename(dirname($path)));
-            if (is_array($state)) {
-                $states[$state['task_id']] = $state;
-            }
-        }
+        $states = $this->store->summaries();
         $children = [];
         foreach ($states as $state) {
             $parentId = $state['parent_task_id'] ?? null;
@@ -504,9 +529,8 @@ final class TaskManager
             $ancestors[] = $parentId;
             $rootId = $parentId;
         }
-        foreach (glob($this->store->root().'/*/state.json') ?: [] as $path) {
-            $other = $this->store->readState(basename(dirname($path)));
-            if (!is_array($other) || !isset(self::TASK_PERMISSIONS[$other['type']])
+        foreach ($this->store->summaries() as $other) {
+            if (!isset(self::TASK_PERMISSIONS[$other['type']])
                 || !in_array($other['status'], ['pending', 'running'], true) || $other['task_id'] === $taskId) {
                 continue;
             }

@@ -79,6 +79,15 @@ final class CoreMenuDefinitionTest extends TestCase
         }
     }
 
+    public function testTaskHistoryPermissionsCanBeGrantedWithoutAddingANavigationPage(): void
+    {
+        $definitions = json_decode((string) file_get_contents(dirname(__DIR__, 3).'/resources/menu.json'), true, 512, JSON_THROW_ON_ERROR);
+        $resources = array_column($definitions, null, 'resource_key');
+        self::assertSame('action', $resources['core.tasks']['type']);
+        self::assertFalse($resources['core.tasks']['is_menu']);
+        self::assertSame(['view', 'remove'], $resources['core.tasks']['abilities']);
+    }
+
     public function testSchemaMenuPermissionsAreExplicitlyDeclared(): void
     {
         $definitions = json_decode(

@@ -18,6 +18,7 @@ use PTAdmin\Addon\Runtime\Contracts\ProviderInterface;
 use PTAdmin\Addon\Runtime\Contracts\RuntimeRegistrarInterface;
 use PTAdmin\Schema\Runtime\RuntimeRegistry;
 use PTAdmin\Template\Directive\DirectiveRegistry;
+use PTAdmin\Core\Tasks\TaskManager;
 
 /**
  * 将 active 插件接入当前 Laravel 应用生命周期。
@@ -50,6 +51,10 @@ final class RuntimeRegistrar
      */
     public function register(): array
     {
+        // 插件的任务类型回调应在受保护的启动阶段执行，避免卸载后由进度请求延迟加载已移除的类。
+        if ($this->app->bound(TaskManager::class)) {
+            $this->app->make(TaskManager::class);
+        }
         $scan = $this->startupScan ?? $this->prepareAutoload($this->discovery->scan());
         $this->startupScan = null;
         $loaded = [];

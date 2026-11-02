@@ -17,6 +17,10 @@ use PTAdmin\Addon\Manifest\ManifestVerifier;
 use PTAdmin\Addon\Runtime\RuntimeRegistrar;
 use PTAdmin\Addon\Runtime\TemplateDirectiveLoader;
 use PTAdmin\Schema\Runtime\RuntimeRegistry;
+use PTAdmin\Core\Tasks\TaskManager;
+use PTAdmin\Core\Tasks\TaskStore;
+use PTAdmin\Core\Tasks\TaskEventLog;
+use PTAdmin\Core\Tasks\TaskEventStream;
 
 final class RuntimeRegistrarTest extends TestCase
 {
@@ -83,6 +87,63 @@ PHP);
     {
         $this->remove($this->root);
         $this->remove($this->lifecycle);
+    }
+
+    /**
+     * @runInSeparateProcess
+     * @dataProvider applicationBootStates
+     */
+    public function testTaskProgressSurvivesAddonFilesRemovedAfterProviderBoot(bool $alreadyBooted): void
+    {
+        mkdir($this->root.'/runtime-addon/src/Providers', 0700, true);
+        file_put_contents($this->root.'/runtime-addon/src/TaskType.php', <<<'PHP'
+<?php
+namespace RuntimeAddon;
+final class TaskType { public const TYPE = 'runtimeaddon.push'; }
+PHP);
+        file_put_contents($this->root.'/runtime-addon/src/Providers/ServiceProvider.php', <<<'PHP'
+<?php
+namespace RuntimeAddon\Providers;
+use PTAdmin\Addon\Runtime\Contracts\ProviderInterface;
+use PTAdmin\Core\Tasks\TaskManager;
+final class ServiceProvider extends \Illuminate\Support\ServiceProvider implements ProviderInterface
+{
+    public function boot(): void
+    {
+        $this->callAfterResolving(TaskManager::class, static function (TaskManager $tasks): void {
+            $tasks->registerType(\RuntimeAddon\TaskType::TYPE, 'runtimeaddon.push');
+        });
+    }
+}
+PHP);
+        $app = new Application($this->root);
+        $events = new Dispatcher($app);
+        $app->instance('events', $events);
+        $app->instance('router', new Router($events, $app));
+        $store = new TaskStore($this->lifecycle.'/tasks');
+        $app->singleton(TaskManager::class, static fn (): TaskManager => new TaskManager($store, new TaskEventLog($store)));
+        if ($alreadyBooted) {
+            $app->boot();
+        }
+        $registrar = new RuntimeRegistrar($app, new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle)), $this->root);
+        self::assertSame(['loaded' => ['runtime-addon'], 'errors' => []], $registrar->register());
+        $app->boot();
+
+        // 模拟另一请求完成卸载；当前请求已启动，但控制器尚未解析任务服务。
+        $this->remove($this->root.'/runtime-addon');
+        $tasks = $app->make(TaskManager::class);
+        self::assertSame('runtimeaddon.push', $tasks->resourceFor('runtimeaddon.push'));
+        $task = $tasks->create(TaskManager::ADDON_UNINSTALL, ['code' => 'runtime-addon']);
+        $tasks->start($task['task_id']);
+        $tasks->succeed($task['task_id']);
+        $output = implode('', iterator_to_array((new TaskEventStream($tasks))->frames($task['task_id'], 0, 0, 0)));
+        self::assertStringContainsString('event: complete', $output);
+        self::assertStringContainsString('"status":"succeeded"', $output);
+    }
+
+    public static function applicationBootStates(): array
+    {
+        return [[false], [true]];
     }
 
     /** @runInSeparateProcess */

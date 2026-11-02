@@ -13,6 +13,7 @@ use PTAdmin\Core\Http\Responses\AdminResponse;
 use PTAdmin\Core\Tasks\TaskException;
 use PTAdmin\Core\Tasks\PendingTaskDispatcher;
 use PTAdmin\Core\Tasks\TaskManager;
+use PTAdmin\Core\Tasks\TaskHistoryCleaner;
 use PTAdmin\Core\Tasks\TaskEventStream;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -51,7 +52,24 @@ final class TaskController extends Controller
 
     public function list(Request $request, TaskManager $tasks): JsonResponse
     {
-        return AdminResponse::success('', $tasks->list((int) $request->query('limit', 50)));
+        if ($request->query('scope') !== 'maintenance_history') {
+            return AdminResponse::success('', $tasks->list((int) $request->query('limit', 50)));
+        }
+        $input = $request->validate([
+            'limit' => 'sometimes|integer|min:1|max:100',
+            'cursor' => 'sometimes|string|max:512',
+            'status' => 'sometimes|in:succeeded,failed,blocked,cancelled',
+        ]);
+        try {
+            return AdminResponse::success('', $tasks->history((int) ($input['limit'] ?? 20), $input['cursor'] ?? null, $input['status'] ?? null));
+        } catch (TaskException $exception) {
+            return $this->error($exception);
+        }
+    }
+
+    public function cleanup(TaskHistoryCleaner $cleaner): JsonResponse
+    {
+        return AdminResponse::success('', $cleaner->clean());
     }
 
     public function show(string $taskId, Request $request, TaskManager $tasks): JsonResponse

@@ -6,6 +6,7 @@ namespace PTAdmin\Core\Tasks;
 
 use Closure;
 use RuntimeException;
+use JsonException;
 
 final class TaskStore
 {
@@ -59,8 +60,11 @@ final class TaskStore
     /** @param array<string, mixed> $state */
     public function writeState(string $taskId, array $state): void
     {
-        $this->initialize($taskId);
-        $this->writeJson($this->taskDirectory($taskId).'/state.json', $state);
+        $this->withIndexLock(function (array &$index) use ($taskId, $state): void {
+            $this->initialize($taskId);
+            $this->writeJson($this->taskDirectory($taskId).'/state.json', $state);
+            $index[$taskId] = $this->summary($state, $this->readPayload($taskId) ?? []);
+        }, true);
     }
 
     /** @return array<string, mixed>|null */
@@ -72,8 +76,14 @@ final class TaskStore
     /** @param array<string, mixed> $payload */
     public function writePayload(string $taskId, array $payload): void
     {
-        $this->initialize($taskId);
-        $this->writeJson($this->taskDirectory($taskId).'/payload.json', $payload);
+        $this->withIndexLock(function (array &$index) use ($taskId, $payload): void {
+            $this->initialize($taskId);
+            $this->writeJson($this->taskDirectory($taskId).'/payload.json', $payload);
+            $state = $this->readState($taskId);
+            if ($state !== null) {
+                $index[$taskId] = $this->summary($state, $payload);
+            }
+        }, true);
     }
 
     /** @return array<string, mixed>|null */
@@ -144,6 +154,121 @@ final class TaskStore
             return $next;
         } finally {
             fclose($handle);
+        }
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public function summaries(): array
+    {
+        return $this->withIndexLock(static fn (array &$index): array => $index);
+    }
+
+    /**
+     * 索引与状态写入共用锁；首次升级或索引损坏时从原始文件重建。
+     * @param Closure(array<string, array<string, mixed>>&): mixed $callback
+     */
+    private function withIndexLock(Closure $callback, bool $mutating = false): mixed
+    {
+        $handle = fopen($this->root.'/.index.lock', 'c+');
+        if ($handle === false) {
+            throw new RuntimeException('Unable to open task index lock.');
+        }
+        try {
+            if (!flock($handle, LOCK_EX)) {
+                throw new RuntimeException('Unable to lock task index.');
+            }
+            try {
+                $stored = $this->readJson($this->root.'/index.json');
+            } catch (JsonException) {
+                $stored = null;
+            }
+            $rebuild = is_file($this->root.'/.index-dirty') || ($stored['version'] ?? null) !== 1 || !is_array($stored['tasks'] ?? null);
+            $index = $rebuild ? [] : $stored['tasks'];
+            if ($rebuild) {
+                foreach (glob($this->root.'/*/state.json') ?: [] as $path) {
+                    $taskId = basename(dirname($path));
+                    $state = $this->readState($taskId);
+                    if ($state !== null) {
+                        $index[$taskId] = $this->summary($state, $this->readPayload($taskId) ?? []);
+                    }
+                }
+            }
+            $previous = $index;
+            if ($mutating) {
+                $this->atomicWrite($this->root.'/.index-dirty', '1');
+            }
+            $result = $callback($index);
+            if ($rebuild || $previous !== $index) {
+                $this->writeJson($this->root.'/index.json', ['version' => 1, 'tasks' => $index]);
+            }
+            if (is_file($this->root.'/.index-dirty') && !unlink($this->root.'/.index-dirty')) {
+                throw new RuntimeException('Unable to finalize task index.');
+            }
+            return $result;
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+    }
+
+    /** @param array<string, mixed> $state @param array<string, mixed> $payload */
+    private function summary(array $state, array $payload): array
+    {
+        $summary = array_intersect_key($state, array_flip([
+            'task_id', 'type', 'status', 'stage', 'progress', 'message', 'created_at',
+            'updated_at', 'finished_at', 'parent_task_id', 'attempt', 'max_attempts',
+        ]));
+        $summary['payload'] = TaskRedactor::array(array_intersect_key($payload, array_flip(['name', 'code'])));
+        return $summary;
+    }
+
+    /**
+     * 只删除已确认可清理的任务目录，不跟随符号链接，也不触及任务目录外的文件。
+     * 调用方必须持有创建锁并重新校验清理条件。
+     * @param list<string> $taskIds
+     */
+    public function removeHistory(array $taskIds): void
+    {
+        $staging = $this->root.'/.history-cleanup-'.bin2hex(random_bytes(6));
+        $this->ensureDirectory($staging);
+        $moved = [];
+        try {
+            $this->withIndexLock(function (array &$index) use ($taskIds, $staging, &$moved): void {
+                foreach ($taskIds as $taskId) {
+                    $directory = $this->taskDirectory($taskId);
+                    if (!rename($directory, $staging.'/'.$taskId)) {
+                        throw new RuntimeException('Unable to stage task history cleanup: '.$taskId);
+                    }
+                    $moved[] = $taskId;
+                    unset($index[$taskId]);
+                }
+            }, true);
+        } catch (\Throwable $exception) {
+            foreach ($moved as $taskId) {
+                rename($staging.'/'.$taskId, $this->taskDirectory($taskId));
+            }
+            throw $exception;
+        }
+        $this->removeDirectory($staging);
+    }
+
+    private function removeDirectory(string $path): void
+    {
+        if (is_link($path) || !is_dir($path)) {
+            if (file_exists($path) || is_link($path)) {
+                if (!unlink($path)) {
+                    throw new RuntimeException('Unable to remove task history file: '.$path);
+                }
+            }
+            return;
+        }
+        foreach (scandir($path) ?: [] as $name) {
+            if ($name !== '.' && $name !== '..') {
+                $this->removeDirectory($path.'/'.$name);
+            }
+        }
+        if (!rmdir($path)) {
+            throw new RuntimeException('Unable to remove task history directory: '.$path);
         }
     }
 

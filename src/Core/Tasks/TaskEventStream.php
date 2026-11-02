@@ -23,12 +23,6 @@ final class TaskEventStream
         do {
             $snapshot = $this->tasks->get($taskId);
             $terminal = in_array($snapshot['status'], ['succeeded', 'failed', 'blocked', 'cancelled'], true);
-            if ($terminal) {
-                // 状态先写入、日志随后追加，终态再让出一个写入周期后补齐尾部日志。
-                usleep($intervalMicroseconds);
-                $snapshot = $this->tasks->get($taskId);
-                $terminal = in_array($snapshot['status'], ['succeeded', 'failed', 'blocked', 'cancelled'], true);
-            }
             do {
                 $page = $this->tasks->events($taskId, $cursor, 500);
                 foreach ($page['events'] as $event) {
@@ -36,11 +30,15 @@ final class TaskEventStream
                 }
                 $cursor = $page['next_cursor'];
             } while ($page['has_more']);
-            if ($snapshot !== $previous) {
+            // 终态先写状态，后写日志和结果。必须等三者齐全，不能靠固定延时猜测落盘结束。
+            $tail = $terminal ? ($this->tasks->events($taskId, max(0, $cursor - 1), 1)['events'][0] ?? null) : null;
+            $complete = $terminal && ($tail['status'] ?? null) === $snapshot['status']
+                && ($snapshot['status'] === 'cancelled' || ($snapshot['result']['status'] ?? null) === $snapshot['status']);
+            if ((!$terminal || $complete) && $snapshot !== $previous) {
                 yield $this->frame('snapshot', $snapshot);
                 $previous = $snapshot;
             }
-            if ($terminal) {
+            if ($complete) {
                 yield $this->frame('complete', ['cursor' => $cursor], $cursor);
                 return;
             }

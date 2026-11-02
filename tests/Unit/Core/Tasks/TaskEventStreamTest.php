@@ -14,11 +14,12 @@ final class TaskEventStreamTest extends TestCase
 {
     private string $directory;
     private TaskManager $tasks;
+    private TaskStore $store;
 
     protected function setUp(): void
     {
         $this->directory = sys_get_temp_dir().'/ptadmin-sse-'.bin2hex(random_bytes(6));
-        $store = new TaskStore($this->directory);
+        $store = $this->store = new TaskStore($this->directory);
         $this->tasks = new TaskManager($store, new TaskEventLog($store));
     }
 
@@ -59,6 +60,27 @@ final class TaskEventStreamTest extends TestCase
         self::assertSame('pending', $this->tasks->get($task['task_id'])['status']);
     }
 
+    public function testTerminalStateDoesNotCloseStreamBeforeFinalLogAndResultAreWritten(): void
+    {
+        $task = $this->tasks->create(TaskManager::CORE_UPDATE, []);
+        $id = $task['task_id'];
+        $this->tasks->start($id);
+        $state = $this->store->readState($id);
+        $state['status'] = 'succeeded';
+        $this->store->writeState($id, $state);
+        $stream = new TaskEventStream($this->tasks);
+        $pending = implode('', iterator_to_array($stream->frames($id, 0, 0, 0)));
+        self::assertStringNotContainsString('event: complete', $pending);
+        self::assertStringNotContainsString('event: snapshot', $pending);
+        (new TaskEventLog($this->store))->append($id, TaskManager::CORE_UPDATE, 'completed', 'succeeded', 100, '最终日志');
+        $withoutResult = implode('', iterator_to_array($stream->frames($id, 2, 0, 0)));
+        self::assertStringNotContainsString('event: complete', $withoutResult);
+        $this->store->writeResult($id, ['status' => 'succeeded', 'data' => ['download_ready' => true]]);
+        $complete = implode('', iterator_to_array($stream->frames($id, 3, 0, 0)));
+        self::assertStringContainsString('event: complete', $complete);
+        self::assertStringContainsString('"download_ready":true', $complete);
+    }
+
     public function testRetryMarksFreshLogBoundaryWithoutDeletingHistory(): void
     {
         $task = $this->tasks->create(TaskManager::CORE_UPDATE, [], null, 2);
@@ -67,6 +89,7 @@ final class TaskEventStreamTest extends TestCase
         $this->tasks->fail($id, ['message' => '第一次失败']);
         $retried = $this->tasks->retry($id);
         self::assertSame(3, $retried['attempt_start_cursor']);
+        self::assertSame([], $retried['result']);
         self::assertNull($retried['started_at']);
         self::assertNull($retried['finished_at']);
         self::assertCount(4, $this->tasks->events($id)['events']);

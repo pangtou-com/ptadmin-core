@@ -5,11 +5,16 @@ declare(strict_types=1);
 namespace PTAdmin\Core\Tests\Integration;
 
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 use Orchestra\Testbench\TestCase;
 use PTAdmin\Core\Providers\PTAdminServiceProvider;
 use PTAdmin\Core\Http\Responses\AdminResponse;
+use PTAdmin\Core\Http\Middleware\AuthenticateSessionMiddleware;
+use PTAdmin\Admin\Http\Middleware\RecordAdminOperationMiddleware;
 use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 
 final class AdminExceptionContractTest extends TestCase
@@ -83,6 +88,23 @@ final class AdminExceptionContractTest extends TestCase
         $this->getJson('/ptadmin/failure')->assertStatus(500)->assertExactJson([
             'code' => 50000, 'message' => '服务器内部错误，请稍后重试。', 'data' => [],
         ])->assertHeader('X-Request-ID');
+    }
+
+    public function testSchemaRequestsDoNotShareTheHostPublicApiRateLimit(): void
+    {
+        RateLimiter::for('api', static fn (Request $request): Limit => Limit::perMinute(1)->by($request->ip()));
+        $this->app['router']->get('/ptadmin/public-api-probe', static fn () => 'ok')->middleware('api');
+        $this->getJson('/ptadmin/public-api-probe')->assertOk();
+        $this->getJson('/ptadmin/public-api-probe')->assertStatus(429)->assertHeader('Retry-After');
+
+        $this->postJson('/ptadmin/schema/runtime', ['operation' => 'loadSchema'])
+            ->assertUnauthorized()->assertJsonPath('code', 40101);
+
+        // 单独验证路由限流边界；真实 Bearer 会话和 CMS Schema 由宿主集成测试覆盖。
+        $this->withoutMiddleware([AuthenticateSessionMiddleware::class, RecordAdminOperationMiddleware::class]);
+        $this->postJson('/ptadmin/schema/runtime', ['operation' => 'loadSchema'])
+            ->assertStatus(422)->assertJsonPath('data.code', 'invalid_input');
+        $this->getJson('/ptadmin/public-api-probe')->assertStatus(429);
     }
 
     public function testConfiguredPrefixAndPublicResponsesKeepTheirBoundaries(): void

@@ -16,7 +16,8 @@ return [
     ],
     'routes' => [
         'prefix' => 'ptadmin/schema',
-        'middleware' => ['api'],
+        // Core 统一提供后台认证与审计；避免继承宿主公共 API 的共享限流。
+        'middleware' => [\Illuminate\Routing\Middleware\SubstituteBindings::class],
         'name_prefix' => 'ptadmin.schema.',
     ],
 ];
