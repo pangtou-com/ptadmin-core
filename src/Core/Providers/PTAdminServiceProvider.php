@@ -60,6 +60,9 @@ use PTAdmin\Core\Tasks\Executors\AddonTaskExecutor;
 use PTAdmin\Core\Tasks\Executors\ThemeTaskExecutor;
 use PTAdmin\Cloud\Contracts\CloudClientInterface;
 use PTAdmin\Cloud\Contracts\CloudSessionStoreInterface;
+use PTAdmin\Cloud\Contracts\DirectiveDocumentationGeneratorInterface;
+use PTAdmin\Cloud\ArtisanDirectiveDocumentationGenerator;
+use PTAdmin\Cloud\Console\DirectiveDocumentationCommand;
 use PTAdmin\Cloud\EncryptedCloudSessionStore;
 use PTAdmin\Cloud\FounderAccess;
 use PTAdmin\Cloud\HttpCloudClient;
@@ -209,6 +212,7 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app->singleton(TaskManager::class);
         $this->app->singleton(\PTAdmin\Cloud\Contracts\CloudTransportInterface::class, \PTAdmin\Cloud\HttpCloudTransport::class);
         $this->app->singleton(CloudClientInterface::class, HttpCloudClient::class);
+        $this->app->singleton(DirectiveDocumentationGeneratorInterface::class, ArtisanDirectiveDocumentationGenerator::class);
         $this->app->singleton(\PTAdmin\Cloud\Contracts\CloudCatalogInterface::class, static fn ($app) => $app->make(CloudClientInterface::class));
         $this->app->singleton(\PTAdmin\Cloud\Contracts\ProductDeliveryClientInterface::class, HttpCloudClient::class);
         $this->app->singleton(CloudSessionStoreInterface::class, static function ($app): CloudSessionStoreInterface {
@@ -607,6 +611,7 @@ final class PTAdminServiceProvider extends ServiceProvider
             SchemaPublishCommand::class,
             RuntimeCacheCommand::class,
             RuntimeValidateCommand::class,
+            DirectiveDocumentationCommand::class,
             AdminSyncCommand::class,
             MenuSyncCommand::class,
             AddonSetupCommand::class,

@@ -129,6 +129,22 @@ final class ManifestVerifierTest extends TestCase
         self::assertSame(['code.php', 'unexpected.txt'], array_column($manifest['verified_files'], 'path'));
     }
 
+    public function testDeclaredDirectiveDocumentMustExist(): void
+    {
+        file_put_contents($this->directory.'/manifest.json', json_encode([
+            'code' => 'demo-addon',
+            'version' => '1.0.0',
+            'release' => ['documentation' => ['template_directives' => 'resources/template-directives.json']],
+        ], JSON_THROW_ON_ERROR));
+
+        try {
+            (new ManifestVerifier())->verify($this->directory, false);
+            self::fail('声明的模板指令文档缺失时必须拒绝安装包。');
+        } catch (AddonException $exception) {
+            self::assertSame('invalid_directive_document', $exception->errorCode);
+        }
+    }
+
     public function testSignatureCoversManifestMetadataAndCanonicalFileList(): void
     {
         file_put_contents($this->directory.'/code.php', '<?php return 1;');

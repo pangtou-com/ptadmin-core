@@ -7,15 +7,21 @@ namespace PTAdmin\Cloud;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Process\Factory as ProcessFactory;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
+use PTAdmin\Cloud\Contracts\DirectiveDocumentationGeneratorInterface;
 use PTAdmin\Core\ApplicationIdentity;
 use PTAdmin\Core\Theme\ThemeManifestValidator;
+use PTAdmin\Template\Directive\DirectiveDocumentation;
 use ZipArchive;
 
 /** 从源码副本构建发布包，签名、版本覆盖及前端清单处理均不写回源码。 */
 final class ReleasePackageBuilder
 {
-    public function __construct(private readonly ApplicationIdentity $identity, private readonly Filesystem $files, private readonly ProcessFactory $processes = new ProcessFactory())
-    {
+    public function __construct(
+        private readonly ApplicationIdentity $identity,
+        private readonly Filesystem $files,
+        private readonly ProcessFactory $processes = new ProcessFactory(),
+        private readonly ?DirectiveDocumentationGeneratorInterface $directiveDocumentation = null,
+    ) {
     }
 
     /** 交互前只读取本地身份，不执行构建或签名。 @return array{code:string,version:string} */
@@ -65,6 +71,9 @@ final class ReleasePackageBuilder
             unset($manifest['signature'], $manifest['files'], $manifest['verified_files'], $manifest['release']);
             $manifest['version'] = $version;
             $this->writeJson($snapshot.'/'.$filename, $manifest);
+            $derivedDirectivePath = DirectiveDocumentation::PACKAGE_PATH;
+            $this->files->delete($snapshot.'/'.$derivedDirectivePath);
+            $paths = array_values(array_filter($paths, static fn (string $path): bool => $path !== $derivedDirectivePath));
             if ($manifest['code'] !== $identity['code']) {
                 throw new CloudException('快照编码与发布来源不一致。', 'invalid_request');
             }
@@ -113,6 +122,14 @@ final class ReleasePackageBuilder
                     $log('已显式跳过构建，校验现有产物。');
                 }
             }
+            $directiveDocument = null;
+            if ($type === 'addon' && $this->directiveDocumentation !== null) {
+                $directiveDocument = $this->directiveDocumentation->generate($directory, $identity['code'], $version);
+                if ($directiveDocument !== null) {
+                    $this->files->ensureDirectoryExists(dirname($snapshot.'/'.$derivedDirectivePath), 0700);
+                    $this->files->put($snapshot.'/'.$derivedDirectivePath, DirectiveDocumentation::encode($directiveDocument), true);
+                }
+            }
             $installPaths = [];
             foreach ($this->paths($snapshot) as $path) {
                 if ($this->installFile($path, $type) && $configuration->includes($path, 'install')) {
@@ -125,6 +142,9 @@ final class ReleasePackageBuilder
             if (is_file($snapshot.'/frontend/frontend.json') && !in_array('frontend/frontend.json', $installPaths, true)) {
                 throw new CloudException('安装包不能忽略 frontend/frontend.json。', 'invalid_request');
             }
+            if ($directiveDocument !== null && !in_array($derivedDirectivePath, $installPaths, true)) {
+                throw new CloudException('安装包不能忽略模板指令文档。', 'invalid_request');
+            }
             // 构建目录中的资源作为整体交付，避免忽略动态分块或样式后仅入口检查通过。
             $output = $build['output'] ?? ($type === 'addon' ? 'frontend/dist' : 'assets');
             foreach ($this->paths($snapshot) as $path) {
@@ -134,6 +154,9 @@ final class ReleasePackageBuilder
             }
             $this->copyPaths($snapshot, $root, $installPaths);
             $manifest['release'] = ['source_sha256' => hash_file('sha256', $sourceArchive)];
+            if ($directiveDocument !== null) {
+                $manifest['release']['documentation'] = ['template_directives' => $derivedDirectivePath];
+            }
             $businessCapabilities = $configuration->businessCapabilities();
             if ($businessCapabilities !== null) {
                 $manifest['release']['business_capabilities'] = $businessCapabilities;
@@ -152,6 +175,7 @@ final class ReleasePackageBuilder
             $this->archive($root, $installPaths, $archive, 4 * 1024 * 1024);
             return $consume(['code' => $identity['code'], 'version' => $version, 'path' => $archive,
                 'bytes' => filesize($archive), 'files' => count($installPaths), 'paths' => $installPaths,
+                'directive_count' => count($directiveDocument['directives'] ?? []),
                 'excluded' => $excluded, 'source' => ['path' => $sourceArchive, 'bytes' => filesize($sourceArchive),
                     'files' => count($sourcePaths), 'paths' => $sourcePaths]]);
         } finally {

@@ -8,6 +8,7 @@ use Composer\Semver\Semver;
 use Composer\Semver\VersionParser;
 use JsonException;
 use PTAdmin\Addon\Exception\AddonException;
+use PTAdmin\Template\Directive\DirectiveDocumentation;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use FilesystemIterator;
@@ -41,6 +42,7 @@ final class ManifestVerifier
         $this->assertHeader($manifest, $checkBackendCompatibility);
         $this->assertComposerMapping($root, $manifest);
         $files = $this->buildFileList($root, $manifest);
+        $this->assertDirectiveDocumentation($root, $manifest, $files);
         if ($requireSignature) {
             $this->verifySignature($manifest, $files);
             $this->trustPolicy?->assertTrusted($manifest);
@@ -168,6 +170,27 @@ final class ManifestVerifier
         $namespace = AddonNamespace::fromManifest($manifest).'\\';
         if (($composer['autoload']['psr-4'][$namespace] ?? null) !== 'src/') {
             throw new AddonException('插件 Composer 映射必须与 manifest 一致并指向 src/：'.$manifest['code'], 'addon_composer_mapping_mismatch');
+        }
+    }
+
+    /** @param array<string,mixed> $manifest @param list<array{path:string,size:int|false,sha256:string|false}> $files */
+    private function assertDirectiveDocumentation(string $root, array $manifest, array $files): void
+    {
+        try {
+            $path = DirectiveDocumentation::manifestPath($manifest);
+            if ($path === null) {
+                return;
+            }
+            if (!in_array($path, array_column($files, 'path'), true) || !is_file($root.'/'.$path)) {
+                throw new \InvalidArgumentException('插件声明的模板指令文档不存在。');
+            }
+            DirectiveDocumentation::decode(
+                (string) file_get_contents($root.'/'.$path),
+                (string) $manifest['code'],
+                (string) $manifest['version'],
+            );
+        } catch (\InvalidArgumentException $exception) {
+            throw new AddonException('模板指令文档无效：'.$exception->getMessage(), 'invalid_directive_document');
         }
     }
 

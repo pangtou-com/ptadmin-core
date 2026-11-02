@@ -67,6 +67,7 @@ final class PublishCommand extends Command
             }
             $result = $publisher->publish($prepared, $version, $changelog, (bool) $this->option('skip-build'), fn (string $message) => $this->line(OutputFormatter::escape($message)));
             $this->line('版本：'.$result['code'].'@'.$result['version'].'；文件：'.$result['files'].'；ZIP：'.$result['bytes'].' 字节。');
+            $this->line('模板指令文档：'.$result['directive_count'].' 条。');
             $this->line('源码包：'.$result['source_files'].' 个文件；ZIP：'.$result['source_bytes'].' 字节。');
             if ($result['dry_run']) {
                 foreach (['paths' => '安装包', 'source_paths' => '源码包', 'excluded' => '默认排除'] as $field => $label) {

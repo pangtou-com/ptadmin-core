@@ -7,13 +7,17 @@ namespace PTAdmin\Core\Tests\Unit\Cloud;
 use Illuminate\Container\Container;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Application;
+use Illuminate\Process\Factory as ProcessFactory;
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
 use PTAdmin\Addon\Manifest\TrustPolicy;
 use PTAdmin\Cloud\CloudException;
+use PTAdmin\Cloud\Contracts\DirectiveDocumentationGeneratorInterface;
 use PTAdmin\Cloud\ReleasePackageBuilder;
 use PTAdmin\Core\ApplicationIdentity;
 use PTAdmin\Core\Theme\ThemeManifestValidator;
+use PTAdmin\Template\Directive\DirectiveDocumentation;
+use PTAdmin\Template\Directive\DirectiveRegistry;
 use ZipArchive;
 
 final class ReleasePackageBuilderTest extends TestCase
@@ -160,6 +164,70 @@ final class ReleasePackageBuilderTest extends TestCase
             });
         }
         self::assertArrayNotHasKey('release', json_decode(file_get_contents($this->root.'/source/manifest.json'), true));
+    }
+
+    public function testAddonDirectiveDocumentationIsGeneratedInsideSignedInstallPackageOnly(): void
+    {
+        $this->write('manifest.json', json_encode(['code' => 'demo', 'version' => '1.0.0', 'sandbox' => 'iframe']));
+        $registry = new DirectiveRegistry();
+        $registration = $registry->begin('demo');
+        $registration->define('items')->loop(static fn (): array => [])->description('读取公开条目。')
+            ->returns(['fields' => ['title' => ['type' => 'string', 'description' => '标题。']]])
+            ->examples(['@pt:demo_items(as=item){$item.title}@pt:end'])->commit();
+        $registration->commit();
+        $generator = new class($registry) implements DirectiveDocumentationGeneratorInterface {
+            public function __construct(private readonly DirectiveRegistry $registry) {}
+
+            public function generate(string $directory, string $code, string $version): ?array
+            {
+                return DirectiveDocumentation::fromRegistry($this->registry, $code, $version);
+            }
+        };
+        $builder = new ReleasePackageBuilder($this->identity, new Filesystem(), new ProcessFactory(), $generator);
+
+        $builder->withPackage('addon', $this->root.'/source', '1.2.0', function (array $package): void {
+            self::assertSame(1, $package['directive_count']);
+            self::assertContains(DirectiveDocumentation::PACKAGE_PATH, $package['paths']);
+            $zip = new ZipArchive();
+            self::assertTrue($zip->open($package['path']));
+            $manifest = json_decode($zip->getFromName('manifest.json'), true, 512, JSON_THROW_ON_ERROR);
+            self::assertSame(DirectiveDocumentation::PACKAGE_PATH, $manifest['release']['documentation']['template_directives']);
+            $document = DirectiveDocumentation::decode($zip->getFromName(DirectiveDocumentation::PACKAGE_PATH), 'demo', '1.2.0');
+            self::assertArrayHasKey('demo_items', $document['directives']);
+            $zip->extractTo($this->root.'/directive-verified');
+            $zip->close();
+            (new ManifestVerifier())->verify($this->root.'/directive-verified', true, false);
+
+            self::assertTrue($zip->open($package['source']['path']));
+            self::assertFalse($zip->getFromName(DirectiveDocumentation::PACKAGE_PATH));
+            self::assertArrayNotHasKey('release', json_decode($zip->getFromName('manifest.json'), true, 512, JSON_THROW_ON_ERROR));
+            $zip->close();
+        });
+    }
+
+    public function testAddonWithoutDirectivesDoesNotShipStaleDocumentation(): void
+    {
+        $this->write('manifest.json', json_encode(['code' => 'demo', 'version' => '1.0.0', 'sandbox' => 'iframe']));
+        $this->write(DirectiveDocumentation::PACKAGE_PATH, '{"stale":true}');
+        $generator = new class implements DirectiveDocumentationGeneratorInterface {
+            public function generate(string $directory, string $code, string $version): ?array
+            {
+                return null;
+            }
+        };
+        $builder = new ReleasePackageBuilder($this->identity, new Filesystem(), new ProcessFactory(), $generator);
+
+        $builder->withPackage('addon', $this->root.'/source', '1.2.0', static function (array $package): void {
+            self::assertSame(0, $package['directive_count']);
+            self::assertNotContains(DirectiveDocumentation::PACKAGE_PATH, $package['paths']);
+            self::assertNotContains(DirectiveDocumentation::PACKAGE_PATH, $package['source']['paths']);
+            $zip = new ZipArchive();
+            self::assertTrue($zip->open($package['path']));
+            self::assertFalse($zip->getFromName(DirectiveDocumentation::PACKAGE_PATH));
+            $manifest = json_decode($zip->getFromName('manifest.json'), true, 512, JSON_THROW_ON_ERROR);
+            self::assertArrayNotHasKey('documentation', $manifest['release']);
+            $zip->close();
+        });
     }
 
     public function testTemplateBuildUsesManifestVersionAndCleansAfterConsumerFailure(): void

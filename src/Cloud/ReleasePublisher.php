@@ -94,7 +94,7 @@ final class ReleasePublisher
             if ($package['code'] !== $prepared['code']) {
                 throw new CloudException('源码清单编码与指定的插件或模板不一致。', 'invalid_request');
             }
-            $result = ['code' => $package['code'], 'version' => $package['version'], 'bytes' => $package['bytes'], 'files' => $package['files'], 'dry_run' => $prepared['dry_run'], 'source_bytes' => $package['source']['bytes'],
+            $result = ['code' => $package['code'], 'version' => $package['version'], 'bytes' => $package['bytes'], 'files' => $package['files'], 'directive_count' => $package['directive_count'], 'dry_run' => $prepared['dry_run'], 'source_bytes' => $package['source']['bytes'],
                 'source_files' => $package['source']['files'], 'paths' => $package['paths'], 'source_paths' => $package['source']['paths'], 'excluded' => $package['excluded']];
             if ($prepared['dry_run']) {
                 return $result;
