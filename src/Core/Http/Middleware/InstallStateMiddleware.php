@@ -10,24 +10,24 @@ use PTAdmin\Core\Install\InstallStateStore;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Installation gate for the host Web middleware group. It is injected only
- * while the application is uninstalled; installation APIs remain outside the
- * Web group and stay reachable during bootstrap.
+ * 在路由解析、控制器构造和认证等业务中间件之前拦截未安装请求。
+ * 安装状态只读取文件，安装入口可继续进行环境检查及正式数据库初始化。
  */
 final class InstallStateMiddleware
 {
     public function handle(Request $request, Closure $next): Response
     {
         $state = app(InstallStateStore::class);
+        $installed = $state->isInstalled();
         $installPath = '__ptadmin__/install';
         $requestPath = trim($request->path(), '/');
         $isInstallRequest = $requestPath === $installPath || str_starts_with($requestPath, $installPath.'/');
 
-        if ($state->isInstalled() && $isInstallRequest) {
+        if ($installed && $isInstallRequest) {
             abort(404);
         }
 
-        if (!$state->isInstalled() && !$isInstallRequest) {
+        if (!$installed && !$isInstallRequest) {
             return redirect('/'.$installPath);
         }
 

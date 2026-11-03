@@ -525,6 +525,7 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app->make(\Illuminate\Contracts\Debug\ExceptionHandler::class)->renderable(
             [new \PTAdmin\Core\Http\Responses\AdminExceptionRenderer(), 'render'],
         );
+        $this->app->make(HttpKernel::class)->prependMiddleware(InstallStateMiddleware::class);
         $this->app->make(HttpKernel::class)->prependMiddleware(\PTAdmin\Core\Http\Middleware\AdminApiMiddleware::class);
         $this->commands([\PTAdmin\Addon\Console\Commands\AddonCacheCommand::class]);
         // 缓存损坏时也必须能启动重建命令；该命令不执行任何插件 PHP 入口。
@@ -572,7 +573,6 @@ final class PTAdminServiceProvider extends ServiceProvider
         }
 
         if (!$isInstalled) {
-            $this->app->make(HttpKernel::class)->prependMiddlewareToGroup('web', InstallStateMiddleware::class);
             $this->loadViewsFrom(__DIR__.'/../../../resources/views/install', 'ptadmin-install');
             $this->loadRoutesFrom(__DIR__.'/../../../routes/install.php');
 
