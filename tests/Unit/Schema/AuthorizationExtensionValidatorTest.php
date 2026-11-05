@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PTAdmin\Core\Tests\Unit\Schema;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Schema\Definition\Schema;
 
@@ -21,7 +22,7 @@ final class AuthorizationExtensionValidatorTest extends TestCase
         self::assertSame([], $issues);
     }
 
-    /** @dataProvider invalidOwnerFieldProvider */
+    #[DataProvider('invalidOwnerFieldProvider')]
     public function testOwnerFieldMustReferenceAPersistedField(array $field): void
     {
         $issues = (new Schema($this->schema($field)))->validate();

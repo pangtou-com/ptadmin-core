@@ -9,6 +9,11 @@ use PTAdmin\Schema\Support\Protocol;
 
 /**
  * Schema 协议定义对象，负责字段/动作归一化、空值裁剪和跨语言 checksum。
+ *
+ * @property string $name
+ * @property string $title
+ * @property list<array<string, mixed>> $fields
+ * @property array<string, array<string, mixed>> $actions
  */
 final class Schema extends DataObject
 {

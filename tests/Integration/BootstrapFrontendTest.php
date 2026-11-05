@@ -6,6 +6,7 @@ namespace PTAdmin\Core\Tests\Integration;
 
 use Illuminate\Filesystem\Filesystem;
 use Orchestra\Testbench\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PTAdmin\Core\ApplicationIdentity;
 use PTAdmin\Core\Install\AdminFrontendManifest;
 use PTAdmin\Core\Providers\PTAdminServiceProvider;
@@ -150,7 +151,7 @@ final class BootstrapFrontendTest extends TestCase
             ->assertJsonPath('data.runtime.frontend_version', 'unknown');
     }
 
-    /** @dataProvider invalidMetadata */
+    #[DataProvider('invalidMetadata')]
     public function testInvalidVersionMetadataDoesNotBlockBootstrap(string $contents): void
     {
         mkdir(public_path('manual_admin'), 0700, true);

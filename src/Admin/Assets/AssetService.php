@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace PTAdmin\Admin\Assets;
 
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Storage;
 use PTAdmin\Admin\Models\Asset;
 
@@ -144,9 +143,6 @@ final class AssetService
         }
 
         $disk = Storage::disk((string) $asset->disk_code);
-        if (!$disk instanceof FilesystemAdapter) {
-            throw new \RuntimeException('资源存储磁盘不支持生成访问地址。');
-        }
 
         return $disk->url((string) $asset->path);
     }

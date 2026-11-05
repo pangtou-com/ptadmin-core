@@ -11,7 +11,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * Schema 资源主表模型。resource_key 是跨版本稳定标识，active_version_id 指向当前运行版本。
  *
  * @property int $id
+ * @property string $namespace
+ * @property string $name
  * @property string $resource_key
+ * @property string $migration_owner
  * @property string $title 资源显示名称。
  * @property string $description 资源业务说明，未填写时为空字符串。
  * @property string $source_type 资源定义来源。
@@ -20,7 +23,20 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $table_name
  * @property string $design_flow_id
  * @property string $status
- * @property int|null $active_version_id
+ * @property int $active_version_id
+ * @property bool $allow_import
+ * @property bool $allow_export
+ * @property bool $allow_duplicate
+ * @property bool $allow_print
+ * @property bool $allow_recycle
+ * @property bool $allow_draft
+ * @property string $draft_field
+ * @property mixed $draft_value
+ * @property string $track_mode
+ * @property string $created_by
+ * @property string $updated_by
+ * @property \Illuminate\Support\Carbon $created_at
+ * @property \Illuminate\Support\Carbon $updated_at
  */
 final class Resource extends Model
 {
@@ -35,7 +51,7 @@ final class Resource extends Model
         'draft_value' => 'json',
     ];
 
-    /** 返回资源的全部草稿和已发布版本。 */
+    /** @return HasMany<ResourceVersion, $this> */
     public function versions(): HasMany
     {
         return $this->hasMany(ResourceVersion::class, 'resource_id');

@@ -6,6 +6,7 @@ namespace PTAdmin\Core\Tests\Unit\Template\Directive;
 
 use Illuminate\Container\Container;
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Template\Directive\DirectiveRegistry;
 use PTAdmin\Template\Runtime\TemplateRenderer;
@@ -146,7 +147,7 @@ final class ArrayRegistrationTest extends TestCase
         self::assertSame([], $registry->all());
     }
 
-    /** @dataProvider invalidDeclarations */
+    #[DataProvider('invalidDeclarations')]
     public function testArrayDeclarationRejectsInvalidDefinitions(array $declaration): void
     {
         $registration = (new DirectiveRegistry())->begin('demo');

@@ -313,6 +313,7 @@ final class DictionaryService
         return $definition;
     }
 
+    /** @return Builder<DictionaryItem> */
     private function itemQuery(DictionaryDefinition $definition): Builder
     {
         return DictionaryItem::query()->where('dict_id', $definition->getKey());

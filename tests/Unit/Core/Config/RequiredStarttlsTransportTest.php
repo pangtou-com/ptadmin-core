@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PTAdmin\Core\Tests\Unit\Core\Config;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Core\Config\RequiredStarttlsTransport;
 use Symfony\Component\Mailer\Exception\TransportException;
@@ -25,7 +26,7 @@ final class RequiredStarttlsTransportTest extends TestCase
         self::assertSame((string) $configured, (string) $transport);
     }
 
-    /** @dataProvider sensitiveCommands */
+    #[DataProvider('sensitiveCommands')]
     public function testRejectsSensitiveCommandsBeforeTls(string $command): void
     {
         $transport = new RequiredStarttlsTransport(new EsmtpTransport('smtp.example.test', 587, false));

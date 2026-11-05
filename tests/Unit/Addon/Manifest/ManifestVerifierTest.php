@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PTAdmin\Core\Tests\Unit\Addon\Manifest;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Addon\Exception\AddonException;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
@@ -74,7 +75,7 @@ final class ManifestVerifierTest extends TestCase
         }
     }
 
-    /** @dataProvider invalidNamespaces */
+    #[DataProvider('invalidNamespaces')]
     public function testInvalidOrReservedNamespacesAreRejected(mixed $namespace, string $error): void
     {
         file_put_contents($this->directory.'/manifest.json', json_encode([

@@ -141,7 +141,7 @@ final class BuiltinDashboardDataProvider implements DashboardDataProviderInterfa
 
         return ['type' => 'list', 'items' => array_map(static fn (array $message): array => [
             'id' => (string) $message['id'], 'title' => $message['title'],
-            'meta' => Carbon::createFromTimestamp($message['created_at'])->format('m-d H:i'),
+            'meta' => Carbon::createFromTimestamp($message['created_at'], date_default_timezone_get())->format('m-d H:i'),
             'status' => $message['level'] === 'error' ? 'danger' : ($message['level'] === 'warning' ? 'warning' : 'default'),
         ], $messages['results'])];
     }

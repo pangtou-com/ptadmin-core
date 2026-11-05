@@ -8,6 +8,7 @@ use Illuminate\Container\Container;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Application;
 use Illuminate\Process\Factory as ProcessFactory;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
 use PTAdmin\Addon\Manifest\TrustPolicy;
@@ -84,7 +85,7 @@ final class ReleasePackageBuilderTest extends TestCase
         return [[null], [''], ['local'], ['local:ptadmin-dev'], ['LOCAL:demo'], ['ptadmin']];
     }
 
-    /** @dataProvider publishers */
+    #[DataProvider('publishers')]
     public function testReleasePublisherIsReadyForProductionWithoutChangingDevelopmentSource(?string $publisher): void
     {
         $manifest = ['code' => 'demo', 'version' => '1.0.0', 'sandbox' => 'trusted'];

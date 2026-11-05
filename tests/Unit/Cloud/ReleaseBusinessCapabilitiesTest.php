@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PTAdmin\Core\Tests\Unit\Cloud;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Cloud\CloudException;
 use PTAdmin\Cloud\ReleaseConfiguration;
@@ -18,7 +19,7 @@ final class ReleaseBusinessCapabilitiesTest extends TestCase
         self::assertSame([['code' => 'payment', 'name' => '支付', 'channels' => [], 'description' => '']], $config->businessCapabilities());
     }
 
-    /** @dataProvider invalidDeclarations */
+    #[DataProvider('invalidDeclarations')]
     public function testInvalidBusinessDeclarationsAreRejected(mixed $value): void
     {
         $this->expectException(CloudException::class);

@@ -9,6 +9,13 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * 后台角色模型。code 是稳定授权标识，系统角色不能通过管理资源删除。
+ *
+ * @property int $id
+ * @property string $code
+ * @property string $name
+ * @property bool $status
+ * @property bool $is_system
+ * @property int $sort
  */
 final class AdminRole extends Model
 {

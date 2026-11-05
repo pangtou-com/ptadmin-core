@@ -6,7 +6,6 @@ namespace PTAdmin\Addon\Runtime;
 
 use Closure;
 use Illuminate\Contracts\Foundation\Application;
-use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\ServiceProvider;
 use PTAdmin\Addon\Catalog\AddonCatalog;
 use PTAdmin\Addon\Exception\AddonException;
@@ -399,9 +398,6 @@ final class RuntimeRegistrar
             return;
         }
         $events = $this->app->make('events');
-        if (!$events instanceof Dispatcher) {
-            throw new AddonException('Addon event dispatcher is unavailable.', 'events_unavailable');
-        }
         foreach ($hooks as $hook) {
             if (is_string($hook)) {
                 $hook = ['file' => $hook];

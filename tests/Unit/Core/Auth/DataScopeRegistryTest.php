@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PTAdmin\Core\Tests\Unit\Core\Auth;
 
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Admin\Models\Admin;
 use PTAdmin\Core\Auth\DataScopeHandlerInterface;
@@ -34,7 +35,7 @@ final class DataScopeRegistryTest extends TestCase
         self::assertNull($registry->resolve('missing', $admin, 'cms.articles', 'list', ['ids' => [3]], []));
     }
 
-    /** @dataProvider invalidTypeProvider */
+    #[DataProvider('invalidTypeProvider')]
     public function testReservedAndInvalidTypesCannotBeRegistered(string $type): void
     {
         $this->expectException(InvalidArgumentException::class);

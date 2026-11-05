@@ -7,6 +7,8 @@ namespace PTAdmin\Core\Tests\Unit\Addon\Runtime;
 use Illuminate\Foundation\Application;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Routing\Router;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Addon\Runtime\Contracts\BootstrapInterface;
 use PTAdmin\Template\Directive\DirectiveRegistry;
@@ -89,10 +91,8 @@ PHP);
         $this->remove($this->lifecycle);
     }
 
-    /**
-     * @runInSeparateProcess
-     * @dataProvider applicationBootStates
-     */
+    #[DataProvider('applicationBootStates')]
+    #[RunInSeparateProcess]
     public function testTaskProgressSurvivesAddonFilesRemovedAfterProviderBoot(bool $alreadyBooted): void
     {
         mkdir($this->root.'/runtime-addon/src/Providers', 0700, true);
@@ -146,7 +146,7 @@ PHP);
         return [[false], [true]];
     }
 
-    /** @runInSeparateProcess */
+    #[RunInSeparateProcess]
     public function testDefaultBootstrapAndRoutesAreRegistered(): void
     {
         $app = new Application($this->root);
@@ -187,7 +187,7 @@ PHP);
         self::assertTrue(\RuntimeAddon\RuntimeHook::$called);
     }
 
-    /** @runInSeparateProcess */
+    #[RunInSeparateProcess]
     public function testPublishedRoutesRemainAvailableWhileLifecycleIsValidating(): void
     {
         $lifecycle = new LifecycleStore($this->lifecycle);
@@ -209,7 +209,7 @@ PHP);
         self::assertSame($before, $lifecycle->read('runtime-addon'));
     }
 
-    /** @runInSeparateProcess */
+    #[RunInSeparateProcess]
     public function testNamespaceAutoloaderResolvesStandardSourceDirectories(): void
     {
         mkdir($this->root.'/runtime-addon/src/Services/SearchPush', 0700, true);
@@ -244,7 +244,7 @@ PHP);
         self::assertTrue($app->make('runtime-addon.standard-directory-loaded'));
     }
 
-    /** @runInSeparateProcess */
+    #[RunInSeparateProcess]
     public function testServicePreparationResolvesInactiveDependenciesWithoutActivatingRuntime(): void
     {
         mkdir($this->root.'/runtime-addon/src/Services', 0700, true);
@@ -292,7 +292,7 @@ PHP);
         self::assertFalse(class_exists('RuntimeAddon\\RuntimeHook', false));
     }
 
-    /** @runInSeparateProcess */
+    #[RunInSeparateProcess]
     public function testAllActiveMappingsExistBeforeTheFirstBootstrapRuns(): void
     {
         mkdir($this->root.'/a-first/src', 0700, true);
@@ -325,7 +325,7 @@ PHP);
         self::assertInstanceOf(\RuntimeAddon\Services\Dependency::class, $app->make('first.dependency'));
     }
 
-    /** @runInSeparateProcess */
+    #[RunInSeparateProcess]
     public function testActiveAddonRuntimeManifestRegistersWithVerifiedAddonOwner(): void
     {
         mkdir($this->root.'/runtime-addon/src/Runtime', 0700, true);
@@ -365,7 +365,7 @@ PHP);
         self::assertEqualsCanonicalizing(['type' => 'addon', 'code' => 'runtime-addon'], $binding['owner']);
     }
 
-    /** @runInSeparateProcess */
+    #[RunInSeparateProcess]
     public function testRuntimeRejectsAddonDirectoryThatDoesNotMatchLowercaseManifestCode(): void
     {
         rename($this->root.'/runtime-addon', $this->root.'/RuntimeAddon');
@@ -403,7 +403,7 @@ PHP);
         self::assertSame([], $registry->build()->toArray()['resources']);
     }
 
-    /** @runInSeparateProcess */
+    #[RunInSeparateProcess]
     public function testUserDisabledAddonDoesNotLoadRuntimeManifest(): void
     {
         mkdir($this->root.'/runtime-addon/src/Runtime', 0700, true);
@@ -438,7 +438,7 @@ PHP);
         self::assertFalse(class_exists('RuntimeAddon\\Runtime\\Registrar', false));
     }
 
-    /** @runInSeparateProcess */
+    #[RunInSeparateProcess]
     public function testRuntimeRegistrationFailureReturnsDiagnosticWithoutChangingLifecycle(): void
     {
         mkdir($this->root.'/runtime-addon/src/Runtime', 0700, true);
@@ -473,7 +473,7 @@ PHP);
         self::assertSame('runtime registration failed', $result['errors'][0]['message']);
     }
 
-    /** @runInSeparateProcess */
+    #[RunInSeparateProcess]
     public function testRuntimeManifestRequiresTheSharedRegistry(): void
     {
         mkdir($this->root.'/runtime-addon/src/Runtime', 0700, true);
@@ -502,7 +502,7 @@ PHP);
         self::assertNull($lifecycle->read('runtime-addon'));
     }
 
-    /** @runInSeparateProcess */
+    #[RunInSeparateProcess]
     public function testInvalidBootstrapDoesNotChangePublishedPluginState(): void
     {
         file_put_contents($this->root.'/runtime-addon/manifest.json', json_encode([
@@ -522,7 +522,7 @@ PHP);
         self::assertSame($result, $registrar->register());
     }
 
-    /** @runInSeparateProcess */
+    #[RunInSeparateProcess]
     public function testDefaultEntrypointsAndProviderInterfaceAreLoaded(): void
     {
         $this->remove($this->root.'/runtime-addon');
@@ -596,7 +596,7 @@ PHP);
         self::assertTrue($app->make('demo.provider'));
     }
 
-    /** @runInSeparateProcess */
+    #[RunInSeparateProcess]
     public function testProviderWithoutProviderInterfaceIsRejected(): void
     {
         $this->remove($this->root.'/runtime-addon');
@@ -625,7 +625,7 @@ PHP);
         self::assertSame('invalid_provider', $result['errors'][0]['error_code']);
     }
 
-    /** @runInSeparateProcess */
+    #[RunInSeparateProcess]
     public function testNamespaceDoesNotRequireAnImplicitProviderFile(): void
     {
         $this->remove($this->root.'/runtime-addon');
@@ -649,7 +649,7 @@ PHP);
         self::assertSame([], $result['errors']);
     }
 
-    /** @runInSeparateProcess */
+    #[RunInSeparateProcess]
     public function testTemplateDirectiveWithoutTemplateDirectiveProviderInterfaceIsRejected(): void
     {
         $this->remove($this->root.'/runtime-addon');
@@ -676,7 +676,7 @@ PHP);
         self::assertSame('invalid_directives', $result['errors'][0]['error_code']);
     }
 
-    /** @runInSeparateProcess */
+    #[RunInSeparateProcess]
     public function testTemplateDirectiveRegistersAndDuplicateAliasesAreRejectedAtInvocationAcrossAddons(): void
     {
         $this->remove($this->root.'/runtime-addon');
@@ -723,7 +723,7 @@ PHP);
         $registry->get('shared');
     }
 
-    /** @runInSeparateProcess */
+    #[RunInSeparateProcess]
     public function testLowercaseResourcesDirectoryIsAccepted(): void
     {
         $this->remove($this->root.'/runtime-addon');

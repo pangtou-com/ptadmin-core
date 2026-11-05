@@ -60,8 +60,9 @@ final class FieldFormattingTest extends TestCase
     {
         $renderer = new TemplateRenderer(new DirectiveRegistry());
         $date = new \DateTimeImmutable('2026-10-05T02:30:00+00:00');
-        self::assertSame('2026-10-05 10:30|1970-01-01 08:00|', $renderer->render(
-            '{$date(format_date="Y-m-d H:i")}|{$epoch(format_date="Y-m-d H:i")}|{$missing(format_date="Y")}', ['date' => $date, 'epoch' => 0],
+        self::assertSame('2026-10-05 10:30|2026-10-05 12:30|1970-01-01 08:00|', $renderer->render(
+            '{$date(format_date="Y-m-d H:i")}|{$text(format_date="Y-m-d H:i")}|{$epoch(format_date="Y-m-d H:i")}|{$missing(format_date="Y")}',
+            ['date' => $date, 'text' => '2026-10-05 12:30:00', 'epoch' => 0],
         ));
         self::assertSame('+00:00', $date->format('P'));
     }

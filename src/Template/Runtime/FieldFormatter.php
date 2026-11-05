@@ -77,7 +77,7 @@ final class FieldFormatter
             }
             $date = CarbonImmutable::parse($value, $timezone)->setTimezone($timezone);
             $errors = CarbonImmutable::getLastErrors();
-            if ($errors['warning_count'] > 0 || $errors['error_count'] > 0) {
+            if ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0)) {
                 throw new InvalidArgumentException('日期值无效。');
             }
             return $date;

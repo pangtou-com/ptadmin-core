@@ -9,6 +9,7 @@ use Illuminate\View\Compilers\CompilerInterface;
 use Illuminate\View\Engines\CompilerEngine;
 use InvalidArgumentException;
 use PTAdmin\Core\Theme\ThemeViewLoader;
+use Throwable;
 
 /** 主题业务调用与原生 Blade 在同一编译结果中按源码顺序执行。 */
 final class ThemeTemplateEngine implements Engine
@@ -86,8 +87,11 @@ final class ThemeTemplateEngine implements Engine
         $data += $this->runtimeData();
         $data['__ptadmin'] = $this->runtime;
         try {
-            return $this->blade->get($path, $data);
-        } catch (InvalidArgumentException $exception) {
+            return $this->renderBlade($path, $data);
+        } catch (Throwable $exception) {
+            if (!$exception instanceof InvalidArgumentException) {
+                throw $exception;
+            }
             throw new InvalidArgumentException('主题模板 '.substr($path, strlen(rtrim($root, '/')) + 1).'：'.$exception->getMessage(), 0, $exception);
         } finally {
             unset($this->rendering[$real]);
@@ -95,6 +99,11 @@ final class ThemeTemplateEngine implements Engine
                 $this->runtime = null;
             }
         }
+    }
+
+    private function renderBlade(string $path, array $data): mixed
+    {
+        return $this->blade->get($path, $data);
     }
 
     /** Core 单元测试可能只有基础 Container，正式宿主则提供完整 request/config 服务。 */

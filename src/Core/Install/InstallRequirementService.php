@@ -22,8 +22,8 @@ final class InstallRequirementService
                 'title' => __('ptadmin::install.sections.php_version'),
                 'results' => [[
                     'title' => 'PHP',
-                    'config' => sprintf('>= 8.1，%s %s', __('ptadmin::install.current_version'), PHP_VERSION),
-                    'state' => version_compare(PHP_VERSION, '8.1.0', '>='),
+                    'config' => sprintf('>= 8.2，%s %s', __('ptadmin::install.current_version'), PHP_VERSION),
+                    'state' => version_compare(PHP_VERSION, '8.2.0', '>='),
                 ]],
             ],
             [

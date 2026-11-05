@@ -7,6 +7,7 @@ namespace PTAdmin\Core\Tests\Unit\Notice;
 use Illuminate\Container\Container;
 use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Database\Schema\Blueprint;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Notice\NoticeRegistry;
 use PTAdmin\Notice\NoticeSynchronizer;
@@ -27,7 +28,7 @@ final class NoticeSynchronizerTest extends TestCase
         $this->remove($this->root);
     }
 
-    /** @runInSeparateProcess */
+    #[RunInSeparateProcess]
     public function testAddonProviderDefinitionsAreSynchronizedWithStableOwner(): void
     {
         file_put_contents($this->root.'/manifest.json', json_encode([

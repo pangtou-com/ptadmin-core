@@ -14,12 +14,16 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $config_key
  * @property string $owner_type
  * @property string $owner_code
+ * @property string $title
  * @property string $description 配置用途说明，未填写时为空字符串。
  * @property string $icon
  * @property string $exposure
  * @property string $activation_mode
  * @property array<string, mixed> $schema_json
  * @property string $checksum
+ * @property bool $status
+ * @property \Illuminate\Support\Carbon $created_at
+ * @property \Illuminate\Support\Carbon $updated_at
  */
 final class ConfigDefinition extends Model
 {

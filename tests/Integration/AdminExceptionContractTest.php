@@ -94,7 +94,7 @@ final class AdminExceptionContractTest extends TestCase
     public function testSchemaRequestsDoNotShareTheHostPublicApiRateLimit(): void
     {
         RateLimiter::for('api', static fn (Request $request): Limit => Limit::perMinute(1)->by($request->ip()));
-        $this->app['router']->get('/ptadmin/public-api-probe', static fn () => 'ok')->middleware('api');
+        $this->app['router']->get('/ptadmin/public-api-probe', static fn () => 'ok')->middleware('throttle:api');
         $this->getJson('/ptadmin/public-api-probe')->assertOk();
         $this->getJson('/ptadmin/public-api-probe')->assertStatus(429)->assertHeader('Retry-After');
 

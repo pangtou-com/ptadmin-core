@@ -23,7 +23,11 @@ final class RuntimeBindingExecutor
         return $this->pipeline($snapshot, $context, $data);
     }
 
-    /** @param array<string, mixed> $data @return array<string, mixed> */
+    /**
+     * @template TKey of array-key
+     * @param array<TKey, mixed> $data
+     * @return array<TKey, mixed>
+     */
     public function transform(RuntimeRegistrySnapshot $snapshot, RuntimeHookContext $context, array $data): array
     {
         return $this->pipeline($snapshot, $context, $data);
@@ -55,7 +59,11 @@ final class RuntimeBindingExecutor
         return $result;
     }
 
-    /** @param array<string, mixed> $data @return array<string, mixed> */
+    /**
+     * @template TKey of array-key
+     * @param array<TKey, mixed> $data
+     * @return array<TKey, mixed>
+     */
     private function pipeline(RuntimeRegistrySnapshot $snapshot, RuntimeHookContext $context, array $data): array
     {
         foreach ($this->bindings($snapshot, $context) as $binding) {

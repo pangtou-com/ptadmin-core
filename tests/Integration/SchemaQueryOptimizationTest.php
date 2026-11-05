@@ -198,17 +198,21 @@ final class SchemaQueryOptimizationTest extends TestCase
             ['id' => 1, 'label' => '分类一'],
             ['id' => 2, 'label' => '分类二'],
         ]);
-        foreach (range(1, 60) as $id) {
+        $runtime = $this->runtime();
+        DB::table('schema_orders')->insert(['id' => 1, 'category_id' => 2, 'category_name' => '']);
+        $smallQueries = $this->countQueries(function () use ($runtime): void {
+            $runtime->list(['resource' => 'test.orders', 'page' => 1, 'limit' => 60]);
+        });
+        foreach (range(2, 60) as $id) {
             DB::table('schema_orders')->insert(['id' => $id, 'category_id' => $id % 2 + 1, 'category_name' => '']);
         }
 
-        $runtime = $this->runtime();
         $result = null;
-        $queries = $this->countQueries(function () use ($runtime, &$result): void {
+        $largeQueries = $this->countQueries(function () use ($runtime, &$result): void {
             $result = $runtime->list(['resource' => 'test.orders', 'page' => 1, 'limit' => 60]);
         });
 
-        self::assertLessThanOrEqual(10, $queries);
+        self::assertLessThanOrEqual($smallQueries + 1, $largeQueries);
         self::assertSame('分类二', $result['results'][0]['category_name']);
         self::assertSame('分类一', $result['results'][1]['category_name']);
     }

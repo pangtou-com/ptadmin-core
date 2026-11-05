@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace PTAdmin\Core\Http\Controllers;
 
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\View\View;
 use PTAdmin\Core\Install\Exceptions\InvalidInstallStateException;
 use PTAdmin\Core\Install\InstallRequirementService;
 use PTAdmin\Core\Install\InstallDatabaseDrivers;
@@ -33,7 +33,7 @@ final class InstallWizardController extends Controller
     {
         $this->assertNotInstalled();
 
-        return view('ptadmin-install::welcome', $this->viewData(0, [
+        return $this->render('ptadmin-install::welcome', $this->viewData(0, [
             'installErrorMessage' => $this->errorMessage((string) $request->query('error', '')),
             'redirect' => $this->installRedirect((string) $request->query('redirect', '')),
         ]));
@@ -65,7 +65,7 @@ final class InstallWizardController extends Controller
         $results = $requirements->results();
         $failedItems = $requirements->failures();
 
-        return view('ptadmin-install::requirements', $this->viewData(1, [
+        return $this->render('ptadmin-install::requirements', $this->viewData(1, [
             'results' => $results,
             'allPassed' => $failedItems === [],
             'failedItems' => $failedItems,
@@ -82,7 +82,7 @@ final class InstallWizardController extends Controller
             return redirect()->route('ptadmin.install.requirements', ['error' => 'requirements']);
         }
 
-        return view('ptadmin-install::env', $this->viewData(2, [
+        return $this->render('ptadmin-install::env', $this->viewData(2, [
             'appUrl' => $request->root(),
             'databaseOptions' => $this->app->make(InstallDatabaseDrivers::class)->options(),
             'databaseDriver' => $this->app->make(InstallDatabaseDrivers::class)->defaultDriver(),
@@ -168,6 +168,12 @@ final class InstallWizardController extends Controller
             'Cache-Control' => 'no-cache, no-store',
             'X-Accel-Buffering' => 'no',
         ]);
+    }
+
+    /** @param array<string, mixed> $data */
+    private function render(string $name, array $data): View
+    {
+        return $this->app->make('view')->first([$name], $data);
     }
 
     /** @param array<string, mixed> $extra */

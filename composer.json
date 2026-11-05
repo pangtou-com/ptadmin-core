@@ -10,19 +10,20 @@
         }
     ],
     "require": {
-        "php": ">=8.1 <9.0",
+        "php": ">=8.2 <9.0",
         "ext-dom": "*",
         "ext-json": "*",
         "ext-mbstring": "*",
         "ext-openssl": "*",
         "composer/semver": "^3.4",
         "guzzlehttp/guzzle": "^7.9",
-        "laravel/framework": ">=10.0 <11.0"
+        "laravel/framework": "^12.68"
     },
     "require-dev": {
-        "orchestra/testbench": "^8.0",
-        "phpstan/phpstan": "^2.2",
-        "phpunit/phpunit": "^10.0"
+        "larastan/larastan": "~3.12.3",
+        "orchestra/testbench": "^10.11",
+        "phpstan/phpstan": "2.2.14",
+        "phpunit/phpunit": "^11.5"
     },
     "autoload": {
         "files": [
@@ -45,7 +46,7 @@
         }
     },
     "scripts": {
-        "phpstan": "@php -d sys_temp_dir=/tmp vendor/bin/phpstan analyse --configuration=phpstan.neon.dist",
+        "phpstan": "@php -d sys_temp_dir=/tmp vendor/bin/phpstan analyse --configuration=phpstan.neon.dist --memory-limit=1G",
         "test": "phpunit -c phpunit.xml.dist"
     },
     "config": {

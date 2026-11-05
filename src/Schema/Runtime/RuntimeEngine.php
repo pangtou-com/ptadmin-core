@@ -695,7 +695,7 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
      * 执行 sequence/slug 生成器；更新场景保留已存在值，避免无意中改变稳定业务编码。
      *
      * @param array<string, mixed> $data
-     * @param list<array<string, mixed>> $fields
+     * @param array<string, array<string, mixed>> $fields
      */
     private function applyGenerators(array &$data, array $fields, ?Resource $resource, bool $create, int $currentId): void
     {

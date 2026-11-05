@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PTAdmin\Core\Tests\Unit\Addon\Runtime;
 
 use Composer\Autoload\ClassLoader;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Addon\Exception\AddonException;
 use PTAdmin\Addon\Runtime\AddonAutoloader;
@@ -76,7 +77,7 @@ final class AddonAutoloaderTest extends TestCase
         self::assertNull($this->loader->snapshot('demo-addon')['directory']);
     }
 
-    /** @dataProvider conflictingNamespaces */
+    #[DataProvider('conflictingNamespaces')]
     public function testNamespaceConflictsAreRejected(string $namespace): void
     {
         $this->loader->reserve(['code' => 'first', 'namespace' => 'Vendor\\Plugin']);

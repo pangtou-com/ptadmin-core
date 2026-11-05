@@ -18,6 +18,18 @@ use PTAdmin\Schema\Meta\Casts\SchemaJson;
  * @property int $version
  * @property string $status
  * @property array<string, mixed> $schema_json
+ * @property bool $allow_draft
+ * @property string $draft_field
+ * @property mixed $draft_value
+ * @property array<string, mixed>|null $change_summary_json
+ * @property array<string, mixed>|null $validation_result_json
+ * @property array<string, mixed>|null $migration_plan_json
+ * @property string $checked_by
+ * @property \Illuminate\Support\Carbon|null $checked_at
+ * @property string $activated_by
+ * @property \Illuminate\Support\Carbon|null $activated_at
+ * @property \Illuminate\Support\Carbon $created_at
+ * @property \Illuminate\Support\Carbon $updated_at
  */
 final class ResourceVersion extends Model
 {

@@ -6,6 +6,7 @@ namespace PTAdmin\Core\Tests\Integration;
 
 use Illuminate\Filesystem\Filesystem;
 use Orchestra\Testbench\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PTAdmin\Admin\Dashboard\DashboardService;
 use PTAdmin\Admin\Models\Admin;
 use PTAdmin\Core\Providers\PTAdminServiceProvider;
@@ -48,7 +49,7 @@ final class DashboardFrontendVersionTest extends TestCase
         ], $service->query(new Admin(), [['code' => 'ptadmin.version-notices']])['results'][0]['data']['items']);
     }
 
-    /** @dataProvider invalidFrontendManifests */
+    #[DataProvider('invalidFrontendManifests')]
     public function testInvalidFrontendVersionMetadataDoesNotBreakSummary(string $contents): void
     {
         $directory = public_path('manual_admin');

@@ -17,7 +17,10 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $scope_type
  * @property string $scope_id
  * @property array<string, mixed> $value_json
+ * @property string $checksum
  * @property int $revision
+ * @property \Illuminate\Support\Carbon $created_at
+ * @property \Illuminate\Support\Carbon $updated_at
  */
 final class ConfigValue extends Model
 {

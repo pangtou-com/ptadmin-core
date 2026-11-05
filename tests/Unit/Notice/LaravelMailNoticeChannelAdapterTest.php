@@ -99,4 +99,9 @@ final class CapturingMailer implements Mailer
 
         return null;
     }
+
+    public function sendNow($mailable, array $data = [], $callback = null)
+    {
+        return $this->send($mailable, $data, $callback);
+    }
 }

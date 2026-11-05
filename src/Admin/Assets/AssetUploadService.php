@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace PTAdmin\Admin\Assets;
 
-use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -123,9 +122,6 @@ final class AssetUploadService
         }
         $filename = Str::uuid()->toString().($suffix === '' ? '' : '.'.$suffix);
         $disk = Storage::disk($diskCode);
-        if (!$disk instanceof FilesystemAdapter) {
-            throw new \RuntimeException('上传存储磁盘不支持文件写入。');
-        }
         $path = $disk->putFileAs(
             $directory.'/'.date('Ymd'),
             $file,

@@ -84,7 +84,10 @@ final class InstallDatabaseDriversTest extends TestCase
     {
         config(['ptadmin.install.extensions' => [], 'ptadmin.install.folders' => [], 'ptadmin.install.files' => []]);
         $this->app->instance(InstallDatabaseDrivers::class, new InstallDatabaseDrivers(['pgsql']));
-        self::assertFalse($this->app->make(InstallRequirementService::class)->hasFailures());
+        $requirements = $this->app->make(InstallRequirementService::class);
+        self::assertFalse($requirements->hasFailures());
+        self::assertStringStartsWith('>= 8.2，', $requirements->results()[0]['results'][0]['config']);
+        self::assertTrue($requirements->results()[0]['results'][0]['state']);
         $this->app->instance(InstallDatabaseDrivers::class, new InstallDatabaseDrivers([]));
         $this->app->forgetInstance(InstallRequirementService::class);
         $failures = $this->app->make(InstallRequirementService::class)->failures();

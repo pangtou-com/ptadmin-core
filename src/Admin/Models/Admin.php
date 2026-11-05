@@ -7,6 +7,21 @@ namespace PTAdmin\Admin\Models;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
+/**
+ * 后台管理员账户。
+ *
+ * @property int $id
+ * @property string $username
+ * @property string $nickname
+ * @property string $password
+ * @property string|null $email
+ * @property string|null $mobile
+ * @property string|null $avatar
+ * @property bool $status
+ * @property bool $is_founder
+ * @property \Illuminate\Support\Carbon|null $login_at
+ * @property string|null $login_ip
+ */
 final class Admin extends Authenticatable
 {
     use SoftDeletes;
