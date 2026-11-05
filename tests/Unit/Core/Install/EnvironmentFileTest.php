@@ -69,4 +69,38 @@ final class EnvironmentFileTest extends TestCase
 
         self::assertSame($value, \Dotenv\Dotenv::parse((string) file_get_contents($path))['DB_PASSWORD']);
     }
+
+    public function testItReadsAnExistingQuotedKeyWithoutWritingTheEnvironment(): void
+    {
+        $path = $this->directory.'/.env';
+        $contents = "# Preserve configuration\nexport APP_KEY=\"base64:existing+key/=\"\n";
+        file_put_contents($path, $contents);
+
+        $environment = new EnvironmentFile($path);
+        self::assertSame('base64:existing+key/=', $environment->get('APP_KEY'));
+        self::assertNull($environment->get('MISSING_KEY'));
+        self::assertSame($contents, file_get_contents($path));
+    }
+
+    public function testItCreatesAMissingEnvironmentWithPrivatePermissions(): void
+    {
+        $path = $this->directory.'/.env';
+        $environment = new EnvironmentFile($path);
+        self::assertNull($environment->get('APP_KEY'));
+        self::assertFileDoesNotExist($path);
+
+        $environment->put('APP_KEY', 'base64:new+key/=');
+        self::assertSame('base64:new+key/=', $environment->get('APP_KEY'));
+        self::assertSame(0600, fileperms($path) & 0777);
+    }
+
+    public function testInvalidEnvironmentSyntaxDoesNotExposeItsContents(): void
+    {
+        $path = $this->directory.'/.env';
+        file_put_contents($path, 'APP_KEY=unquoted secret value');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('The PTAdmin environment file syntax is invalid.');
+        (new EnvironmentFile($path))->get('APP_KEY');
+    }
 }

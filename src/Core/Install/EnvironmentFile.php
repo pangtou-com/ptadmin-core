@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace PTAdmin\Core\Install;
 
+use Dotenv\Dotenv;
+use Dotenv\Exception\InvalidFileException;
 use RuntimeException;
 
 /**
@@ -15,16 +17,22 @@ final class EnvironmentFile
     {
     }
 
+    public function get(string $key): ?string
+    {
+        try {
+            return Dotenv::parse($this->contents())[$key] ?? null;
+        } catch (InvalidFileException) {
+            throw new RuntimeException('The PTAdmin environment file syntax is invalid.');
+        }
+    }
+
     public function put(string $key, string $value): void
     {
         if (preg_match('/^[A-Z][A-Z0-9_]*$/', $key) !== 1 || preg_match('/[\x00\r\n]/', $value) === 1) {
             throw new RuntimeException('The PTAdmin environment value is invalid.');
         }
 
-        $contents = is_file($this->path) ? file_get_contents($this->path) : '';
-        if ($contents === false) {
-            throw new RuntimeException(sprintf('Unable to read environment file: %s', $this->path));
-        }
+        $contents = $this->contents();
 
         $line = $key.'='.$this->encode($value);
         $pattern = '/^(?:export\s+)?'.preg_quote($key, '/').'\s*=.*$/m';
@@ -43,6 +51,16 @@ final class EnvironmentFile
         }
 
         $this->write($updated);
+    }
+
+    private function contents(): string
+    {
+        $contents = is_file($this->path) ? file_get_contents($this->path) : '';
+        if ($contents === false) {
+            throw new RuntimeException(sprintf('Unable to read environment file: %s', $this->path));
+        }
+
+        return $contents;
     }
 
     private function write(string $contents): void

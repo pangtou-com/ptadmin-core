@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace PTAdmin\Core\Install;
 
+use Illuminate\Encryption\Encrypter;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use PTAdmin\Admin\Models\Admin;
@@ -63,9 +65,7 @@ final class InstallService
 
         return $this->stateMachine->install(function (array $state) use ($username, $password, $nickname, $email, $mobile, $appName, $appUrl, $input, $progress): array {
             $webPrefix = (string) ($state['web_prefix'] ?? '');
-            if ((string) config('app.key', '') === '') {
-                throw new InvalidInstallStateException('Laravel APP_KEY is not configured.');
-            }
+            $this->prepareApplicationKey();
             $database = $this->database->configure($input);
             $this->progress($progress, 'database_migrating');
             $exitCode = Artisan::call('migrate', ['--force' => true]);
@@ -174,6 +174,23 @@ final class InstallService
                 ],
             ];
         }, $requestedWebPrefix !== '' ? $requestedWebPrefix : null);
+    }
+
+    /** 在安装锁内先持久化密钥，避免安装失败或配置缓存过期时重试生成新密钥。 */
+    private function prepareApplicationKey(): void
+    {
+        $key = (string) config('app.key', '');
+        if ($key === '') {
+            $key = $this->environment->get('APP_KEY') ?? '';
+        }
+        if ($key === '') {
+            $key = 'base64:'.base64_encode(Encrypter::generateKey((string) config('app.cipher', 'AES-256-CBC')));
+        }
+
+        $this->environment->put('APP_KEY', $key);
+        config(['app.key' => $key]);
+        app()->forgetInstance('encrypter');
+        Crypt::clearResolvedInstance('encrypter');
     }
 
     /**
