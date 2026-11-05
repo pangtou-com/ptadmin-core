@@ -158,6 +158,8 @@ final class InstallWizardController extends Controller
                 Log::error('PTAdmin installation wizard failed.', [
                     'exception' => $exception::class,
                     'message' => $exception->getMessage(),
+                    'file' => $exception->getFile(),
+                    'line' => $exception->getLine(),
                 ]);
                 $this->send('error', __('ptadmin::install.stream.general_failed'));
             }

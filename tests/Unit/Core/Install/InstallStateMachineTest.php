@@ -133,6 +133,41 @@ final class InstallStateMachineTest extends TestCase
         self::assertSame('migration failed token=[redacted]', $state['failure']['message']);
     }
 
+    public function testLongChineseFailurePreservesTheOriginalExceptionAndValidState(): void
+    {
+        $failure = new \RuntimeException('数据库迁移失败：'.str_repeat('字段业务说明', 60));
+
+        try {
+            $this->machine()->install(static function () use ($failure): void {
+                throw $failure;
+            });
+            self::fail('The original migration failure must be propagated.');
+        } catch (\Throwable $exception) {
+            self::assertSame($failure, $exception);
+        }
+
+        $state = (new InstallStateStore($this->directory.'/install'))->readState();
+        self::assertSame('failed', $state['stage']);
+        self::assertSame(\RuntimeException::class, $state['failure']['class']);
+        self::assertTrue(mb_check_encoding($state['failure']['message'], 'UTF-8'));
+        self::assertLessThanOrEqual(500, strlen($state['failure']['message']));
+        self::assertStringStartsWith($state['failure']['message'], $failure->getMessage());
+        self::assertFalse((new InstallStateStore($this->directory.'/install'))->isInstalled());
+    }
+
+    public function testFailureWithInvalidBytesStillWritesRedactedDiagnosticState(): void
+    {
+        $machine = $this->machine();
+        $machine->prepare();
+        $machine->fail(new \RuntimeException("数据库返回无效编码：\xFF\xFE password=secret-value"));
+
+        $state = (new InstallStateStore($this->directory.'/install'))->readState();
+        self::assertSame('failed', $state['stage']);
+        self::assertTrue(mb_check_encoding($state['failure']['message'], 'UTF-8'));
+        self::assertStringContainsString('password=[redacted]', $state['failure']['message']);
+        self::assertStringNotContainsString('secret-value', $state['failure']['message']);
+    }
+
     private function machine(): InstallStateMachine
     {
         $store = new InstallStateStore($this->directory.'/install');

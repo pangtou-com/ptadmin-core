@@ -160,6 +160,7 @@ final class InstallStateMachine
             $message
         ) ?? $message;
 
-        return substr($message, 0, 500);
+        // 诊断文本可能含驱动返回的无效字节；截断时也必须保留完整字符，避免状态写入掩盖原始异常。
+        return mb_strcut(mb_scrub($message, 'UTF-8'), 0, 500, 'UTF-8');
     }
 }
