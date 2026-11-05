@@ -16,7 +16,7 @@ return new class() extends Migration {
             $table->string('owner_type', 32)->comment('配置所有者类型');
             $table->string('owner_code', 128)->comment('配置所有者编码');
             $table->string('title', 150)->comment('配置展示名称');
-            $table->text('description')->default('')->comment('配置用途说明');
+            $table->text('description')->comment('配置用途说明');
             $table->json('schema_json')->comment('配置 Schema 定义');
             $table->string('checksum', 64)->comment('配置 Schema 内容摘要');
             $table->boolean('status')->default(true)->comment('配置定义是否启用');

@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $config_key
  * @property string $owner_type
  * @property string $owner_code
+ * @property string $description 配置用途说明，未填写时为空字符串。
  * @property string $icon
  * @property string $exposure
  * @property string $activation_mode
@@ -25,6 +26,7 @@ final class ConfigDefinition extends Model
     protected $table = 'ptadmin_config_definitions';
     public $timestamps = true;
     protected $guarded = [];
+    protected $attributes = ['description' => ''];
     protected $casts = [
         'schema_json' => 'json',
         'status' => 'boolean',

@@ -17,7 +17,7 @@ return new class() extends Migration {
             $table->string('table_name', 128)->comment('运行时数据表名');
             $table->string('migration_owner', 32)->default('schema')->comment('迁移归属');
             $table->text('title')->comment('资源展示标题');
-            $table->text('description')->default('')->comment('资源说明');
+            $table->text('description')->comment('资源说明');
             $table->string('owner_type', 64)->default('')->comment('资源所有者类型');
             $table->string('owner_code', 128)->default('')->comment('资源所有者编码');
             $table->string('design_flow_id', 191)->default('')->comment('设计流程标识');
@@ -95,7 +95,7 @@ return new class() extends Migration {
             $table->json('migration_result_json')->nullable()->comment('迁移结果');
             $table->json('projection_result_json')->nullable()->comment('投影结果');
             $table->string('last_error_code', 128)->default('')->comment('最后错误编码');
-            $table->text('last_error_message')->default('')->comment('最后错误信息');
+            $table->text('last_error_message')->comment('最后错误信息');
             $table->string('failure_detail_ref', 255)->default('')->comment('失败详情引用');
             $table->timestamp('started_at')->nullable()->comment('开始时间');
             $table->timestamp('finished_at')->nullable()->comment('完成时间');
@@ -110,7 +110,7 @@ return new class() extends Migration {
             foreach (['kind' => 64, 'category' => 64, 'action' => 128, 'status' => 32, 'resource_key' => 191, 'record_id' => 128, 'subject_type' => 64, 'subject_id' => 128, 'actor_type' => 64, 'actor_id' => 128, 'request_id' => 128, 'trace_id' => 128, 'remote_ip' => 64] as $name => $length) {
                 $table->string($name, $length)->default('')->comment('审计字段 '.$name);
             }
-            $table->text('user_agent')->default('')->comment('客户端 User-Agent');
+            $table->text('user_agent')->comment('客户端 User-Agent');
             $table->json('payload_json')->comment('审计载荷');
             $table->timestamp('occurred_at')->useCurrent()->comment('发生时间');
             $table->index(['resource_key', 'record_id', 'occurred_at']);

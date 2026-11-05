@@ -170,12 +170,6 @@ parameters:
 			path: src/Core/Config/ConfigService.php
 
 		-
-			message: '#^Access to an undefined property PTAdmin\\Core\\Config\\Models\\ConfigDefinition\:\:\$description\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Core/Config/ConfigService.php
-
-		-
 			message: '#^Access to an undefined property PTAdmin\\Core\\Config\\Models\\ConfigDefinition\:\:\$status\.$#'
 			identifier: property.notFound
 			count: 1
@@ -447,12 +441,6 @@ parameters:
 
 		-
 			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\PublishTask\:\:\$last_error_code\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Schema/Publish/Service/PublishService.php
-
-		-
-			message: '#^Access to an undefined property PTAdmin\\Schema\\Meta\\Models\\PublishTask\:\:\$last_error_message\.$#'
 			identifier: property.notFound
 			count: 1
 			path: src/Schema/Publish/Service/PublishService.php

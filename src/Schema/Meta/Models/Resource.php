@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $id
  * @property string $resource_key
  * @property string $title 资源显示名称。
- * @property string|null $description 资源业务说明。
+ * @property string $description 资源业务说明，未填写时为空字符串。
  * @property string $source_type 资源定义来源。
  * @property string $owner_type 资源所属主体类型。
  * @property string $owner_code 资源所属主体编码。
@@ -27,6 +27,7 @@ final class Resource extends Model
     protected $table = 'schema_resources';
     public $timestamps = true;
     protected $guarded = [];
+    protected $attributes = ['description' => ''];
     protected $casts = [
         'active_version_id' => 'integer',
         'allow_import' => 'boolean', 'allow_export' => 'boolean', 'allow_duplicate' => 'boolean',

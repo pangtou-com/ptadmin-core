@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $version_id
  * @property string $status
  * @property string $phase
+ * @property string $last_error_message 最后错误信息，尚未失败时为空字符串。
  * @property array<string, mixed>|null $migration_result_json
  * @property array<string, mixed>|null $projection_result_json
  */
@@ -22,6 +23,7 @@ final class PublishTask extends Model
     protected $table = 'schema_publish_tasks';
     public $timestamps = true;
     protected $guarded = [];
+    protected $attributes = ['last_error_message' => ''];
     protected $casts = [
         'resource_id' => 'integer', 'version_id' => 'integer',
         'migration_result_json' => 'json', 'projection_result_json' => 'json',
