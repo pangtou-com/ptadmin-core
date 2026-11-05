@@ -86,7 +86,7 @@ Action 固定经过以下链路：
 }
 ```
 
-请求地址来自 Bootstrap 配置的 Admin API 基础路径，默认统一入口为 `POST /ptadmin/schema/runtime`。请求使用当前 Bearer Token；响应继续使用 `code / message / data`，请求标识只从 `X-Request-ID` 响应头读取。
+请求地址来自 Bootstrap 配置的 Admin API 基础路径，默认统一入口为 `POST /ptadmin/schema/action`。请求使用当前 Bearer Token；响应继续使用 `code / message / data`，请求标识只从 `X-Request-ID` 响应头读取。
 
 ## Resource Event
 

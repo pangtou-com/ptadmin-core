@@ -1,30 +1,155 @@
 {
   "manifest_version": 1,
-  "frontend_version": "0.1.0",
+  "frontend_version": "0.1.5",
   "backend_constraint": ">=0.1.0 <1.0.0",
   "api_protocol": 1,
   "schema_protocol": 1,
   "entry": "./index.html",
   "files": [
     {
-      "path": "assets/BootstrapErrorPage-Bj1S8MnJ.js",
-      "size": 635,
-      "sha256": "3fe3681cd55b95d1fcd2d2de57d35a608ca690c508e6ac51fecf6a69b6ed4ec1"
+      "path": "assets/LoginPage-18_TLzEn.js",
+      "size": 5827,
+      "sha256": "bb4c83882454bca6f08497e9e945d7d6d26c88fe29688693576bda0032ab9a79"
     },
     {
-      "path": "assets/LoginPage-DLOISBS3.js",
-      "size": 6949,
-      "sha256": "3a12cb523ecf8e8b02898143069fa883554d8290ef0371bd9226dc140f30a2bc"
+      "path": "assets/_admin-shared-runtime_element-plus-CHJj6bUV.js",
+      "size": 946111,
+      "sha256": "1c6bb033fc83e2189d4554a108d83b2035da73bf415ff7ff20c56e1b2ece5d4b"
     },
     {
-      "path": "assets/index-6EB2SfbI.css",
-      "size": 487549,
-      "sha256": "6a6cb0eef3898396e22d3448f2a470ce9bbd9e5b3a42716b3ac668f12dd23998"
+      "path": "assets/client-BtSqNp0l.js",
+      "size": 4967,
+      "sha256": "ddc62161e05db692c11f32c85fb386f70e9f1219033a4e2e83e016545b0a5d4f"
     },
     {
-      "path": "assets/index-CMUEtaXX.js",
-      "size": 1945661,
-      "sha256": "f303f8ab01a437509eaaedf1b3845fcefac9b38acd1555d4cb8626cc5fdb4eaa"
+      "path": "assets/host-BMCdSvSj.js",
+      "size": 8614,
+      "sha256": "7cc9fa33fc382d163f09888da429093c11e4bd50f704d072be73ef7fbe428a9b"
+    },
+    {
+      "path": "assets/in-process-CNyGOw1f.js",
+      "size": 3301,
+      "sha256": "ef44ae59842e037563a26e27b13fd555ea318083757289e4b3f6bbb8be3023d6"
+    },
+    {
+      "path": "assets/index-Bbr-EdDt.js",
+      "size": 630391,
+      "sha256": "bd2e08fd89c61117d902a4fba7f823c08b1fbba615a27d76caecd59f6591e0fc"
+    },
+    {
+      "path": "assets/index-CbxUZxvZ.css",
+      "size": 617879,
+      "sha256": "79196faaaf835b295ad206ad3ba5d0c1025b82555e6eeca470d8b8289f665892"
+    },
+    {
+      "path": "assets/index-DPDLhpAl.js",
+      "size": 1192336,
+      "sha256": "782a6302dec757603fbc4b874b972f3cac7f36fc06a69f63e77154d6952833ad"
+    },
+    {
+      "path": "assets/index.esm-B3ROeNbW-BU_memu0.js",
+      "size": 795465,
+      "sha256": "a8d4e6fe9521cba39d98a732684a012231909fe0b67e3721ae817a8411f5d5b6"
+    },
+    {
+      "path": "assets/runtime-C7GVILXf.js",
+      "size": 94017,
+      "sha256": "9946cecb7fce4fc50d4d603a2e2447988ff0495f69f117fd9cf2b8e1f8fcba2d"
+    },
+    {
+      "path": "assets/runtime-dom.esm-bundler-CuVfqaJg.js",
+      "size": 112660,
+      "sha256": "4a3dd23b515f462dd3d6aa476395c6ddcd516b3258339c793880de9e3922dc4a"
+    },
+    {
+      "path": "assets/schema-vue-Drgbp4n9.js",
+      "size": 135725,
+      "sha256": "bd965dae2212711729828e93d77039f47b89bde4b0100d81aceb6a4666fd720a"
+    },
+    {
+      "path": "assets/shared/admin-v1/api-client.js",
+      "size": 54437,
+      "sha256": "f11fa44f3822e78bb0f6b33dc0663b116641b617d549f2f497a3393351eebdba"
+    },
+    {
+      "path": "assets/shared/admin-v1/element-plus.js",
+      "size": 16251,
+      "sha256": "d529a4cd8edbcb051297728ce6762fbc9f8606ad4d1c3bfd87d45be2d7ddac22"
+    },
+    {
+      "path": "assets/shared/admin-v1/plugin-sdk-bridge.js",
+      "size": 2444,
+      "sha256": "3cb2bfb1a7f1ac639f5c10d392edce31ec0c4ab67b68f97aabc4b0a8be8fd7d1"
+    },
+    {
+      "path": "assets/shared/admin-v1/plugin-sdk-client.js",
+      "size": 242,
+      "sha256": "557567229320fefff918e641500b27ea9fc38afbaa64303e38a2197f83942999"
+    },
+    {
+      "path": "assets/shared/admin-v1/plugin-sdk-host.js",
+      "size": 2522,
+      "sha256": "dd6f9b8232c751da1db59431119791eda6938867bf956b518c662248dabc157e"
+    },
+    {
+      "path": "assets/shared/admin-v1/plugin-sdk-runtime.js",
+      "size": 289,
+      "sha256": "24ca2c265a68729d49fa0d8b436f6fdb600d7a36527ffe49b9ff8d9114d1a604"
+    },
+    {
+      "path": "assets/shared/admin-v1/plugin-sdk-vue.js",
+      "size": 2316,
+      "sha256": "f315d60fb56da5cf28a9bd33ebbf64c552fecb998c512327517cf69f865a6155"
+    },
+    {
+      "path": "assets/shared/admin-v1/plugin-sdk.js",
+      "size": 985,
+      "sha256": "e32f53c151de422332715bedf459c253c31f516d9c82df23364707e20fa406a5"
+    },
+    {
+      "path": "assets/shared/admin-v1/schema-core.js",
+      "size": 14847,
+      "sha256": "2a5c61cbdd3a30d4af516d25821552fe58ca1e76a624e62bd2ee6661b7ba1d6f"
+    },
+    {
+      "path": "assets/shared/admin-v1/schema-designer.js",
+      "size": 252695,
+      "sha256": "e2fd1a15846a423c3850a7cdc93359ece665148bbb07a7637948aba2d842dd03"
+    },
+    {
+      "path": "assets/shared/admin-v1/schema-protocol.js",
+      "size": 359,
+      "sha256": "c491ea67bbd85462d5f06a2eaca2c9a4fb744f65ad43686b431664fbda855f4a"
+    },
+    {
+      "path": "assets/shared/admin-v1/schema-ui-element-plus-preset.js",
+      "size": 2030,
+      "sha256": "60653c1b69cbd73e5ec8a6242b629928aeeaab00e1da957e7775dd272cb3a84f"
+    },
+    {
+      "path": "assets/shared/admin-v1/schema-ui-element-plus.js",
+      "size": 500,
+      "sha256": "e659e608e69cb1b2ebe0d9db1346803689019da679a25e8e75a8fb494029e1c1"
+    },
+    {
+      "path": "assets/shared/admin-v1/schema-vue.js",
+      "size": 6041,
+      "sha256": "fab786302a378b0ddcdc8afac3b8d31c0a62ecbf962f37f276e1c0a0e86ad0bc"
+    },
+    {
+      "path": "assets/shared/admin-v1/vue.js",
+      "size": 4850,
+      "sha256": "f4dd6f18004461c745341ea4d8ef2276d47a3a960076558f6d704d281eba9210"
+    },
+    {
+      "path": "assets/surface-policy-C6BjEuZ8.js",
+      "size": 718,
+      "sha256": "07435bd7a718617276d73457a734eb9e5b6aa2729db71429da6a507bb98459ae"
+    },
+    {
+      "path": "assets/vue.runtime.esm-bundler-nlmtfReN.js",
+      "size": 4301,
+      "sha256": "70d84c0ce5f6cabbacc13df793f137b4e63dbab752676a9b2a9afe7b95cbd6ae"
     },
     {
       "path": "favicon.svg",
@@ -33,9 +158,9 @@
     },
     {
       "path": "index.html",
-      "size": 1862,
-      "sha256": "3a6a224ca22e516bbb46d6e0bb5eedb6af8824e4780c4678548bf1a36a989e64"
+      "size": 5068,
+      "sha256": "11297dfb5dcd7a8989a3220c6f24c6dd72d8a05fb7ea4232fa63e43728b35b88"
     }
   ],
-  "artifact_sha256": "6219e030a7bd90baf2f6c40051029f8e9ccb22dc3a7f55ed2966be2d610226f9"
+  "artifact_sha256": "a8f65d47859f553fd5172a7aa7d5e8f10bf4bf3602a9c1bb12a17bc3dbbfbf1d"
 }

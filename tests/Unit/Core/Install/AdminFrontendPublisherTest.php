@@ -39,11 +39,25 @@ final class AdminFrontendPublisherTest extends TestCase
         $module = $this->directory.'/public/'.$prefix.'/modules/demo';
         mkdir($module, 0700, true);
         file_put_contents($module.'/manifest.json', '{}');
+        $plugin = $this->directory.'/public/'.$prefix.'/plugins/cms';
+        mkdir($plugin, 0700, true);
+        file_put_contents($plugin.'/plugin.mjs', 'export default "installed-plugin";');
+        $manifestPath = $this->directory.'/public/'.$prefix.'/manifest.json';
+        $oldManifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+        $oldManifest['frontend_version'] = '0.1.0';
+        file_put_contents($manifestPath, json_encode($oldManifest, JSON_THROW_ON_ERROR));
+
+        // 已安装站点不会通过再次调用安装发布来替换旧 Shell，必须走显式更新。
+        self::assertSame('0.1.0', $publisher->publishForInstall($prefix)['frontend_version']);
 
         $result = $publisher->publishForUpdate($prefix);
 
         self::assertTrue($result['published']);
+        self::assertSame('0.1.5', $result['frontend_version']);
         self::assertFileExists($module.'/manifest.json');
+        self::assertSame('{}', file_get_contents($module.'/manifest.json'));
+        self::assertSame('export default "installed-plugin";', file_get_contents($plugin.'/plugin.mjs'));
+        self::assertSame('0.1.5', json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR)['frontend_version']);
         self::assertFileExists($this->directory.'/public/'.$prefix.'/index.html');
     }
 

@@ -1,6 +1,8 @@
 <!doctype html>
 <html lang="zh-CN">
     <head>
+
+
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="theme-color" content="#f5f7fb" />
@@ -9,13 +11,6 @@
             #__ptadmin_boot_loader__ {
                 position: fixed;
                 inset: 0;
-                display: grid;
-                place-items: center;
-                background: #f5f7fb;
-                color: #38527a;
-                font:
-                    600 14px/1.5 system-ui,
-                    sans-serif;
                 z-index: 9999;
                 transition: opacity 0.22s ease;
             }
@@ -23,34 +18,79 @@
                 opacity: 0;
                 pointer-events: none;
             }
-            #__ptadmin_boot_loader__ span {
-                display: inline-flex;
+            .ptadmin-loader-container {
+                display: flex;
                 align-items: center;
-                gap: 10px;
+                justify-content: center;
+                flex-direction: column;
+                background:
+                    radial-gradient(circle at top, rgba(34, 116, 255, 0.28), transparent 32%),
+                    linear-gradient(180deg, #0f172a 0%, #111827 100%);
+                color: #ffffff;
             }
-            #__ptadmin_boot_loader__ i {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #dce6ff;
-                border-top-color: #3f6fd9;
+
+            .ptadmin-loader-ring {
+                position: relative;
+                width: 78px;
+                height: 78px;
+            }
+
+            .ptadmin-loader-ring::before,
+            .ptadmin-loader-ring::after {
+                content: '';
+                position: absolute;
+                inset: 0;
                 border-radius: 50%;
-                animation: ptadmin-spin 0.8s linear infinite;
+                border: 4px solid transparent;
             }
-            @keyframes ptadmin-spin {
+
+            .ptadmin-loader-ring::before {
+                border-top-color: #4da3ff;
+                border-right-color: #21c2c2;
+                animation: ptadmin-loader-spin 1.35s linear infinite;
+            }
+
+            .ptadmin-loader-ring::after {
+                inset: 14%;
+                border-bottom-color: #ff8a3d;
+                border-left-color: #4da3ff;
+                animation: ptadmin-loader-spin 1s linear reverse infinite;
+            }
+
+            .ptadmin-loader-text {
+                margin-top: 18px;
+                font-size: 13px;
+                letter-spacing: 0.08em;
+                color: rgba(255, 255, 255, 0.82);
+            }
+
+            @keyframes ptadmin-loader-spin {
                 to {
                     transform: rotate(360deg);
                 }
             }
         </style>
-      <script type="module" crossorigin src="./assets/index-CMUEtaXX.js"></script>
-      <link rel="stylesheet" crossorigin href="./assets/index-6EB2SfbI.css">
+      <script type="importmap">{"imports":{"vue":"./assets/shared/admin-v1/vue.js","element-plus":"./assets/shared/admin-v1/element-plus.js","@sparqjs/api-client":"./assets/shared/admin-v1/api-client.js","@sparqjs/plugin-sdk":"./assets/shared/admin-v1/plugin-sdk.js","@sparqjs/plugin-sdk/bridge":"./assets/shared/admin-v1/plugin-sdk-bridge.js","@sparqjs/plugin-sdk/client":"./assets/shared/admin-v1/plugin-sdk-client.js","@sparqjs/plugin-sdk/host":"./assets/shared/admin-v1/plugin-sdk-host.js","@sparqjs/plugin-sdk/runtime":"./assets/shared/admin-v1/plugin-sdk-runtime.js","@sparqjs/plugin-sdk/vue":"./assets/shared/admin-v1/plugin-sdk-vue.js","@sparqjs/schema-core":"./assets/shared/admin-v1/schema-core.js","@sparqjs/schema-protocol":"./assets/shared/admin-v1/schema-protocol.js","@sparqjs/schema-vue":"./assets/shared/admin-v1/schema-vue.js","@sparqjs/schema-designer":"./assets/shared/admin-v1/schema-designer.js","@sparqjs/schema-ui-element-plus":"./assets/shared/admin-v1/schema-ui-element-plus.js","@sparqjs/schema-ui-element-plus/preset":"./assets/shared/admin-v1/schema-ui-element-plus-preset.js"}}</script>
+      <script type="module" crossorigin src="./assets/index-DPDLhpAl.js"></script>
+      <link rel="modulepreload" crossorigin href="./assets/runtime-dom.esm-bundler-CuVfqaJg.js">
+      <link rel="modulepreload" crossorigin href="./assets/_admin-shared-runtime_element-plus-CHJj6bUV.js">
+      <link rel="modulepreload" crossorigin href="./assets/shared/admin-v1/schema-protocol.js">
+      <link rel="modulepreload" crossorigin href="./assets/runtime-C7GVILXf.js">
+      <link rel="modulepreload" crossorigin href="./assets/schema-vue-Drgbp4n9.js">
+      <link rel="modulepreload" crossorigin href="./assets/index-Bbr-EdDt.js">
+      <link rel="modulepreload" crossorigin href="./assets/shared/admin-v1/schema-ui-element-plus-preset.js">
+      <link rel="modulepreload" crossorigin href="./assets/vue.runtime.esm-bundler-nlmtfReN.js">
+      <link rel="modulepreload" crossorigin href="./assets/shared/admin-v1/plugin-sdk-bridge.js">
+      <link rel="modulepreload" crossorigin href="./assets/surface-policy-C6BjEuZ8.js">
+      <link rel="modulepreload" crossorigin href="./assets/host-BMCdSvSj.js">
+      <link rel="modulepreload" crossorigin href="./assets/in-process-CNyGOw1f.js">
+      <link rel="modulepreload" crossorigin href="./assets/shared/admin-v1/schema-designer.js">
+      <link rel="stylesheet" crossorigin href="./assets/index-CbxUZxvZ.css">
     </head>
     <body>
-        <div id="__ptadmin_boot_loader__" aria-live="polite">
-            <span>
-                <i aria-hidden="true"></i>
-                正在启动 PTAdmin…
-            </span>
+        <div id="__ptadmin_boot_loader__" class="ptadmin-loader-container" aria-live="polite">
+            <div class="ptadmin-loader-ring" aria-hidden="true"></div>
+            <div class="ptadmin-loader-text">PTAdmin HTML Booted...</div>
         </div>
         <div id="app"></div>
     </body>

@@ -15,6 +15,7 @@ use PTAdmin\Core\Providers\PTAdminServiceProvider;
 use PTAdmin\Core\Http\Responses\AdminResponse;
 use PTAdmin\Core\Http\Middleware\AuthenticateSessionMiddleware;
 use PTAdmin\Admin\Http\Middleware\RecordAdminOperationMiddleware;
+use PTAdmin\Schema\Contracts\RuntimeEngineInterface;
 use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 
 final class AdminExceptionContractTest extends TestCase
@@ -97,14 +98,48 @@ final class AdminExceptionContractTest extends TestCase
         $this->getJson('/ptadmin/public-api-probe')->assertOk();
         $this->getJson('/ptadmin/public-api-probe')->assertStatus(429)->assertHeader('Retry-After');
 
-        $this->postJson('/ptadmin/schema/runtime', ['operation' => 'loadSchema'])
+        $this->postJson('/ptadmin/schema/action', ['operation' => 'loadSchema'])
             ->assertUnauthorized()->assertJsonPath('code', 40101);
 
         // 单独验证路由限流边界；真实 Bearer 会话和 CMS Schema 由宿主集成测试覆盖。
         $this->withoutMiddleware([AuthenticateSessionMiddleware::class, RecordAdminOperationMiddleware::class]);
-        $this->postJson('/ptadmin/schema/runtime', ['operation' => 'loadSchema'])
+        $this->postJson('/ptadmin/schema/action', ['operation' => 'loadSchema'])
             ->assertStatus(422)->assertJsonPath('data.code', 'invalid_input');
         $this->getJson('/ptadmin/public-api-probe')->assertStatus(429);
+    }
+
+    public function testSchemaActionAndLegacyRoutesRequireTheSameSession(): void
+    {
+        foreach (['action', 'runtime'] as $entry) {
+            $base = '/ptadmin/schema/'.$entry;
+            foreach ([
+                ['POST', ''], ['GET', '/admin.notification_templates/schema'],
+                ['GET', '/admin.notification_templates/records'], ['POST', '/admin.notification_templates/records'],
+                ['GET', '/admin.notification_templates/records/1'], ['PUT', '/admin.notification_templates/records/1'],
+                ['DELETE', '/admin.notification_templates/records/1'], ['POST', '/admin.notification_templates/records/1/restore'],
+                ['DELETE', '/admin.notification_templates/records/1/purge'], ['POST', '/admin.notification_templates/records/1/action'],
+                ['GET', '/admin.notification_templates/relations'],
+            ] as [$method, $suffix]) {
+                $this->json($method, $base.$suffix)->assertUnauthorized()->assertJsonPath('code', 40101)->assertHeader('X-Request-ID');
+            }
+        }
+    }
+
+    public function testSchemaActionAndLegacyListsReturnSuccessfulJsonWithoutRedirects(): void
+    {
+        $this->withoutMiddleware([AuthenticateSessionMiddleware::class, RecordAdminOperationMiddleware::class]);
+        $result = ['total' => 1, 'results' => [['id' => 1, 'title' => '通知模板']]];
+        $runtime = $this->createMock(RuntimeEngineInterface::class);
+        $runtime->expects(self::exactly(2))->method('list')->with([
+            'page' => 1, 'limit' => 100, 'resource' => 'admin.notification_templates',
+        ])->willReturn($result);
+        $this->app->instance(RuntimeEngineInterface::class, $runtime);
+
+        foreach (['action', 'runtime'] as $entry) {
+            $this->getJson('/ptadmin/schema/'.$entry.'/admin.notification_templates/records?page=1&limit=100')
+                ->assertOk()->assertExactJson(['code' => 0, 'message' => 'ok', 'data' => $result])
+                ->assertHeaderMissing('Location')->assertHeader('X-Request-ID');
+        }
     }
 
     public function testConfiguredPrefixAndPublicResponsesKeepTheirBoundaries(): void

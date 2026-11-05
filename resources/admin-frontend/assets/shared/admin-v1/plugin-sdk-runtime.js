@@ -1,0 +1,1 @@
+async function o(e,r,n){return e.requiresApproval?{approvalToken:(await r({expectedChecksum:e.checksum})).token,idempotencyKey:n}:{idempotencyKey:n}}function u(e){return e}function a(e){return e}export{a as defineFrontendModule,u as defineFrontendPlugin,o as prepareDesignerDraftPublish};

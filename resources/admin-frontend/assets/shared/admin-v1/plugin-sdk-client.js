@@ -1,0 +1,1 @@
+import{c as a}from"../../client-BtSqNp0l.js";import{c as p}from"../../in-process-CNyGOw1f.js";import"./plugin-sdk-bridge.js";import"../../surface-policy-C6BjEuZ8.js";export{p as createSparqInProcessPluginClient,a as createSparqPluginClient};

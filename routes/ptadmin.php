@@ -419,37 +419,42 @@ Route::middleware($schemaMiddleware)
             ->whereNumber('task')
             ->name('publish-tasks.show');
 
-        Route::post('runtime', [RuntimeController::class, 'dispatch'])->name('runtime.dispatch');
-        Route::get('runtime/{resource}/schema', [RuntimeController::class, 'schema'])
-            ->where('resource', '[^/]+')
-            ->name('runtime.schema');
-        Route::get('runtime/{resource}/records', [RuntimeController::class, 'list'])
-            ->where('resource', '[^/]+')
-            ->name('runtime.records.index');
-        Route::post('runtime/{resource}/records', [RuntimeController::class, 'create'])
-            ->where('resource', '[^/]+')
-            ->name('runtime.records.store');
-        Route::get('runtime/{resource}/records/{id}', [RuntimeController::class, 'detail'])
-            ->where(['resource' => '[^/]+', 'id' => '[0-9]+'])
-            ->name('runtime.records.show');
-        Route::put('runtime/{resource}/records/{id}', [RuntimeController::class, 'update'])
-            ->where(['resource' => '[^/]+', 'id' => '[0-9]+'])
-            ->name('runtime.records.update');
-        Route::delete('runtime/{resource}/records/{id}', [RuntimeController::class, 'delete'])
-            ->where(['resource' => '[^/]+', 'id' => '[0-9]+'])
-            ->name('runtime.records.destroy');
-        Route::post('runtime/{resource}/records/{id}/restore', [RuntimeController::class, 'restore'])
-            ->where(['resource' => '[^/]+', 'id' => '[0-9]+'])
-            ->name('runtime.records.restore');
-        Route::delete('runtime/{resource}/records/{id}/purge', [RuntimeController::class, 'purge'])
-            ->where(['resource' => '[^/]+', 'id' => '[0-9]+'])
-            ->name('runtime.records.purge');
-        Route::post('runtime/{resource}/records/{id}/action', [RuntimeController::class, 'action'])
-            ->where(['resource' => '[^/]+', 'id' => '[0-9]+'])
-            ->name('runtime.records.action');
-        Route::get('runtime/{resource}/relations', [RuntimeController::class, 'relationCandidates'])
-            ->where('resource', '[^/]+')
-            ->name('runtime.relations.index');
+        // action 避开常见部署对 /runtime/ 的拦截；旧入口沿用同一认证、授权和处理器。
+        foreach (['action', 'runtime'] as $path) {
+            Route::prefix($path)->as($path.'.')->group(static function (): void {
+                Route::post('', [RuntimeController::class, 'dispatch'])->name('dispatch');
+                Route::get('{resource}/schema', [RuntimeController::class, 'schema'])
+                    ->where('resource', '[^/]+')
+                    ->name('schema');
+                Route::get('{resource}/records', [RuntimeController::class, 'list'])
+                    ->where('resource', '[^/]+')
+                    ->name('records.index');
+                Route::post('{resource}/records', [RuntimeController::class, 'create'])
+                    ->where('resource', '[^/]+')
+                    ->name('records.store');
+                Route::get('{resource}/records/{id}', [RuntimeController::class, 'detail'])
+                    ->where(['resource' => '[^/]+', 'id' => '[0-9]+'])
+                    ->name('records.show');
+                Route::put('{resource}/records/{id}', [RuntimeController::class, 'update'])
+                    ->where(['resource' => '[^/]+', 'id' => '[0-9]+'])
+                    ->name('records.update');
+                Route::delete('{resource}/records/{id}', [RuntimeController::class, 'delete'])
+                    ->where(['resource' => '[^/]+', 'id' => '[0-9]+'])
+                    ->name('records.destroy');
+                Route::post('{resource}/records/{id}/restore', [RuntimeController::class, 'restore'])
+                    ->where(['resource' => '[^/]+', 'id' => '[0-9]+'])
+                    ->name('records.restore');
+                Route::delete('{resource}/records/{id}/purge', [RuntimeController::class, 'purge'])
+                    ->where(['resource' => '[^/]+', 'id' => '[0-9]+'])
+                    ->name('records.purge');
+                Route::post('{resource}/records/{id}/action', [RuntimeController::class, 'action'])
+                    ->where(['resource' => '[^/]+', 'id' => '[0-9]+'])
+                    ->name('records.action');
+                Route::get('{resource}/relations', [RuntimeController::class, 'relationCandidates'])
+                    ->where('resource', '[^/]+')
+                    ->name('relations.index');
+            });
+        }
     });
 
 $webPrefix = trim((string) config('ptadmin.web_prefix', 'admin'), '/');

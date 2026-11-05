@@ -1,0 +1,1 @@
+const n=["eq","neq","gt","gte","lt","lte","contains","in","not_in","empty","not_empty"];function i(t){return typeof t=="string"&&n.includes(t)}const e=["static","dictionary","reference","remote"];function o(t){return typeof t=="string"&&e.includes(t)}export{n as CONDITION_OPERATORS,e as FIELD_OPTIONS_MODES,i as isConditionOperator,o as isFieldOptionsMode};
