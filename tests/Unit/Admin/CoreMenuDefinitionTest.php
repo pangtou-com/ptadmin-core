@@ -13,16 +13,14 @@ final class CoreMenuDefinitionTest extends TestCase
     #[DataProvider('pageMenuProvider')]
     public function testCorePageIsDeclaredAsVisibleMenu(string $resourceKey, array $expected): void
     {
-        $definitions = json_decode(
-            (string) file_get_contents(dirname(__DIR__, 3).'/resources/menu.json'),
-            true,
-            512,
-            JSON_THROW_ON_ERROR,
-        );
+        $definitions = $this->definitions();
         $menus = array_column($definitions, null, 'resource_key');
 
         self::assertArrayHasKey($resourceKey, $menus);
-        self::assertSame($expected, array_intersect_key($menus[$resourceKey], $expected));
+        foreach ($expected as $field => $value) {
+            self::assertArrayHasKey($field, $menus[$resourceKey]);
+            self::assertSame($value, $menus[$resourceKey][$field], $resourceKey.'.'.$field);
+        }
     }
 
     /** @return iterable<string, array{string, array<string, mixed>}> */
@@ -58,12 +56,7 @@ final class CoreMenuDefinitionTest extends TestCase
 
     public function testNavigationUsesOneStableKeyAndSupportedTypes(): void
     {
-        $definitions = json_decode(
-            (string) file_get_contents(dirname(__DIR__, 3).'/resources/menu.json'),
-            true,
-            512,
-            JSON_THROW_ON_ERROR,
-        );
+        $definitions = $this->definitions();
         $resources = array_column($definitions, null, 'resource_key');
 
         self::assertCount(count($definitions), $resources);
@@ -81,7 +74,7 @@ final class CoreMenuDefinitionTest extends TestCase
 
     public function testTaskHistoryPermissionsCanBeGrantedWithoutAddingANavigationPage(): void
     {
-        $definitions = json_decode((string) file_get_contents(dirname(__DIR__, 3).'/resources/menu.json'), true, 512, JSON_THROW_ON_ERROR);
+        $definitions = $this->definitions();
         $resources = array_column($definitions, null, 'resource_key');
         self::assertSame('action', $resources['core.tasks']['type']);
         self::assertFalse($resources['core.tasks']['is_menu']);
@@ -90,12 +83,7 @@ final class CoreMenuDefinitionTest extends TestCase
 
     public function testSchemaMenuPermissionsAreExplicitlyDeclared(): void
     {
-        $definitions = json_decode(
-            (string) file_get_contents(dirname(__DIR__, 3).'/resources/menu.json'),
-            true,
-            512,
-            JSON_THROW_ON_ERROR,
-        );
+        $definitions = $this->definitions();
         $resources = array_column($definitions, null, 'resource_key');
 
         self::assertSame(
@@ -114,5 +102,31 @@ final class CoreMenuDefinitionTest extends TestCase
             ['list', 'view'],
             $resources['admin.notification_templates']['abilities'],
         );
+    }
+
+    /**
+     * @param list<array<string, mixed>>|null $nodes
+     * @return list<array<string, mixed>>
+     */
+    private function definitions(?array $nodes = null, string $parentKey = ''): array
+    {
+        $nodes ??= json_decode(
+            (string) file_get_contents(dirname(__DIR__, 3).'/resources/menu.json'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+        $definitions = [];
+        foreach ($nodes as $node) {
+            $children = $node['children'] ?? [];
+            unset($node['children']);
+            if ($parentKey !== '') {
+                $node['parent_key'] = $parentKey;
+            }
+            $definitions[] = $node;
+            array_push($definitions, ...$this->definitions($children, $node['resource_key']));
+        }
+
+        return $definitions;
     }
 }

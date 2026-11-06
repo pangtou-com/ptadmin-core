@@ -185,7 +185,8 @@ final class MenuSynchronizer
         }
 
         try {
-            $decoded = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+            // 区分空对象与空数组，避免 children: {} 被误当成移除所有子项的声明。
+            $decoded = json_decode((string) file_get_contents($path), false, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $exception) {
             throw new RuntimeException(sprintf('菜单资源文件不是有效 JSON：%s', $path), 0, $exception);
         }
@@ -193,12 +194,40 @@ final class MenuSynchronizer
             throw new RuntimeException(sprintf('菜单资源文件必须是 JSON 数组：%s', $path));
         }
 
+        return $this->flattenDefinitions($decoded, $path, $ownerType, $ownerCode);
+    }
+
+    /**
+     * 写库前展开资源树，让各层级共同接受重复编码、父级关系和归属校验。
+     *
+     * @param list<mixed> $items
+     * @return list<array<string,mixed>>
+     */
+    private function flattenDefinitions(array $items, string $path, string $ownerType, string $ownerCode, string $parentKey = ''): array
+    {
         $definitions = [];
-        foreach ($decoded as $index => $item) {
-            if (!is_array($item) || array_is_list($item)) {
-                throw new RuntimeException(sprintf('菜单资源 %s 的第 %d 项必须是对象。', $path, $index));
+        foreach ($items as $index => $item) {
+            if (!$item instanceof \stdClass) {
+                throw new RuntimeException(sprintf('菜单资源 %s 的第 %d 项必须是对象（父级：%s）。', $path, $index, $parentKey === '' ? '根节点' : $parentKey));
             }
-            $definitions[] = $this->normalizeDefinition($item, $path, $ownerType, $ownerCode);
+            $values = get_object_vars($item);
+            $definition = $this->normalizeDefinition($values, $path, $ownerType, $ownerCode);
+            $key = $definition['resource_key'];
+            if ($parentKey !== '') {
+                if (array_key_exists('parent_key', $values) && $definition['parent_key'] !== $parentKey) {
+                    throw new RuntimeException(sprintf('菜单资源 %s 的 parent_key 与 children 父级不一致：%s（应为 %s）。', $key, $definition['parent_key'], $parentKey));
+                }
+                $definition['parent_key'] = $parentKey;
+            }
+            $definitions[] = $definition;
+
+            if (array_key_exists('children', $values)) {
+                $children = $values['children'];
+                if (!is_array($children) || !array_is_list($children)) {
+                    throw new RuntimeException(sprintf('菜单资源 %s 的 children 必须是对象数组：%s', $key, $path));
+                }
+                array_push($definitions, ...$this->flattenDefinitions($children, $path, $ownerType, $ownerCode, $key));
+            }
         }
 
         return $definitions;
@@ -217,6 +246,7 @@ final class MenuSynchronizer
         }
 
         $rawPath = (string) ($item['path'] ?? '');
+        $meta = $item['meta'] ?? [];
 
         return [
             'resource_key' => $key,
@@ -231,7 +261,7 @@ final class MenuSynchronizer
             'status' => (bool) ($item['status'] ?? true),
             'sort' => (int) ($item['sort'] ?? 0),
             'abilities' => $this->abilityList($item['abilities'] ?? [], $key),
-            'meta' => is_array($item['meta'] ?? null) ? $this->sortKeys($item['meta']) : [],
+            'meta' => is_array($meta) || $meta instanceof \stdClass ? $this->sortKeys((array) $meta) : [],
             'owner_type' => $ownerType,
             'owner_code' => $ownerCode,
         ];
@@ -464,8 +494,8 @@ final class MenuSynchronizer
     private function sortKeys(array $value): array
     {
         foreach ($value as $key => $item) {
-            if (is_array($item) && !array_is_list($item)) {
-                $value[$key] = $this->sortKeys($item);
+            if ($item instanceof \stdClass || is_array($item)) {
+                $value[$key] = $this->sortKeys((array) $item);
             }
         }
         ksort($value);
