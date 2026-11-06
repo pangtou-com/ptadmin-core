@@ -36,13 +36,13 @@ final class HttpCloudClientTest extends TestCase
     public function testAuthorizationRequestUsesFixedSiteAndSignedPublicIdentity(): void
     {
         $this->http->fake(function ($request) {
-            self::assertSame('http://127.0.0.1:8001/api/cloud/requests', $request->url());
+            self::assertSame('https://cloud.api.pangtou.com/api/cloud/requests', $request->url());
             $values = $request->data();
             self::assertArrayNotHasKey('private_key', $values);
             self::assertSame(1, openssl_verify(CloudProtocol::authorizationPayload($values), base64_decode($values['signature'], true), $values['public_key'], OPENSSL_ALGO_SHA256));
             return Factory::response(['code' => 0, 'data' => ['request_key' => str_repeat('a', 64)]]);
         });
-        self::assertSame('http://127.0.0.1:8001/cloud/authorize/'.str_repeat('a', 64), $this->client->authorizationUrl([
+        self::assertSame('https://cloud.api.pangtou.com/cloud/authorize/'.str_repeat('a', 64), $this->client->authorizationUrl([
             'redirect_uri' => 'https://core.example/ptadmin/cloud/session/callback', 'state' => str_repeat('b', 64),
             'code_challenge' => CloudProtocol::challenge(str_repeat('v', 64)), 'code_challenge_method' => 'S256',
         ]));
@@ -94,7 +94,7 @@ final class HttpCloudClientTest extends TestCase
                 self::assertSame('2', (string) $request['page']);
                 return Factory::response(['code' => 0, 'data' => ['results' => [], 'total' => 51]]);
             }
-            self::assertSame('http://127.0.0.1:8001/api/cloud/market/template/releases/package', $request->url());
+            self::assertSame('https://cloud.api.pangtou.com/api/cloud/market/template/releases/package', $request->url());
             return Factory::response(['code' => 0, 'data' => ['id' => 7, 'validation_state' => 'validated']]);
         });
         self::assertSame(51, $this->client->products('server-token', ['page' => 2])['total']);

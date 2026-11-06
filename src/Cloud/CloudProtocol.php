@@ -6,8 +6,8 @@ namespace PTAdmin\Cloud;
 
 final class CloudProtocol
 {
-    // 当前联调地址固定在协议入口，正式部署时统一修改。
-    public const SITE_URL = 'http://127.0.0.1:8001';
+    // 云市场 API、浏览器授权和包下载共用正式 HTTPS 入口。
+    public const SITE_URL = 'https://cloud.api.pangtou.com';
     public const GRANT_LIFETIME_SECONDS = 7200;
 
     public static function challenge(string $verifier): string
