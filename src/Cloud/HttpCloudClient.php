@@ -28,7 +28,7 @@ final class HttpCloudClient implements CloudClientInterface, \PTAdmin\Cloud\Cont
         if (!is_string($result['request_key'] ?? null) || preg_match('/^[a-f0-9]{64}$/D', $result['request_key']) !== 1) {
             throw new CloudException('平台授权请求响应无效。', 'cloud_response_invalid');
         }
-        return CloudProtocol::SITE_URL.'/cloud/authorize/'.$result['request_key'];
+        return CloudProtocol::AUTHORIZATION_URL.'/cloud/authorize/'.$result['request_key'];
     }
 
     public function exchangeAuthorizationCode(string $code, string $codeVerifier, string $redirectUri): array

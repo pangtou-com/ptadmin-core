@@ -42,7 +42,7 @@ final class HttpCloudClientTest extends TestCase
             self::assertSame(1, openssl_verify(CloudProtocol::authorizationPayload($values), base64_decode($values['signature'], true), $values['public_key'], OPENSSL_ALGO_SHA256));
             return Factory::response(['code' => 0, 'data' => ['request_key' => str_repeat('a', 64)]]);
         });
-        self::assertSame('https://cloud.api.pangtou.com/cloud/authorize/'.str_repeat('a', 64), $this->client->authorizationUrl([
+        self::assertSame('https://site.pangtou.com/cloud/authorize/'.str_repeat('a', 64), $this->client->authorizationUrl([
             'redirect_uri' => 'https://core.example/ptadmin/cloud/session/callback', 'state' => str_repeat('b', 64),
             'code_challenge' => CloudProtocol::challenge(str_repeat('v', 64)), 'code_challenge_method' => 'S256',
         ]));
@@ -52,6 +52,7 @@ final class HttpCloudClientTest extends TestCase
     {
         $verifier = str_repeat('v', 64);
         $this->http->fake(function ($request) use ($verifier) {
+            self::assertStringStartsWith('https://cloud.api.pangtou.com/api/cloud/', $request->url());
             if (str_ends_with($request->url(), '/requests')) {
                 $values = $request->data();
                 self::assertSame('cli', $values['flow']);
@@ -69,6 +70,7 @@ final class HttpCloudClientTest extends TestCase
         });
         $url = $this->client->authorizationUrl(['flow' => 'cli', 'redirect_uri' => '', 'state' => str_repeat('b', 64),
             'code_challenge' => CloudProtocol::challenge($verifier), 'code_challenge_method' => 'S256']);
+        self::assertSame('https://site.pangtou.com/cloud/authorize/'.str_repeat('a', 64), $url);
         self::assertStringNotContainsString($verifier, $url);
         self::assertSame(['status' => 'pending'], $this->client->pollCliAuthorization(basename($url), $verifier));
     }

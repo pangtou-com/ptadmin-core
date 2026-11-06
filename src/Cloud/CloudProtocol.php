@@ -6,8 +6,9 @@ namespace PTAdmin\Cloud;
 
 final class CloudProtocol
 {
-    // 云市场 API、浏览器授权和包下载共用正式 HTTPS 入口。
+    // 云域名只提供 API 与包下载；会员登录和授权确认使用官网会话。
     public const SITE_URL = 'https://cloud.api.pangtou.com';
+    public const AUTHORIZATION_URL = 'https://site.pangtou.com';
     public const GRANT_LIFETIME_SECONDS = 7200;
 
     public static function challenge(string $verifier): string
