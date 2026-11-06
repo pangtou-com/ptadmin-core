@@ -1,15 +1,15 @@
 {
   "manifest_version": 1,
-  "frontend_version": "0.1.5",
+  "frontend_version": "0.1.6",
   "backend_constraint": ">=0.1.0 <1.0.0",
   "api_protocol": 1,
   "schema_protocol": 1,
   "entry": "./index.html",
   "files": [
     {
-      "path": "assets/LoginPage-18_TLzEn.js",
+      "path": "assets/LoginPage-BGRX9TAx.js",
       "size": 5827,
-      "sha256": "bb4c83882454bca6f08497e9e945d7d6d26c88fe29688693576bda0032ab9a79"
+      "sha256": "b460a392cb3a43de2baf22bbba091aa564c021e8f581f97f55c7818d1fa1322d"
     },
     {
       "path": "assets/_admin-shared-runtime_element-plus-CHJj6bUV.js",
@@ -42,9 +42,9 @@
       "sha256": "79196faaaf835b295ad206ad3ba5d0c1025b82555e6eeca470d8b8289f665892"
     },
     {
-      "path": "assets/index-DPDLhpAl.js",
-      "size": 1192336,
-      "sha256": "782a6302dec757603fbc4b874b972f3cac7f36fc06a69f63e77154d6952833ad"
+      "path": "assets/index-O5tRNkCy.js",
+      "size": 1192942,
+      "sha256": "3e033f594f0ad36d90f84fd74f0456048373f3bb5287a42277239dee456ac367"
     },
     {
       "path": "assets/index.esm-B3ROeNbW-BU_memu0.js",
@@ -159,8 +159,8 @@
     {
       "path": "index.html",
       "size": 5068,
-      "sha256": "11297dfb5dcd7a8989a3220c6f24c6dd72d8a05fb7ea4232fa63e43728b35b88"
+      "sha256": "33a6bc5e7726a91735aa9f4a90a2af8deeb10f00c4951c2b550719ab819bd66a"
     }
   ],
-  "artifact_sha256": "a8f65d47859f553fd5172a7aa7d5e8f10bf4bf3602a9c1bb12a17bc3dbbfbf1d"
+  "artifact_sha256": "c168b8588ccc8356436515b114680446ff5403507ffd6fb663a5954164b7b557"
 }
