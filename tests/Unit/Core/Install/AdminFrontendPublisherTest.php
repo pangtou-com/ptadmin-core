@@ -53,11 +53,11 @@ final class AdminFrontendPublisherTest extends TestCase
         $result = $publisher->publishForUpdate($prefix);
 
         self::assertTrue($result['published']);
-        self::assertSame('0.1.6', $result['frontend_version']);
+        self::assertSame('0.1.7', $result['frontend_version']);
         self::assertFileExists($module.'/manifest.json');
         self::assertSame('{}', file_get_contents($module.'/manifest.json'));
         self::assertSame('export default "installed-plugin";', file_get_contents($plugin.'/plugin.mjs'));
-        self::assertSame('0.1.6', json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR)['frontend_version']);
+        self::assertSame('0.1.7', json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR)['frontend_version']);
         self::assertFileExists($this->directory.'/public/'.$prefix.'/index.html');
     }
 

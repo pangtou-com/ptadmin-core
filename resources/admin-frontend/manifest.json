@@ -1,15 +1,15 @@
 {
   "manifest_version": 1,
-  "frontend_version": "0.1.6",
+  "frontend_version": "0.1.7",
   "backend_constraint": ">=0.1.0 <1.0.0",
   "api_protocol": 1,
   "schema_protocol": 1,
   "entry": "./index.html",
   "files": [
     {
-      "path": "assets/LoginPage-BGRX9TAx.js",
+      "path": "assets/LoginPage-DRPLwGXK.js",
       "size": 5827,
-      "sha256": "b460a392cb3a43de2baf22bbba091aa564c021e8f581f97f55c7818d1fa1322d"
+      "sha256": "3e450b88e29fca806e85d83bf44abc69cb58404cb9fef6853e2dff2b542f2e50"
     },
     {
       "path": "assets/_admin-shared-runtime_element-plus-CHJj6bUV.js",
@@ -32,19 +32,19 @@
       "sha256": "ef44ae59842e037563a26e27b13fd555ea318083757289e4b3f6bbb8be3023d6"
     },
     {
+      "path": "assets/index-BDb1In6G.js",
+      "size": 1193123,
+      "sha256": "98dba75cc26b9f2316a29865b5f539796da04a47c8993f64fd2c871af5c8e6d7"
+    },
+    {
       "path": "assets/index-Bbr-EdDt.js",
       "size": 630391,
       "sha256": "bd2e08fd89c61117d902a4fba7f823c08b1fbba615a27d76caecd59f6591e0fc"
     },
     {
-      "path": "assets/index-CbxUZxvZ.css",
+      "path": "assets/index-Dced_FL1.css",
       "size": 617879,
-      "sha256": "79196faaaf835b295ad206ad3ba5d0c1025b82555e6eeca470d8b8289f665892"
-    },
-    {
-      "path": "assets/index-O5tRNkCy.js",
-      "size": 1192942,
-      "sha256": "3e033f594f0ad36d90f84fd74f0456048373f3bb5287a42277239dee456ac367"
+      "sha256": "b96a8c8cfa04f13ee82462155150837dc5c598c386c0c59503627299079fcbf9"
     },
     {
       "path": "assets/index.esm-B3ROeNbW-BU_memu0.js",
@@ -159,8 +159,8 @@
     {
       "path": "index.html",
       "size": 5068,
-      "sha256": "33a6bc5e7726a91735aa9f4a90a2af8deeb10f00c4951c2b550719ab819bd66a"
+      "sha256": "ee97dd68646333e91df779c8fdb2c5563e01f158d65783bc0fea655afb551287"
     }
   ],
-  "artifact_sha256": "c168b8588ccc8356436515b114680446ff5403507ffd6fb663a5954164b7b557"
+  "artifact_sha256": "ab349871402c808138763a6d0188bb005c5063f7fae4fd07ebc8c1ae37850f9f"
 }
