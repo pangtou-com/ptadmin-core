@@ -135,14 +135,15 @@ final class Installer
                 throw new RuntimeException('Unable to activate addon package.');
             }
             $frontendSource = $target.'/frontend/dist';
-            // 数据库资源在事务内同步；文件与前端产物由外层 catch 使用目录备份执行补偿回滚。
-            $activate = function () use ($target, $code, $manifest, $frontendSource, $webPrefix, $update, $onProgress, $previousLifecycle): array {
-                $this->autoloader->register($target, $manifest, $update);
-                $this->runMigrations($target);
-                if ($onProgress !== null) {
-                    $onProgress('sync_resources', 60, '正在同步插件资源。');
-                }
-                $synced = $this->resourceSynchronizer?->sync($target, $code) ?? ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'notices' => 0, 'admin_resources' => 0];
+            // MySQL 的 DDL 会隐式提交，迁移与 Schema 发布不得进入激活事务。
+            $this->autoloader->register($target, $manifest, $update);
+            $this->runMigrations($target);
+            if ($onProgress !== null) {
+                $onProgress('sync_resources', 60, '正在同步插件资源。');
+            }
+            $resourcesStarted = true;
+            $synced = $this->resourceSynchronizer?->sync($target, $code) ?? ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'notices' => 0, 'admin_resources' => 0];
+            $activate = function () use ($target, $code, $manifest, $frontendSource, $webPrefix, $update, $onProgress, $previousLifecycle): void {
                 if ($onProgress !== null) {
                     $onProgress('install_hooks', 75, '正在执行插件安装流程。');
                 }
@@ -158,9 +159,8 @@ final class Installer
                 } elseif ($update) {
                     $this->frontend->remove($webPrefix, $code);
                 }
-                return $synced;
             };
-            $synced = null !== $this->database ? $this->database->transaction($activate) : $activate();
+            null !== $this->database ? $this->database->transaction($activate) : $activate();
             $this->catalog->publish($code);
             if (is_dir($backup)) {
                 $this->deleteDirectory($backup);
@@ -177,6 +177,18 @@ final class Installer
             }
             if ($mappingCaptured && isset($code)) {
                 $this->autoloader->restore($code, $previousMapping);
+            }
+            if (($resourcesStarted ?? false) && isset($code) && $this->resourceSynchronizer !== null) {
+                try {
+                    if (isset($target) && is_dir($target)) {
+                        $this->resourceSynchronizer->sync($target, $code);
+                    }
+                    if (($previousLifecycle['state'] ?? null) !== 'active') {
+                        $this->resourceSynchronizer->deactivate($code);
+                    }
+                } catch (\Throwable) {
+                    // 已执行的 DDL 保留，补偿失败不能覆盖原始安装错误。
+                }
             }
             if (isset($code) && ($lifecycleCaptured ?? false)) {
                 $this->lifecycle->restore($code, $previousLifecycle ?? null);

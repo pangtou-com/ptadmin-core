@@ -365,26 +365,7 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
      */
     private function indexExists(string $tableName, string $indexName): bool
     {
-        $driver = DB::connection()->getDriverName();
-        if ($driver === 'sqlite') {
-            foreach (DB::select('PRAGMA index_list('.$tableName.')') as $index) {
-                if (($index->name ?? null) === $indexName) {
-                    return true;
-                }
-            }
-            return false;
-        }
-        if ($driver === 'mysql') {
-            return DB::table('information_schema.statistics')
-                ->whereRaw('table_schema = database()')
-                ->where('table_name', $tableName)
-                ->where('index_name', $indexName)
-                ->exists();
-        }
-        if ($driver === 'pgsql') {
-            return DB::table('pg_indexes')->where('schemaname', 'public')->where('tablename', $tableName)->where('indexname', $indexName)->exists();
-        }
-        return false;
+        return DatabaseSchema::hasIndex($tableName, $indexName);
     }
 
     /**

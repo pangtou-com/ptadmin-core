@@ -21,7 +21,7 @@ use PTAdmin\Schema\SchemaFile\SchemaFileSynchronizer;
 use PTAdmin\Schema\SchemaFile\SchemaSourceDiscovery;
 
 /**
- * 在一个数据库事务内同步插件声明的 Schema、配置、字典 Provider 和后台资源。
+ * 先发布含 DDL 的 Schema，再在独立事务内同步配置、字典与后台资源。
  *
  * 插件升级后不再声明的资源会被停用而不是删除，保证已有配置值和业务表数据可在重新启用或回滚后继续使用。
  */
@@ -53,7 +53,7 @@ final class ResourceSynchronizer implements ResourceSynchronizerInterface
         $manifest = ($this->manifestVerifier ??= new ManifestVerifier())->verifyRuntime($directory);
         ($this->autoloader ??= new AddonAutoloader())->register($directory, $manifest);
         $this->runtime->prepareServices($directory, $manifest);
-        return $this->frontend->withAddonDesignFlows($directory, $manifest, fn (): array => $this->database->transaction(function () use ($directory, $code): array {
+        return $this->frontend->withAddonDesignFlows($directory, $manifest, function () use ($directory, $code): array {
             $counts = ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'notices' => 0, 'admin_resources' => 0];
             $ownerCode = strtolower($code);
             $schemaKeys = [];
@@ -87,37 +87,40 @@ final class ResourceSynchronizer implements ResourceSynchronizerInterface
                 'addon:'.$code
             );
             $counts['schemas'] += $this->schemaSynchronizer->syncCustomPresets($presetFiles);
-            foreach ($this->jsonFiles($directory.'/resources', 'config.') as $path) {
-                $definitions = $this->objectOrList($path);
-                foreach ($definitions as $definition) {
-                    $definition['owner_type'] = 'addon';
-                    $definition['owner_code'] = $ownerCode;
-                    $this->configs->syncDefinition($definition);
-                    $configKeys[] = (string) ($definition['config_key'] ?? '');
-                    $counts['configs']++;
+            // Schema 发布自行维护元数据事务；DDL 必须在其余资源的事务之外执行。
+            return $this->database->transaction(function () use ($directory, $code, $ownerCode, $schemaKeys, $configKeys, $counts): array {
+                foreach ($this->jsonFiles($directory.'/resources', 'config.') as $path) {
+                    $definitions = $this->objectOrList($path);
+                    foreach ($definitions as $definition) {
+                        $definition['owner_type'] = 'addon';
+                        $definition['owner_code'] = $ownerCode;
+                        $this->configs->syncDefinition($definition);
+                        $configKeys[] = (string) ($definition['config_key'] ?? '');
+                        $counts['configs']++;
+                    }
                 }
-            }
-            $menuResult = $this->menus->syncAddon($directory, $code);
-            $counts['admin_resources'] = count($menuResult['resource_keys']);
-            $counts['dicts'] = $this->dictionaries->syncAddon($directory, $ownerCode);
-            $counts['notices'] = $this->notices->syncAddon($directory, $ownerCode);
-            $schemaQuery = Resource::query()->where(['owner_type' => 'addon', 'owner_code' => $ownerCode]);
-            if ($schemaKeys !== []) {
-                $schemaQuery->whereNotIn('resource_key', $schemaKeys);
-            }
-            $schemaQuery->where('source_type', 'code');
-            foreach ($schemaQuery->get() as $resource) {
-                $this->resources->disableResource((string) $resource->resource_key);
-            }
+                $menuResult = $this->menus->syncAddon($directory, $code);
+                $counts['admin_resources'] = count($menuResult['resource_keys']);
+                $counts['dicts'] = $this->dictionaries->syncAddon($directory, $ownerCode);
+                $counts['notices'] = $this->notices->syncAddon($directory, $ownerCode);
+                $schemaQuery = Resource::query()->where(['owner_type' => 'addon', 'owner_code' => $ownerCode]);
+                if ($schemaKeys !== []) {
+                    $schemaQuery->whereNotIn('resource_key', $schemaKeys);
+                }
+                $schemaQuery->where('source_type', 'code');
+                foreach ($schemaQuery->get() as $resource) {
+                    $this->resources->disableResource((string) $resource->resource_key);
+                }
 
-            $configQuery = ConfigDefinition::query()->where(['owner_type' => 'addon', 'owner_code' => $ownerCode]);
-            if ($configKeys !== []) {
-                $configQuery->whereNotIn('config_key', $configKeys);
-            }
-            $configQuery->update(['status' => false]);
+                $configQuery = ConfigDefinition::query()->where(['owner_type' => 'addon', 'owner_code' => $ownerCode]);
+                if ($configKeys !== []) {
+                    $configQuery->whereNotIn('config_key', $configKeys);
+                }
+                $configQuery->update(['status' => false]);
 
-            return $counts;
-        }));
+                return $counts;
+            });
+        });
     }
 
     /** 停用插件的资源定义和菜单可见性，不删除配置值、Schema 版本或业务数据。 */
