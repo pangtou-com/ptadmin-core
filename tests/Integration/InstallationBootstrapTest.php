@@ -98,9 +98,23 @@ final class InstallationBootstrapTest extends TestCase
         $this->getJson('/ptadmin/system/updates')->assertRedirect('/__ptadmin__/install');
         $this->postJson('/ptadmin/system/updates/check')->assertRedirect('/__ptadmin__/install');
         self::assertArrayNotHasKey('ptadmin:updates:check', \Illuminate\Support\Facades\Artisan::all());
+        self::assertArrayNotHasKey('ptadmin:theme:publish', \Illuminate\Support\Facades\Artisan::all());
+        $this->postJson('/ptadmin/site/themes/default/1.0.0/publish')->assertRedirect('/__ptadmin__/install');
         self::assertSame([], app(\Illuminate\Console\Scheduling\Schedule::class)->events());
         $this->getJson('/__ptadmin__/install/status')->assertOk()->assertJsonPath('installed', false);
         self::assertSame([], $this->app['db']->getConnections());
+    }
+
+    public function testThemePublicationBeforeInstallDoesNotOpenOrCreateSqlite(): void
+    {
+        $database = $this->storage.'/missing.sqlite';
+        config(['database.default' => 'uninstalled', 'database.connections.uninstalled' => [
+            'driver' => 'sqlite', 'database' => $database, 'prefix' => '', 'foreign_key_constraints' => true,
+        ]]);
+        self::assertArrayNotHasKey('ptadmin:theme:publish', \Illuminate\Support\Facades\Artisan::all());
+        $this->postJson('/ptadmin/site/themes/default/1.0.0/publish')->assertRedirect('/__ptadmin__/install');
+        self::assertSame([], $this->app['db']->getConnections());
+        self::assertFileDoesNotExist($database);
     }
 
     public function testInstalledHostCanRunBusinessQueriesAndCannotReopenInstaller(): void

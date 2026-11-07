@@ -151,7 +151,17 @@
                 "status": true,
                 "sort": 10,
                 "icon": "palette",
-                "abilities": ["view"]
+                "abilities": ["view"],
+                "children": [
+                    {
+                        "resource_key": "site.theme",
+                        "title": "主题操作",
+                        "type": "action",
+                        "is_menu": false,
+                        "status": true,
+                        "abilities": ["read", "install", "activate", "publish", "remove"]
+                    }
+                ]
             }
         ]
     }

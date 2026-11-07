@@ -71,6 +71,8 @@ php artisan ptadmin:admin:sync
 
 `ptadmin:menu:sync` 负责读取 Core 和已安装插件的 `resources/menu.json` 并幂等同步 `admin_resources`。安装流程和插件生命周期直接调用相同的同步服务，不在进程内嵌套调用 Artisan 命令。`ptadmin:admin:sync` 负责 Admin 内置 Schema、权限关联、配置定义和 Core 字典；应用与插件代码型 Schema 仍由 `schema:sync` 或插件安装流程维护。
 
+公开主题的 CSS/JS 更新后，执行 `php artisan ptadmin:theme:publish` 发布当前启用主题资源；自动部署可加 `--force --no-interaction`。后台主题管理提供同一“发布资源”操作，要求 `site.theme.publish` 权限。替换前备份旧公开目录，失败恢复原资源；不修改主题源码或当前主题选择。
+
 Core 内置配置定义位于 `resources/config.site.json`、`resources/config.mail.json` 和 `resources/config.upload.json`，与插件的 `resources/config.*.json` 使用相同的配置协议。配置同步以 JSON 文件为定义来源，并在同步时注入当前 Laravel 配置中的运行时默认值。
 
 后台 Admin 资源和导航统一存储在 `admin_resources`。Core 资源声明位于 `resources/menu.json`，宿主插件资源声明位于 `addons/{code}/resources/menu.json`；两个文件使用相同的严格 JSON 数组格式，声明完整资源集合，不再使用 `Admin/resources.json`。资源类型为 `group`、`schema`、`page`、`external`、`action`，其中 `action` 只参与授权，其他类型通过 `is_menu` 决定是否进入 Session 菜单。安装、`ptadmin:admin:sync` 和插件生命周期共用幂等资源同步逻辑。

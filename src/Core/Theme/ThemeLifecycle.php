@@ -20,12 +20,20 @@ final class ThemeLifecycle
         private string $defaultCode = 'default',
         private string $defaultVersion = '1.0.0',
         private ?ThemeViewLoader $viewLoader = null,
+        private ?string $operationsDirectory = null,
     ) {
         $this->templatesDirectory = rtrim($templatesDirectory, '/');
+        $this->operationsDirectory ??= $this->templatesDirectory.'/.ptadmin-operations';
     }
 
     /** @return array<string,mixed> */
     public function activate(string $code, string $version): array
+    {
+        return $this->exclusive(fn (): array => $this->activateUnlocked($code, $version));
+    }
+
+    /** @return array<string,mixed> */
+    private function activateUnlocked(string $code, string $version): array
     {
         $theme = $this->catalog->find($code, $version);
         if ($theme === null) {
@@ -66,6 +74,12 @@ final class ThemeLifecycle
     /** @return array<string,mixed> */
     public function remove(string $code, string $version): array
     {
+        return $this->exclusive(fn (): array => $this->removeUnlocked($code, $version));
+    }
+
+    /** @return array<string,mixed> */
+    private function removeUnlocked(string $code, string $version): array
+    {
         $theme = $this->catalog->find($code, $version);
         if ($theme === null) {
             throw new ThemeException('Theme is not installed: '.$code.'@'.$version, 'theme_not_found', ['code' => $code, 'version' => $version]);
@@ -90,6 +104,51 @@ final class ThemeLifecycle
             'removed' => true,
             'path' => $source,
         ];
+    }
+
+    /** @return array{code:string,version:string,published:bool,files:int,backup_id:?string} */
+    public function publishAssets(string $code, string $version): array
+    {
+        return $this->exclusive(function () use ($code, $version): array {
+            $theme = $this->catalog->find($code, $version);
+            if ($theme === null) {
+                throw new ThemeException('主题不存在或未通过校验：'.$code.'@'.$version, 'theme_not_found');
+            }
+            if ($this->active->active()?->identifier() !== $theme->identifier()) {
+                throw new ThemeException('只能发布当前启用主题的资源，请刷新主题列表。', 'theme_not_active');
+            }
+            $result = $this->publisher->republish($theme, $this->operationsDirectory.'/backups');
+            return ['code' => $code, 'version' => $version, 'published' => true,
+                'files' => $result['files'], 'backup_id' => $result['backup_id']];
+        });
+    }
+
+    /** @param callable():array $operation @return array */
+    private function exclusive(callable $operation): array
+    {
+        $directory = $this->operationsDirectory;
+        if (is_link($directory) || (!is_dir($directory) && !mkdir($directory, 0700, true) && !is_dir($directory))) {
+            throw new ThemeException('无法创建主题操作目录。', 'theme_storage_unavailable');
+        }
+        $path = $directory.'/lifecycle.lock';
+        if (is_link($path)) {
+            throw new ThemeException('主题操作锁不能是符号链接。', 'unsafe_theme_path');
+        }
+        $lock = fopen($path, 'c');
+        if ($lock === false) {
+            throw new ThemeException('无法打开主题操作锁。', 'theme_storage_unavailable');
+        }
+        try {
+            if (!flock($lock, LOCK_EX | LOCK_NB)) {
+                throw new ThemeException('其他主题操作正在执行，请稍后重试。', 'theme_busy');
+            }
+            // 长驻进程和页面旧状态不能决定本次操作的当前主题。
+            $this->active->reset();
+            return $operation();
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
     }
 
     private function deleteDirectory(string $directory): void

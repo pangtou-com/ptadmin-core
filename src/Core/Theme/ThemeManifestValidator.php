@@ -18,6 +18,9 @@ final class ThemeManifestValidator
     /** 市场入库可关闭当前宿主版本匹配；主题身份、约束语法及数据包检查始终保留。 */
     public function validateDirectory(string $directory, string $expectedCode, string $expectedVersion, bool $isDefault = false, bool $checkBackendCompatibility = true): ThemeDescriptor
     {
+        if (is_link($directory)) {
+            throw new ThemeException('主题源目录不能是符号链接。', 'unsafe_theme_path');
+        }
         $root = realpath($directory);
         if ($root === false || !is_dir($root)) {
             throw new ThemeException('Theme directory is unavailable: '.$directory, 'theme_unavailable', ['directory' => $directory]);

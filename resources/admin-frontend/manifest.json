@@ -1,15 +1,15 @@
 {
   "manifest_version": 1,
-  "frontend_version": "0.2.0",
-  "backend_constraint": ">=0.3.0 <1.0.0",
+  "frontend_version": "0.3.0",
+  "backend_constraint": ">=0.4.0 <1.0.0",
   "api_protocol": 1,
   "schema_protocol": 1,
   "entry": "./index.html",
   "files": [
     {
-      "path": "assets/LoginPage-BmbGnQyO.js",
+      "path": "assets/LoginPage-C4K4JcEm.js",
       "size": 5827,
-      "sha256": "d3fa4cbea5339265809c66dbcf57a4f0fae54246664ae4b3be65c7bd397e07f6"
+      "sha256": "1c293e2448869cd87dcdbea86b889aa19b322ee9b836788e16edb2eba4fcc56e"
     },
     {
       "path": "assets/_admin-shared-runtime_element-plus-DNW8tGSz.js",
@@ -32,14 +32,14 @@
       "sha256": "ef44ae59842e037563a26e27b13fd555ea318083757289e4b3f6bbb8be3023d6"
     },
     {
-      "path": "assets/index-Bg5_RC_4.js",
-      "size": 1216362,
-      "sha256": "d904d86e80874d219599d045d1c686992fcc5dcdc7a061c5dcc18020cabd1a7a"
+      "path": "assets/index-BEjuRLk8.js",
+      "size": 1217487,
+      "sha256": "74adf26477fffe1fd1af981de085e22a0587aea02fa605cf347fad80fdbfc5c0"
     },
     {
-      "path": "assets/index-Biz5333m.css",
+      "path": "assets/index-BHnEJQz-.css",
       "size": 627638,
-      "sha256": "900026a4f8edd5c1bd1c3d216b6435444e35ebd0aae795f06bd28a59f0785f94"
+      "sha256": "f0af29ebfd9a3935b268ce43ca88238a0ba13b53028ae03553e1fb39b805cb40"
     },
     {
       "path": "assets/index-LkBivgdU.js",
@@ -159,10 +159,10 @@
     {
       "path": "index.html",
       "size": 5068,
-      "sha256": "e5dbcf5ae2e592213655daecf651b978a33876d2262ced39dc44f0d79282c3c0"
+      "sha256": "962ceece5b88e50bed38d0187abb6dc216bbd3efe63b5e7a050e90da0a5774f5"
     }
   ],
-  "artifact_sha256": "93212f808ffde39df65d51fbc24b700a452b6b524924567680b95d4f092547d5",
-  "git_commit": "99a77abc4c0d8a1c42bf3eefef79b687caab6d70",
-  "source_sha256": "3fcecc220bf1d1aec6e7b4235f913fe0daada06ebc01f44362342a6b51c598f4"
+  "artifact_sha256": "15255ecee4330bc5bc402b8de2c8c735488e87e8022473fe3f901534362ef96a",
+  "git_commit": "f2619fb92303b7e49f950c86684a25d47bc6285c",
+  "source_sha256": "1260fec4e9e6609c9cabdc1807418c24cb4e6d816954e2e0cc22e52a00a265af"
 }

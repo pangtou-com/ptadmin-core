@@ -118,6 +118,20 @@ final class ThemeController extends Controller
         }
     }
 
+    public function publish(string $code, string $version, ThemeLifecycle $lifecycle): JsonResponse
+    {
+        try {
+            return AdminResponse::success('主题资源已发布。', $lifecycle->publishAssets($code, $version));
+        } catch (ThemeException $exception) {
+            $status = match ($exception->errorCode) {
+                'theme_not_found' => 404,
+                'theme_busy', 'theme_not_active' => 409,
+                default => 422,
+            };
+            return AdminResponse::error($status * 100, $exception->getMessage(), ['error_code' => $exception->errorCode], $status);
+        }
+    }
+
     public function remove(string $code, string $version, Request $request, TaskManager $tasks): JsonResponse
     {
         return $this->lifecycleTask($request, $tasks, TaskManager::SITE_THEME_REMOVE, $code, $version, 'remove');

@@ -306,6 +306,10 @@ Route::middleware($authenticatedMiddleware)
             ->middleware('ptadmin.permission:site.theme,activate')
             ->where(['code' => '[A-Za-z][A-Za-z0-9._-]{1,63}', 'version' => '\\d+\\.\\d+\\.\d+(?:[-+][0-9A-Za-z.-]+)?'])
             ->name('activate');
+        Route::post('/{code}/{version}/publish', [ThemeController::class, 'publish'])
+            ->middleware('ptadmin.permission:site.theme,publish')
+            ->where(['code' => '[A-Za-z][A-Za-z0-9._-]{1,63}', 'version' => '\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?'])
+            ->name('publish');
         Route::delete('/{code}/{version}', [ThemeController::class, 'remove'])
             ->middleware('ptadmin.permission:site.theme,remove')
             ->where(['code' => '[A-Za-z][A-Za-z0-9._-]{1,63}', 'version' => '\\d+\\.\\d+\\.\d+(?:[-+][0-9A-Za-z.-]+)?'])

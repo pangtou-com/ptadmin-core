@@ -383,6 +383,7 @@ final class PTAdminServiceProvider extends ServiceProvider
                 (string) ($default['code'] ?? 'default'),
                 (string) ($default['version'] ?? '1.0.0'),
                 $app->make(ThemeViewLoader::class),
+                storage_path('app/ptadmin/themes/operations'),
             );
         });
     }
@@ -610,6 +611,7 @@ final class PTAdminServiceProvider extends ServiceProvider
             TaskRunCommand::class,
             TaskRecoverCommand::class,
             UnifiedSyncCommand::class,
+            \PTAdmin\Core\Console\Commands\ThemePublishCommand::class,
             SchemaSyncCommand::class,
             SchemaPublishCommand::class,
             RuntimeCacheCommand::class,
