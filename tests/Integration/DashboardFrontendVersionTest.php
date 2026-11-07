@@ -45,7 +45,7 @@ final class DashboardFrontendVersionTest extends TestCase
 
         self::assertNull($service->summary()['frontend_version']);
         self::assertSame([
-            ['id' => 'backend', 'title' => 'PTAdmin Core 0.4.0', 'meta' => '当前版本', 'status' => 'success'],
+            ['id' => 'backend', 'title' => 'PTAdmin Core 0.4.1', 'meta' => '当前版本', 'status' => 'success'],
         ], $service->query(new Admin(), [['code' => 'ptadmin.version-notices']])['results'][0]['data']['items']);
     }
 
