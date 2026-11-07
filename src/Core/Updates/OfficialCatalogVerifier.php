@@ -7,46 +7,14 @@ namespace PTAdmin\Core\Updates;
 use Composer\Semver\VersionParser;
 use PTAdmin\Cloud\CloudProtocol;
 
-/** 只消费签名覆盖的原始 JSON，不信任响应中的 document 展示副本。 */
+/** 校验固定 HTTPS 接口返回的官方目录结构、有效期与发行信息。 */
 final class OfficialCatalogVerifier
 {
     public const COMPONENTS = ['core', 'admin-shell', 'application-template'];
 
     public function verify(array $envelope, bool $allowExpired = false): array
     {
-        $signature = $envelope['signature'] ?? [];
-        $keys = config('ptadmin-updates.trusted_keys', []);
-        $path = config('ptadmin-updates.public_key_path');
-        $keyId = config('ptadmin-updates.public_key_id');
-        if (!is_array($keys)) {
-            throw new UpdateException('官方发布信任公钥配置应为 key_id 到 PEM 的映射，请部署负责人检查配置。', 'trust_not_configured');
-        }
-        if (is_string($path) && $path !== '' && is_string($keyId) && $keyId !== '' && is_file($path) && is_readable($path)) {
-            $keys[$keyId] = file_get_contents($path);
-        }
-        if ($keys === []) {
-            throw new UpdateException('尚未配置官方发布信任公钥，请部署负责人从可信渠道取得公钥，并配置 key_id 与公钥文件；不能跳过验签。', 'trust_not_configured');
-        }
-        if (!is_array($signature) || ($signature['algorithm'] ?? null) !== 'RSA-SHA256'
-            || !is_string($signature['key_id'] ?? null) || !isset($keys[$signature['key_id']])
-            || !is_string($signature['value'] ?? null) || !is_string($envelope['signed_payload'] ?? null)
-            || strlen($envelope['signed_payload']) > 12 * 1024 * 1024) {
-            throw new UpdateException('官方目录签名算法、密钥标识或载荷无效，请核对可信公钥配置。', 'invalid_signature');
-        }
-        $pem = $keys[$signature['key_id']];
-        $key = is_string($pem) ? @openssl_pkey_get_public($pem) : false;
-        $details = $key === false ? false : openssl_pkey_get_details($key);
-        $payload = base64_decode($envelope['signed_payload'], true);
-        $bytes = base64_decode($signature['value'], true);
-        if ($details === false || $details['type'] !== OPENSSL_KEYTYPE_RSA || $details['bits'] < 2048
-            || $payload === false || $bytes === false || openssl_verify($payload, $bytes, $key, OPENSSL_ALGO_SHA256) !== 1) {
-            throw new UpdateException('官方目录验签失败，保留上次可信结果，请联系部署负责人核对来源与公钥。', 'invalid_signature');
-        }
-        try {
-            $document = json_decode($payload, true, 64, JSON_THROW_ON_ERROR);
-        } catch (\JsonException) {
-            throw new UpdateException('官方目录签名内容不是有效 JSON。', 'invalid_catalog');
-        }
+        $document = $envelope['document'] ?? null;
         if (!is_array($document) || ($document['protocol_version'] ?? null) !== 1) {
             throw new UpdateException('官方目录协议不受当前 Core 支持，请由维护者核对兼容版本。', 'unsupported_protocol');
         }

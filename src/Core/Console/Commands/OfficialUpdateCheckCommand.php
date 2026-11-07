@@ -12,7 +12,7 @@ use PTAdmin\Core\Updates\UpdateException;
 final class OfficialUpdateCheckCommand extends Command
 {
     protected $signature = 'ptadmin:updates:check {--scheduled : 按本地错峰及退避时间执行}';
-    protected $description = '检查官方签名目录与安全公告，不执行依赖更新或替换文件';
+    protected $description = '检查官方版本目录与安全公告，不执行依赖更新或替换文件';
 
     public function handle(OfficialUpdateService $updates, InstallStateStore $installation): int
     {

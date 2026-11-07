@@ -64,7 +64,7 @@ final class OfficialUpdateService
                 if (!is_array($result) || ($result['code'] ?? null) !== 0 || !is_array($result['data'] ?? null)) {
                     throw new UpdateException('官方目录响应格式无效。', 'invalid_catalog');
                 }
-                $envelope = array_intersect_key($result['data'], array_flip(['signed_payload', 'signature']));
+                $envelope = array_intersect_key($result['data'], array_flip(['document']));
                 $document = $this->verifier->verify($envelope);
                 if (isset($state['envelope'])) {
                     $previous = $this->verifier->verify($state['envelope'], true);
@@ -74,7 +74,7 @@ final class OfficialUpdateService
                     $old = array_column($previous['advisories'], 'revision', 'identifier');
                     foreach ($document['advisories'] as $advisory) {
                         if (isset($old[$advisory['identifier']]) && $advisory['revision'] < $old[$advisory['identifier']]) {
-                            throw new UpdateException('安全公告修订号回退，已拒绝替换可信缓存。', 'catalog_rollback');
+                            throw new UpdateException('安全公告修订号回退，已拒绝替换已校验缓存。', 'catalog_rollback');
                         }
                     }
                 }
@@ -86,7 +86,7 @@ final class OfficialUpdateService
             } catch (\Throwable $error) {
                 $state['failure_count'] = min(8, ($state['failure_count'] ?? 0) + 1);
                 $state['error'] = $error instanceof UpdateException ? ['code' => $error->reason, 'message' => $error->getMessage()]
-                    : ['code' => 'network_failed', 'message' => '获取官方目录失败，请检查服务器网络、TLS 与时钟后重试；上次可信缓存仍保留。'];
+                    : ['code' => 'network_failed', 'message' => '获取官方目录失败，请检查服务器网络、TLS 与时钟后重试；上次已校验缓存仍保留。'];
                 $state['next_check_at'] = time() + min(86400, 900 * 2 ** ($state['failure_count'] - 1)) + random_int(0, 300);
             }
             $this->store->write($state);
@@ -182,7 +182,7 @@ final class OfficialUpdateService
         $this->store->locked(function () use ($receiver, $identifier, $revision): void {
             $state = $this->store->read();
             if (!isset($state['envelope'])) {
-                throw new UpdateException('尚无可信安全公告，请先检查版本。', 'advisory_unavailable');
+                throw new UpdateException('尚无已缓存安全公告，请先检查版本。', 'advisory_unavailable');
             }
             $document = $this->verifier->verify($state['envelope'], true);
             $matches = array_filter($document['advisories'], static fn (array $advisory): bool => $advisory['identifier'] === $identifier && $advisory['revision'] === $revision);

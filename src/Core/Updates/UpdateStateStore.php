@@ -23,6 +23,11 @@ final class UpdateStateStore
             if (!is_array($state)) {
                 throw new \RuntimeException();
             }
+            // 旧目录缓存只保留签名字节；切换后重新联网获取 document，保留公告已读记录。
+            if (isset($state['envelope']['signed_payload']) && !isset($state['envelope']['document'])) {
+                unset($state['envelope'], $state['last_success_at'], $state['last_attempt_at'],
+                    $state['next_check_at'], $state['error'], $state['failure_count']);
+            }
             return $state;
         } catch (\Throwable) {
             throw new UpdateException('本地更新缓存不可读取或已损坏，请部署负责人检查 storage/app/ptadmin/updates 的权限和备份；不能将此状态视为已是最新。', 'cache_unavailable');

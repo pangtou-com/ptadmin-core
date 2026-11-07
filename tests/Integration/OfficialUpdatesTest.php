@@ -14,7 +14,6 @@ use PTAdmin\Core\Updates\{InstalledVersions, OfficialCatalogVerifier, OfficialUp
 final class OfficialUpdatesTest extends TestCase
 {
     private string $directory;
-    private string $privateKey = '';
     private array $versions;
 
     protected function getPackageProviders($app): array { return [PTAdminServiceProvider::class]; }
@@ -39,9 +38,7 @@ final class OfficialUpdatesTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $key = openssl_pkey_new(['private_key_bits' => 2048]);
-        openssl_pkey_export($key, $this->privateKey);
-        config(['ptadmin-updates.path' => $this->directory.'/updates', 'ptadmin-updates.trusted_keys' => ['fixture' => openssl_pkey_get_details($key)['key']],
+        config(['ptadmin-updates.path' => $this->directory.'/updates',
             'ptadmin-updates.composer_path' => $this->directory.'/missing-composer']);
         $this->versions = ['core' => ['version' => '1.0.0', 'source' => 'composer', 'known' => true],
             'admin-shell' => ['version' => '1.0.0', 'source' => 'deployed_manifest', 'known' => true, 'custom' => false, 'integrity' => 'verified', 'upstream_version' => null],
@@ -77,19 +74,11 @@ final class OfficialUpdatesTest extends TestCase
                 'affected_versions' => '<1.1.0', 'fixed_version' => '1.1.0', 'mitigation' => '暂停受影响入口', 'revision' => 1]]];
     }
 
-    private function envelope(array $document): array
-    {
-        $bytes = json_encode($document, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        openssl_sign($bytes, $signature, $this->privateKey, OPENSSL_ALGO_SHA256);
-        return ['signed_payload' => base64_encode($bytes), 'document' => ['protocol_version' => 99, 'results' => []],
-            'signature' => ['algorithm' => 'RSA-SHA256', 'key_id' => 'fixture', 'value' => base64_encode($signature)]];
-    }
-
     private function upstream(?array $document = null): void
     {
         Http::swap(new \Illuminate\Http\Client\Factory());
         Http::preventStrayRequests();
-        Http::fake(['https://cloud.api.pangtou.com/api/cloud/official/releases' => Http::response(['code' => 0, 'data' => $this->envelope($document ?? $this->document())])]);
+        Http::fake(['https://cloud.api.pangtou.com/api/cloud/official/releases' => Http::response(['code' => 0, 'data' => ['document' => $document ?? $this->document()]])]);
     }
 
     private function state(array $changes): void
@@ -98,7 +87,7 @@ final class OfficialUpdatesTest extends TestCase
         $store->locked(fn () => $store->write(array_replace($store->read(), $changes)));
     }
 
-    public function testSignedCatalogSelectsCompatibleStableReleaseAndProvidesComposerFallback(): void
+    public function testCatalogWithoutKeysSelectsCompatibleStableReleaseAndProvidesComposerFallback(): void
     {
         $this->upstream();
         app(OfficialUpdateService::class)->check();
@@ -160,7 +149,7 @@ final class OfficialUpdatesTest extends TestCase
         $document = $this->document();
         $document['generated_at'] = gmdate(DATE_ATOM, time() - 7200);
         $document['expires_at'] = gmdate(DATE_ATOM, time() - 60);
-        $this->state(['envelope' => $this->envelope($document)]);
+        $this->state(['envelope' => ['document' => $document]]);
         $result = app(OfficialUpdateService::class)->overview(1, true);
         self::assertSame('expired', $result['check']['status']);
         self::assertCount(1, $result['advisories']);
@@ -169,28 +158,38 @@ final class OfficialUpdatesTest extends TestCase
         self::assertSame('expired_catalog', app(OfficialUpdateService::class)->overview(1, true)['check']['error']['code']);
     }
 
-    public function testVerifierRejectsWrongKeyTamperingProtocolAndUnsafeLinks(): void
+    public function testVerifierRejectsMissingDocumentProtocolAndUnsafeLinks(): void
     {
-        $valid = $this->envelope($this->document());
-        $wrongKey = $valid;
-        $wrongKey['signature']['key_id'] = 'untrusted';
-        $tampered = $valid;
-        $tampered['signed_payload'] = base64_encode('{}');
         $protocol = $this->document();
         $protocol['protocol_version'] = 2;
         $unsafe = $this->document();
         $unsafe['results'][0]['github_url'] = 'javascript:alert(1)';
-        foreach ([$wrongKey, $tampered, $this->envelope($protocol), $this->envelope($unsafe)] as $envelope) {
+        $malformed = $this->document();
+        $malformed['advisories'] = 'invalid';
+        foreach ([[], ['document' => null], ['document' => $protocol], ['document' => $unsafe], ['document' => $malformed]] as $envelope) {
             try {
                 app(OfficialCatalogVerifier::class)->verify($envelope);
-                self::fail('应拒绝不可信目录');
+                self::fail('应拒绝无效目录');
             } catch (UpdateException $exception) {
-                self::assertContains($exception->reason, ['invalid_signature', 'unsupported_protocol', 'invalid_catalog']);
+                self::assertContains($exception->reason, ['unsupported_protocol', 'invalid_catalog']);
             }
         }
-        config(['ptadmin-updates.trusted_keys' => []]);
-        $this->expectExceptionMessage('信任公钥');
-        app(OfficialCatalogVerifier::class)->verify($valid);
+    }
+
+    public function testOldSignedCacheIsRefetchedWithoutLosingAcknowledgements(): void
+    {
+        $this->state(['envelope' => ['signed_payload' => base64_encode(json_encode($this->document())),
+            'signature' => ['key_id' => 'retired']], 'last_attempt_at' => time(), 'next_check_at' => time() + 86400,
+            'acknowledged' => ['1' => ['PT-2026-001' => 1]]]);
+        $service = app(OfficialUpdateService::class);
+        self::assertSame('never', $service->overview(1, true)['check']['status']);
+        $this->upstream();
+        $service->check(true);
+        $result = $service->overview(1, true);
+        self::assertSame('current', $result['check']['status']);
+        self::assertTrue($result['advisories'][0]['acknowledged']);
+        self::assertSame(['document'], array_keys(app(UpdateStateStore::class)->read()['envelope']));
+        Http::assertSentCount(1);
     }
 
     public function testScheduleAndConcurrentCheckDoNotRepeatNetwork(): void
