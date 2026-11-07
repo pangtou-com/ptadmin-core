@@ -95,6 +95,10 @@ final class InstallationBootstrapTest extends TestCase
         $this->get('/__ptadmin__/install-business')->assertRedirect('/__ptadmin__/install');
         $this->get('/business-middleware')->assertRedirect('/__ptadmin__/install');
         $this->getJson('/unknown-route')->assertRedirect('/__ptadmin__/install');
+        $this->getJson('/ptadmin/system/updates')->assertRedirect('/__ptadmin__/install');
+        $this->postJson('/ptadmin/system/updates/check')->assertRedirect('/__ptadmin__/install');
+        self::assertArrayNotHasKey('ptadmin:updates:check', \Illuminate\Support\Facades\Artisan::all());
+        self::assertSame([], app(\Illuminate\Console\Scheduling\Schedule::class)->events());
         $this->getJson('/__ptadmin__/install/status')->assertOk()->assertJsonPath('installed', false);
         self::assertSame([], $this->app['db']->getConnections());
     }

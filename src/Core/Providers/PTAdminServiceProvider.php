@@ -133,6 +133,7 @@ final class PTAdminServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../../../config/ptadmin.php', 'ptadmin');
         $this->mergeConfigFrom(__DIR__.'/../../../config/ptadmin-dashboard.php', 'ptadmin-dashboard');
+        $this->mergeConfigFrom(__DIR__.'/../../../config/ptadmin-updates.php', 'ptadmin-updates');
         $this->app->register(SchemaServiceProvider::class);
         $this->app->register(ServiceProtocolServiceProvider::class);
 
@@ -546,6 +547,7 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__.'/../../../config/ptadmin.php' => config_path('ptadmin.php'),
             __DIR__.'/../../../config/ptadmin-dashboard.php' => config_path('ptadmin-dashboard.php'),
+            __DIR__.'/../../../config/ptadmin-updates.php' => config_path('ptadmin-updates.php'),
         ], 'ptadmin-config');
 
         $this->loadTranslationsFrom(__DIR__.'/../../../lang', 'ptadmin');
@@ -602,6 +604,7 @@ final class PTAdminServiceProvider extends ServiceProvider
         }
 
         $this->commands([
+            \PTAdmin\Core\Console\Commands\OfficialUpdateCheckCommand::class,
             \PTAdmin\Cloud\Console\CloudCommand::class,
             \PTAdmin\Cloud\Console\PublishCommand::class,
             TaskRunCommand::class,
@@ -616,6 +619,10 @@ final class PTAdminServiceProvider extends ServiceProvider
             MenuSyncCommand::class,
             AddonSetupCommand::class,
         ]);
+        $this->callAfterResolving(\Illuminate\Console\Scheduling\Schedule::class, static function ($schedule): void {
+            // 这里只声明计划，实际命令再次检查安装状态；不在 Provider 启动时联网或连接数据库。
+            $schedule->command('ptadmin:updates:check --scheduled')->everyFifteenMinutes();
+        });
     }
 
     private function registerAdminRuntimeBindings(): void
