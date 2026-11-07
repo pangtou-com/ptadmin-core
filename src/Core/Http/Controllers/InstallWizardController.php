@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use PTAdmin\Core\Http\Responses\InstallStreamResponse;
 use PTAdmin\Core\Install\Exceptions\InvalidInstallStateException;
 use PTAdmin\Core\Install\InstallRequirementService;
 use PTAdmin\Core\Install\InstallDatabaseDrivers;
@@ -101,7 +102,7 @@ final class InstallWizardController extends Controller
             $input['app_url'] = $request->root();
         }
 
-        return response()->stream(function () use ($input): void {
+        return new InstallStreamResponse(function () use ($input): void {
             try {
                 if (!$this->agreementAccepted()) {
                     $this->send('error', __('ptadmin::install.stream.agreement_required'));
@@ -165,7 +166,7 @@ final class InstallWizardController extends Controller
             }
         }, 200, [
             'Content-Type' => 'application/x-ndjson; charset=UTF-8',
-            'Cache-Control' => 'no-cache, no-store',
+            'Cache-Control' => 'no-cache, no-store, no-transform',
             'X-Accel-Buffering' => 'no',
         ]);
     }
