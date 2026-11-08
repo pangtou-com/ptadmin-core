@@ -112,13 +112,13 @@ final class SystemInfoAccessTest extends TestCase
         }
     }
 
-    public function testFounderCanSubmitAndCancelFrontendUpdateWithoutRunningTheUpdater(): void
+    public function testFounderCannotBypassOfficialPreflightThroughGenericTasks(): void
     {
         $this->admin->forceFill(['is_founder' => true])->save();
-        $response = $this->postJson('/ptadmin/tasks', ['type' => TaskManager::ADMIN_FRONTEND_UPDATE, 'payload' => []], $this->headers)
-            ->assertCreated()->assertJsonPath('data.status', 'pending');
-        Bus::assertDispatchedAfterResponse(RunTaskAfterResponse::class);
-        $this->postJson('/ptadmin/tasks/'.$response->json('data.task_id').'/cancel', [], $this->headers)
-            ->assertOk()->assertJsonPath('data.status', 'cancelled');
+        $before = app(TaskManager::class)->list();
+        $this->postJson('/ptadmin/tasks', ['type' => TaskManager::ADMIN_FRONTEND_UPDATE, 'payload' => []], $this->headers)
+            ->assertForbidden();
+        Bus::assertNotDispatchedAfterResponse(RunTaskAfterResponse::class);
+        self::assertSame($before, app(TaskManager::class)->list());
     }
 }

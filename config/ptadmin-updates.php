@@ -13,5 +13,9 @@ return [
     'template_version' => env('PTADMIN_TEMPLATE_VERSION', ''),
     'host_version' => env('PTADMIN_HOST_VERSION', ''),
     // 可指定 composer 可执行文件或 composer.phar；仅检查存在性，不自动执行。
+    'php_binary' => env('PTADMIN_UPDATE_PHP_BINARY', PHP_BINDIR.'/php'),
+    'max_archive_bytes' => 104857600,
+    'max_uncompressed_bytes' => 536870912,
+    'process_timeout' => 1800,
     'composer_path' => env('PTADMIN_COMPOSER_PATH', ''),
 ];

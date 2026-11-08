@@ -31,12 +31,12 @@ class UpdateEnvironment
             $delivery = file_exists(base_path('.git')) ? 'git' : 'manual';
         }
         return ['composer' => $found ? 'detected' : 'not_found', 'process_execution' => $process,
-            'writable' => $writable, 'delivery' => $delivery, 'online_core_update' => false,
+            'writable' => $writable, 'delivery' => $delivery, 'online_core_update' => $found && $process && is_executable(config('ptadmin-updates.php_binary')) && !in_array(false, $writable, true) && $delivery === 'manual',
             'scope' => '仅检测当前 PHP 运行账号的 PATH 与文件权限，未执行 Composer；SSH、容器与 CI 的环境可能不同。'];
     }
 
     /** 只遍历 PATH 文件；通用 ExecutableFinder 在未找到时可能调用 exec，不适合受限宿主。 */
-    private function findComposer(): ?string
+    public function findComposer(): ?string
     {
         $names = DIRECTORY_SEPARATOR === '\\' ? ['composer.exe', 'composer.bat', 'composer.cmd', 'composer'] : ['composer'];
         foreach (explode(PATH_SEPARATOR, getenv('PATH') ?: getenv('Path') ?: '') as $directory) {
@@ -81,7 +81,7 @@ class UpdateEnvironment
             ];
         }
         return ['mode' => 'maintainer_deployment', 'issues' => $issues,
-            'summary' => 'Core 通过项目部署流程更新。检测到 Composer 不代表可以在后台一键更新，也不代表 PHP、扩展或依赖一定兼容。',
+            'summary' => '标准可写安装可确认目标版本后执行更新；Git/CI 和受限环境按以下部署流程处理，依赖兼容性仍需验证。',
             'commands' => $commands, 'command_context' => '仅供部署负责人在项目源码分支或隔离构建环境执行；先评估目标版本说明并验证依赖变化。',
             'steps' => [
                 '先备份数据库、.env、用户上传文件与当前部署版本，并阅读目标版本的兼容要求、升级步骤及恢复说明。',

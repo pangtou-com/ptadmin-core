@@ -73,6 +73,7 @@ Route::middleware($authenticatedMiddleware)
     ->as('ptadmin.updates.')
     ->group(static function (): void {
         Route::get('/', [\PTAdmin\Core\Http\Controllers\OfficialUpdateController::class, 'show'])->name('show');
+        Route::post('install', [\PTAdmin\Core\Http\Controllers\OfficialUpdateController::class, 'install'])->name('install');
         Route::post('check', [\PTAdmin\Core\Http\Controllers\OfficialUpdateController::class, 'check'])->name('check');
         Route::post('advisories/{identifier}/acknowledge', [\PTAdmin\Core\Http\Controllers\OfficialUpdateController::class, 'acknowledge'])
             ->where('identifier', '[A-Z][A-Z0-9.-]{0,79}')->name('acknowledge');

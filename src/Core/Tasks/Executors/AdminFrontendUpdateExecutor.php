@@ -17,6 +17,9 @@ final class AdminFrontendUpdateExecutor implements TaskExecutorInterface
     /** @return array<string, mixed> */
     public function execute(array $task, TaskManager $tasks): array
     {
+        if (($task['payload']['official'] ?? false) === true) {
+            return app(\PTAdmin\Core\Updates\OfficialShellUpdater::class)->execute($task, $tasks);
+        }
         $taskId = (string) $task['task_id'];
         $payload = is_array($task['payload'] ?? null) ? $task['payload'] : [];
         $prefix = (string) ($payload['web_prefix'] ?? config('ptadmin.web_prefix', 'admin'));

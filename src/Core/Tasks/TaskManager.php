@@ -406,11 +406,13 @@ final class TaskManager
             } while ($page['has_more']);
             $previousChildren = array_column($this->descendants($taskId), 'task_id');
         }
-        $updated = $this->store->updateState($taskId, function (array $current) use ($status, $stage, $progress, $message, $mutator, $requestId, $attemptCursor, $previousChildren): array {
+        $updated = $this->store->updateState($taskId, function (array $current) use ($status, $stage, $progress, $message, $mutator, $requestId, $attemptCursor, $previousChildren, $taskId): array {
             if (!in_array($status, self::TRANSITIONS[(string) ($current['status'] ?? '')] ?? [], true)) {
                 throw new TaskException('The task status transition is invalid.', 'invalid_task_transition');
             }
-            if ($status === 'cancelled' && $current['status'] === 'running' && in_array($current['stage'], self::IRREVERSIBLE_STAGES, true)) {
+            if ($status === 'cancelled' && $current['status'] === 'running'
+                && (in_array($current['stage'], self::IRREVERSIBLE_STAGES, true)
+                    || ($this->store->readPayload($taskId)['official'] ?? false))) {
                 throw new TaskException('The task cannot be cancelled after its irreversible stage has started.', 'task_not_cancellable');
             }
             $current['status'] = $status;
@@ -453,7 +455,8 @@ final class TaskManager
         $maxAttempts = (int) ($state['max_attempts'] ?? 1);
         $stage = (string) ($state['stage'] ?? '');
         $canCancel = in_array($status, ['pending', 'running'], true)
-            && !in_array($stage, self::IRREVERSIBLE_STAGES, true);
+            && !in_array($stage, self::IRREVERSIBLE_STAGES, true)
+            && !($status === 'running' && ($this->store->readPayload($taskId)['official'] ?? false));
         $canRetry = in_array($status, ['failed', 'blocked'], true) && $attempt < $maxAttempts;
 
         $snapshot = $state + [

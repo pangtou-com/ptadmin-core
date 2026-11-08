@@ -28,6 +28,27 @@ final class OfficialUpdateController
         return $this->respond($request, $updates, 'acknowledge');
     }
 
+    public function install(Request $request, \PTAdmin\Core\Updates\OfficialUpdateInstaller $installer, \PTAdmin\Core\Tasks\PendingTaskDispatcher $dispatcher): JsonResponse
+    {
+        $session = $request->attributes->get('ptadmin.session', []);
+        $admin = Admin::query()->findOrFail($session['subject_id'] ?? null);
+        if (!$admin->is_founder || !$admin->status) {
+            return AdminResponse::error(40300, '只有创始人可以执行系统更新。', null, 403);
+        }
+        $input = $request->validate(['component' => ['required', 'in:core,admin-shell'],
+            'version' => ['required', 'string', 'max:80'], 'database_backup_confirmed' => ['sometimes', 'boolean']]);
+        try {
+            $task = $installer->submit($input['component'], $input['version'], (int) $admin->id,
+                $request->attributes->get('ptadmin.request_id'), $input['database_backup_confirmed'] ?? false);
+            $dispatcher->dispatch($task);
+            return AdminResponse::success('', $task, 201);
+        } catch (UpdateException $error) {
+            return AdminResponse::error(42200, $error->getMessage(), ['reason' => $error->reason], 422);
+        } catch (\PTAdmin\Core\Tasks\TaskException $error) {
+            return AdminResponse::error(40900, $error->getMessage(), ['error_code' => $error->errorCode, 'details' => $error->details], 409);
+        }
+    }
+
     private function respond(Request $request, OfficialUpdateService $updates, string $action): JsonResponse
     {
         $session = $request->attributes->get('ptadmin.session', []);

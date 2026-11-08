@@ -35,6 +35,9 @@ final class TaskController extends Controller
             if ($type === TaskManager::CLOUD_PACKAGE) {
                 throw new TaskException('云安装任务必须通过云市场交付接口创建。', 'forbidden');
             }
+            if (in_array($type, [TaskManager::CORE_UPDATE, TaskManager::ADMIN_FRONTEND_UPDATE], true)) {
+                throw new TaskException('系统更新必须通过版本与更新入口提交目标版本。', 'forbidden');
+            }
             TaskManager::permissionFor($type);
             $this->assertTaskPermission($request, $type, 'create');
             $data = $payload['payload'] ?? [];

@@ -41,43 +41,8 @@ final class OfficialUpdateService
                 $state['last_scheduled_at'] = time();
             }
             try {
-                $response = Http::acceptJson()->timeout(20)->connectTimeout(5)
-                    ->withOptions(['allow_redirects' => false, 'stream' => true])
-                    ->get(CloudProtocol::SITE_URL.'/api/cloud/official/releases');
-                if (!$response->successful()) {
-                    throw new UpdateException('官方目录暂不可用，请稍后重试；服务器需允许访问 cloud.api.pangtou.com 的 HTTPS 服务。', 'network_failed');
-                }
-                $stream = $response->toPsrResponse()->getBody();
-                $body = '';
-                while (!$stream->eof() && strlen($body) <= 16 * 1024 * 1024) {
-                    $chunk = $stream->read(65536);
-                    if ($chunk === '') {
-                        break;
-                    }
-                    $body .= $chunk;
-                }
-                $stream->close();
-                if (strlen($body) > 16 * 1024 * 1024) {
-                    throw new UpdateException('官方目录响应超过允许大小。', 'invalid_catalog');
-                }
-                $result = json_decode($body, true, 64, JSON_THROW_ON_ERROR);
-                if (!is_array($result) || ($result['code'] ?? null) !== 0 || !is_array($result['data'] ?? null)) {
-                    throw new UpdateException('官方目录响应格式无效。', 'invalid_catalog');
-                }
-                $envelope = array_intersect_key($result['data'], array_flip(['document']));
-                $document = $this->verifier->verify($envelope);
-                if (isset($state['envelope'])) {
-                    $previous = $this->verifier->verify($state['envelope'], true);
-                    if (strtotime($document['generated_at']) < strtotime($previous['generated_at'])) {
-                        throw new UpdateException('收到比本地缓存更旧的官方目录，已拒绝回退。', 'catalog_rollback');
-                    }
-                    $old = array_column($previous['advisories'], 'revision', 'identifier');
-                    foreach ($document['advisories'] as $advisory) {
-                        if (isset($old[$advisory['identifier']]) && $advisory['revision'] < $old[$advisory['identifier']]) {
-                            throw new UpdateException('安全公告修订号回退，已拒绝替换已校验缓存。', 'catalog_rollback');
-                        }
-                    }
-                }
+                $document = $this->fetchCatalog();
+                $envelope = ['document' => $document];
                 $state['envelope'] = $envelope;
                 $state['last_success_at'] = time();
                 $state['failure_count'] = 0;
@@ -91,6 +56,54 @@ final class OfficialUpdateService
             }
             $this->store->write($state);
         });
+    }
+
+    /** 更新执行必须重新读取发布状态，不使用过期缓存或受检查冷却限制。 */
+    public function fetchCatalog(): array
+    {
+        $this->assertInstalled();
+        if (!config('ptadmin-updates.enabled')) {
+            throw new UpdateException('官方联网检查已关闭。', 'checks_disabled');
+        }
+        $response = Http::acceptJson()->timeout(20)->connectTimeout(5)
+            ->withOptions(['allow_redirects' => false, 'stream' => true])
+            ->get(CloudProtocol::SITE_URL.'/api/cloud/official/releases');
+        if (!$response->successful()) {
+            throw new UpdateException('官方目录暂不可用，请稍后重试；服务器需允许访问 cloud.api.pangtou.com 的 HTTPS 服务。', 'network_failed');
+        }
+        $stream = $response->toPsrResponse()->getBody();
+        $body = '';
+        while (!$stream->eof() && strlen($body) <= 16 * 1024 * 1024) {
+            $chunk = $stream->read(65536);
+            if ($chunk === '') {
+                break;
+            }
+            $body .= $chunk;
+        }
+        $stream->close();
+        if (strlen($body) > 16 * 1024 * 1024) {
+            throw new UpdateException('官方目录响应超过允许大小。', 'invalid_catalog');
+        }
+        $result = json_decode($body, true, 64, JSON_THROW_ON_ERROR);
+        if (!is_array($result) || ($result['code'] ?? null) !== 0 || !is_array($result['data'] ?? null)) {
+            throw new UpdateException('官方目录响应格式无效。', 'invalid_catalog');
+        }
+        $envelope = array_intersect_key($result['data'], array_flip(['document']));
+        $document = $this->verifier->verify($envelope);
+        $state = $this->store->read();
+        if (isset($state['envelope'])) {
+            $previous = $this->verifier->verify($state['envelope'], true);
+            if (strtotime($document['generated_at']) < strtotime($previous['generated_at'])) {
+                throw new UpdateException('收到比本地缓存更旧的官方目录，已拒绝回退。', 'catalog_rollback');
+            }
+            $old = array_column($previous['advisories'], 'revision', 'identifier');
+            foreach ($document['advisories'] as $advisory) {
+                if (isset($old[$advisory['identifier']]) && $advisory['revision'] < $old[$advisory['identifier']]) {
+                    throw new UpdateException('安全公告修订号回退，已拒绝替换已校验缓存。', 'catalog_rollback');
+                }
+            }
+        }
+        return $document;
     }
 
     public function overview(int $receiver, bool $founder): array
@@ -139,9 +152,12 @@ final class OfficialUpdateService
                 $comparison = $current['custom'] ? 'custom' : 'unknown';
                 $recommended = null;
             }
+            $updateReasons = $component === 'application-template' ? ['基础壳来源不执行覆盖更新。']
+                : app(OfficialUpdatePolicy::class)->blockers($component, $versions);
             $components[] = ['component' => $component, 'current' => $current, 'comparison' => $comparison,
                 'latest' => $latest, 'recommended' => $recommended,
                 'blockers' => $latest ? $this->compatibility($latest, $versions) : [],
+                'update' => ['available' => $founder && $recommended !== null && !$expired && $error === null && $updateReasons === [], 'reasons' => $updateReasons],
                 'release_url' => CloudProtocol::AUTHORIZATION_URL.'/releases'.($latest ? '/'.$component.'/'.rawurlencode($latest['version']) : '')];
         }
         $advisories = [];
@@ -171,7 +187,7 @@ final class OfficialUpdateService
             'components' => $components, 'advisories' => $founder ? $advisories : [], 'host_version' => $versions['host_version'],
             'environment' => $founder ? $environment : null,
             'core_guidance' => $this->environment->guidance($environment, $core['version'] ?? null, $founder),
-            'shell_guidance' => '官方 Shell 的下载用于维护者验证与部署；Git/CI 交付请更新仓库产物，自定义 Shell 请合并源码重建。保留 modules/ 与 plugins/ 并验证模块兼容性。本阶段不提供在线替换按钮。',
+            'shell_guidance' => '标准官方 Shell 可从兼容版本发起更新，系统保留模块、插件和备份；Git/CI 或自定义 Shell 请合并源码后按原流程部署。',
             'template_guidance' => '基础壳版本是创建来源。已有项目应比较配置、启动和依赖变化后选择性合并，不重新 create-project 或覆盖 app、routes、.env。',
         ];
     }
@@ -194,7 +210,7 @@ final class OfficialUpdateService
         });
     }
 
-    private function compatibility(array $release, array $versions): array
+    public function compatibility(array $release, array $versions): array
     {
         $reasons = [];
         foreach (['php' => 'PHP', 'laravel' => 'Laravel', 'core' => 'Core'] as $key => $label) {

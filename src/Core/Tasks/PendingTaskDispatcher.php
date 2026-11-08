@@ -11,6 +11,7 @@ use PTAdmin\Cloud\ExecuteCloudPackageTask;
 final class PendingTaskDispatcher
 {
     private const LOCAL_TYPES = [
+        TaskManager::CORE_UPDATE,
         TaskManager::ADMIN_FRONTEND_UPDATE,
         TaskManager::ADDON_DOWNLOAD,
         TaskManager::ADDON_INSTALL,

@@ -38,7 +38,9 @@ final class TaskRunCommand extends Command
                 return self::FAILURE;
             }
             $result = $executors->execute($tasks->getForExecution($taskId), $tasks);
-            $tasks->succeed($taskId, $result);
+            if ($tasks->get($taskId)['status'] === 'running') {
+                $tasks->succeed($taskId, $result);
+            }
             $this->info('Task completed.');
             return self::SUCCESS;
         } catch (TaskException $exception) {
@@ -54,7 +56,9 @@ final class TaskRunCommand extends Command
         } catch (\Throwable $exception) {
             try {
                 $code = $exception instanceof AddonException || $exception instanceof ThemeException || $exception instanceof \PTAdmin\Cloud\CloudException ? $exception->errorCode : 'executor_failed';
-                $tasks->fail($taskId, ['code' => $code, 'message' => $exception->getMessage()]);
+                if ($tasks->get($taskId)['status'] === 'running') {
+                    $tasks->fail($taskId, ['code' => $code, 'message' => $exception->getMessage()]);
+                }
             } catch (TaskException) {
             }
             $this->error('Task execution failed.');

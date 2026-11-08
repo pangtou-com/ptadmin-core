@@ -106,6 +106,19 @@ final class TaskManagerTest extends TestCase
         self::assertSame($child['task_id'], $snapshot['children'][0]['task_id']);
     }
 
+    public function testOfficialUpdateCanBeCancelledOnlyBeforeItsWorkerStarts(): void
+    {
+        $tasks = $this->tasks;
+        $queued = $tasks->create(TaskManager::CORE_UPDATE, ['official' => true]);
+        self::assertTrue($queued['can_cancel']);
+        $tasks->cancel($queued['task_id']);
+        $running = $tasks->create(TaskManager::CORE_UPDATE, ['official' => true]);
+        $tasks->start($running['task_id'], 'preparing_dependencies');
+        self::assertFalse($tasks->get($running['task_id'])['can_cancel']);
+        $this->expectException(\PTAdmin\Core\Tasks\TaskException::class);
+        $tasks->cancel($running['task_id']);
+    }
+
     public function testIrreversibleRunningTaskCannotBeCancelled(): void
     {
         $task = $this->tasks->create(TaskManager::ADMIN_FRONTEND_UPDATE);

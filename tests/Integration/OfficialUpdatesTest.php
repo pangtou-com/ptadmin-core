@@ -289,12 +289,18 @@ final class OfficialUpdatesTest extends TestCase
         Admin::query()->forceCreate(['username' => 'founder', 'password' => Hash::make('test-password'), 'status' => true, 'is_founder' => true]);
         Admin::query()->forceCreate(['username' => 'ordinary', 'password' => Hash::make('test-password'), 'status' => true, 'is_founder' => false]);
         $this->getJson('/ptadmin/system/updates')->assertUnauthorized();
+        $this->postJson('/ptadmin/system/updates/install', ['component' => 'core', 'version' => '1.1.0'])->assertUnauthorized();
         $token = $this->postJson('/ptadmin/login', ['username' => 'ordinary', 'password' => 'test-password'])->assertOk()->json('data.access_token');
         $this->withToken($token)->getJson('/ptadmin/system/updates')->assertOk()->assertJsonPath('data.check.can_check', false)->assertJsonPath('data.environment', null);
         $this->postJson('/ptadmin/system/updates/check')->assertForbidden();
         $this->postJson('/ptadmin/system/updates/advisories/PT-2026-001/acknowledge', ['revision' => 1])->assertForbidden();
+        $this->postJson('/ptadmin/system/updates/install', ['component' => 'core', 'version' => '1.1.0', 'database_backup_confirmed' => true])->assertForbidden();
         Http::assertNothingSent();
         $token = $this->postJson('/ptadmin/login', ['username' => 'founder', 'password' => 'test-password'])->assertOk()->json('data.access_token');
+        $this->withToken($token)->postJson('/ptadmin/system/updates/install', ['component' => 'core', 'version' => '1.1.0'])->assertStatus(422)->assertJsonPath('data.reason', 'backup_required');
+        foreach (['core.update', 'admin_frontend.update'] as $type) {
+            $this->postJson('/ptadmin/tasks', ['type' => $type, 'payload' => ['source' => '/tmp/unsafe']])->assertForbidden();
+        }
         $this->upstream();
         $this->withToken($token)->postJson('/ptadmin/system/updates/check')->assertOk()->assertJsonPath('data.check.status', 'current');
         $this->postJson('/ptadmin/system/updates/advisories/PT-2026-001/acknowledge', ['revision' => 1])->assertOk()->assertJsonPath('data.advisories.0.acknowledged', true);

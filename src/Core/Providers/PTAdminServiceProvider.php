@@ -226,6 +226,7 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app->singleton(TaskExecutorRegistry::class, static function ($app): TaskExecutorRegistry {
             $registry = new TaskExecutorRegistry();
             $registry->register(\PTAdmin\Cloud\CloudPackageExecutor::TYPE, $app->make(\PTAdmin\Cloud\CloudPackageExecutor::class));
+            $registry->register('core.update', $app->make(\PTAdmin\Core\Tasks\Executors\CoreUpdateExecutor::class));
             $registry->register('admin_frontend.update', $app->make(AdminFrontendUpdateExecutor::class));
             $addonExecutor = $app->make(AddonTaskExecutor::class);
             $registry->register('addon.download', $addonExecutor);
@@ -606,6 +607,8 @@ final class PTAdminServiceProvider extends ServiceProvider
 
         $this->commands([
             \PTAdmin\Core\Console\Commands\OfficialUpdateCheckCommand::class,
+            \PTAdmin\Core\Console\Commands\OfficialUpdateInstallCommand::class,
+            \PTAdmin\Core\Console\Commands\OfficialUpdateVerifyCommand::class,
             \PTAdmin\Cloud\Console\CloudCommand::class,
             \PTAdmin\Cloud\Console\PublishCommand::class,
             TaskRunCommand::class,
