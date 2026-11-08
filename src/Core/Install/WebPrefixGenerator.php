@@ -25,7 +25,7 @@ final class WebPrefixGenerator
 
     public function generate(): string
     {
-        return 'admin_'.substr(bin2hex(random_bytes(8)), 0, 12);
+        return chr(random_int(ord('a'), ord('z'))).substr(bin2hex(random_bytes(6)), 0, 11);
     }
 
     public function assertValid(string $prefix): string

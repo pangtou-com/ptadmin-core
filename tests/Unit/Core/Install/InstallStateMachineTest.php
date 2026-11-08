@@ -47,6 +47,7 @@ final class InstallStateMachineTest extends TestCase
         $first = $machine->prepare();
         $second = $machine->prepare();
 
+        self::assertMatchesRegularExpression('/^[a-z][a-z0-9]{11}$/', $first['state']['web_prefix']);
         self::assertSame($first['state']['web_prefix'], $second['state']['web_prefix']);
         self::assertSame($first['state']['core_version'], '0.1.0');
         self::assertFalse($second['installed']);
@@ -57,6 +58,18 @@ final class InstallStateMachineTest extends TestCase
         $state = $this->machine()->prepare('manage');
 
         self::assertSame('manage', $state['state']['web_prefix']);
+    }
+
+    public function testPreparePreservesLegacyPrefixOnRetryAndAfterInstallation(): void
+    {
+        $prefix = 'admin_6c24fd45aea7';
+        $machine = $this->machine();
+        $machine->prepare($prefix);
+        $machine->fail(new \RuntimeException('migration failed'));
+
+        self::assertSame($prefix, $this->machine()->prepare()['state']['web_prefix']);
+        self::assertSame($prefix, $this->machine()->complete()['web_prefix']);
+        self::assertSame($prefix, $this->machine()->prepare()['state']['web_prefix']);
     }
 
     public function testPrepareAcceptsNestedCustomPrefix(): void

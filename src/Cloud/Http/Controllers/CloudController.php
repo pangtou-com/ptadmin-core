@@ -108,7 +108,7 @@ final class CloudController extends Controller
             $this->manager->store($session);
             $redirect = (string) config('ptadmin.cloud.callback_redirect', '');
             if ($redirect === '') {
-                $redirect = '/'.trim((string) config('ptadmin.web_prefix', 'admin'), '/').'/cloud/market';
+                $redirect = '/'.trim((string) config('ptadmin.web_prefix', 'admin'), '/').'/#/cloud/market';
             }
             return redirect()->to($redirect)->header('Cache-Control', 'no-store')->header('Referrer-Policy', 'no-referrer')->withoutCookie('ptadmin_cloud_'.hash('sha256', $state));
         } catch (CloudException $exception) {

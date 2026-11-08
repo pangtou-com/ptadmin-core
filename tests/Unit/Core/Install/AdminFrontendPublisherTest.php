@@ -7,6 +7,7 @@ namespace PTAdmin\Core\Tests\Unit\Core\Install;
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Core\Install\AdminFrontendManifest;
 use PTAdmin\Core\Install\AdminFrontendPublisher;
+use PTAdmin\Core\Install\WebPrefixGenerator;
 
 final class AdminFrontendPublisherTest extends TestCase
 {
@@ -32,10 +33,10 @@ final class AdminFrontendPublisherTest extends TestCase
         $publisher = new AdminFrontendPublisher(
             $source,
             $this->directory.'/public',
-            new AdminFrontendManifest('0.5.1', 1, 1)
+            new AdminFrontendManifest('0.5.2', 1, 1)
         );
-        $publisher->publishForInstall('admin_'.bin2hex(random_bytes(3)));
-        $prefix = (string) basename((string) glob($this->directory.'/public/*', GLOB_ONLYDIR)[0]);
+        $prefix = (new WebPrefixGenerator())->generate();
+        $publisher->publishForInstall($prefix);
         $module = $this->directory.'/public/'.$prefix.'/modules/demo';
         mkdir($module, 0700, true);
         file_put_contents($module.'/manifest.json', '{}');
@@ -53,11 +54,11 @@ final class AdminFrontendPublisherTest extends TestCase
         $result = $publisher->publishForUpdate($prefix);
 
         self::assertTrue($result['published']);
-        self::assertSame('0.4.1', $result['frontend_version']);
+        self::assertSame('0.4.2', $result['frontend_version']);
         self::assertFileExists($module.'/manifest.json');
         self::assertSame('{}', file_get_contents($module.'/manifest.json'));
         self::assertSame('export default "installed-plugin";', file_get_contents($plugin.'/plugin.mjs'));
-        self::assertSame('0.4.1', json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR)['frontend_version']);
+        self::assertSame('0.4.2', json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR)['frontend_version']);
         self::assertFileExists($this->directory.'/public/'.$prefix.'/index.html');
     }
 
@@ -70,7 +71,7 @@ final class AdminFrontendPublisherTest extends TestCase
         $publisher = new AdminFrontendPublisher(
             $source,
             $this->directory.'/public',
-            new AdminFrontendManifest('0.5.1', 1, 1)
+            new AdminFrontendManifest('0.5.2', 1, 1)
         );
 
         $result = $publisher->publishForInstall('manage/console');

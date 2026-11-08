@@ -1,15 +1,15 @@
 {
   "manifest_version": 1,
-  "frontend_version": "0.4.1",
+  "frontend_version": "0.4.2",
   "backend_constraint": ">=0.5.0 <1.0.0",
   "api_protocol": 1,
   "schema_protocol": 1,
   "entry": "./index.html",
   "files": [
     {
-      "path": "assets/LoginPage-DCN0IojA.js",
+      "path": "assets/LoginPage-BQzIb4Q1.js",
       "size": 5827,
-      "sha256": "b95b33a08841d89bc8dfbb78d301a7d1fceb53979bacb6e5cab97ca29a27a9f0"
+      "sha256": "79726e57ba7c44d584b01b5adaca99981ddc734e7d3b1d1c316a452b5edfcccd"
     },
     {
       "path": "assets/_admin-shared-runtime_element-plus-DNW8tGSz.js",
@@ -37,14 +37,14 @@
       "sha256": "b1876956ecf8651c7197e3db865a3ece3ea3cad842aaa30ab8e49969d16f2139"
     },
     {
-      "path": "assets/index-BZlVezgz.js",
-      "size": 1221612,
-      "sha256": "798180f214c0076621eebafbddbb00ba83511e2caee9b4345c823211e1c8dab8"
-    },
-    {
       "path": "assets/index-Bd0SVahD.js",
       "size": 630418,
       "sha256": "611c29c36abb92d80712c5e1d9b68390de70a08b3010cdcfe277cd3b942dce82"
+    },
+    {
+      "path": "assets/index-C71MHuUV.js",
+      "size": 1221529,
+      "sha256": "e2c64e88b4f812b3d2437db317ca14f0efb3a7dde61753462e0b198fcc957a12"
     },
     {
       "path": "assets/index.esm-B3ROeNbW-BU_memu0.js",
@@ -159,10 +159,10 @@
     {
       "path": "index.html",
       "size": 5068,
-      "sha256": "4926d29e41d1b9b944fff82e97b7bf23ee0b8dcedb9987a17a130f1e4b5d4ccd"
+      "sha256": "007f399550f16ff5d752ff1dad96a5875021be9ba52de1b6634d5f2db11912f0"
     }
   ],
-  "artifact_sha256": "8146a6db1977cb704c182a755d98218447378c6fc73ffb044b4dde449e02d2e0",
-  "git_commit": "6d431ccb0507cb3626955d56ddfc552b6ef905db",
-  "source_sha256": "43330bf6857a9306bf5e9a947adb8ab02016ca5f258851533d5533f369840555"
+  "artifact_sha256": "5866b5c6ad49be9dc536323a6e252d8c8f72930f6754c6d94e348351664cdec1",
+  "git_commit": "38b48384cef624cb19b0b8b2983602358e8d5f89",
+  "source_sha256": "4480b0d893b97dff7db041ee59f10ca80bf4a43778cc52cfc5fd8c2407b0c5f9"
 }
