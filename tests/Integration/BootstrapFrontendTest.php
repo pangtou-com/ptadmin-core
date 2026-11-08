@@ -179,7 +179,7 @@ final class BootstrapFrontendTest extends TestCase
         file_put_contents($directory.'/index.html', '<html>Manually updated</html>');
 
         $this->getJson('/ptadmin/bootstrap')->assertOk()
-            ->assertJsonPath('data.runtime.frontend_version', '0.4.2');
+            ->assertJsonPath('data.runtime.frontend_version', '0.5.0');
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('The PTAdmin frontend file failed verification: index.html');
