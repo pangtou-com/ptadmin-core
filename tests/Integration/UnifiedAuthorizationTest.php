@@ -192,6 +192,40 @@ final class UnifiedAuthorizationTest extends TestCase
         $this->postJson('/ptadmin/system/updates/install', ['component' => 'core', 'version' => '1.0.0'])->assertForbidden();
     }
 
+    public function testPermissionActionsSaveAndRemovePersonalAndRoleDenials(): void
+    {
+        $this->schemas();
+        app(InitialAdministratorPermissions::class)->grant($this->admin);
+        $other = Admin::query()->forceCreate(['username' => 'denial-target', 'password' => 'unused', 'status' => 1]);
+        DB::table('admin_user_roles')->insert([
+            'admin_id' => $other->id, 'role_id' => $this->role, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $this->withToken($token);
+        $allow = ['resource_key' => 'admin.users', 'effect' => 'allow', 'abilities' => ['access', 'list', 'update'], 'priority' => 0, 'scope_type' => 'all'];
+        $deny = ['resource_key' => 'admin.users', 'effect' => 'deny', 'abilities' => ['update'], 'priority' => 0, 'scope_type' => 'all'];
+        $save = function (string $resource, int $id, array $permissions): void {
+            $this->postJson('/ptadmin/schema/action', ['operation' => 'executeAction', 'context' => [
+                'resource' => $resource, 'action' => 'sync_permissions', 'id' => $id,
+                'formValues' => ['permissions' => $permissions],
+            ]])->assertOk();
+        };
+        $auth = app(AuthorizationService::class);
+        $save('admin.admin_roles', $this->role, [$allow]);
+        $save('admin.admin_users', $other->id, [$deny]);
+        self::assertFalse($auth->allows($other, 'update', 'admin.admin_users'));
+        self::assertTrue($auth->allows($other, 'list', 'admin.admin_users'));
+        self::assertTrue($auth->allows($other, 'access', 'admin.users'));
+        $save('admin.admin_users', $other->id, []);
+        self::assertTrue($auth->allows($other, 'update', 'admin.admin_users'));
+        $save('admin.admin_users', $other->id, [$allow]);
+        $save('admin.admin_roles', $this->role, [$deny]);
+        self::assertFalse($auth->allows($other, 'update', 'admin.admin_users'));
+        self::assertTrue($auth->allows($other, 'list', 'admin.admin_users'));
+        $save('admin.admin_roles', $this->role, []);
+        self::assertTrue($auth->allows($other, 'update', 'admin.admin_users'));
+    }
+
     public function testCloudManagementGrantAlsoAllowsItsDeliveryTaskProgress(): void
     {
         $this->admin->forceFill(['is_founder' => false])->save();
