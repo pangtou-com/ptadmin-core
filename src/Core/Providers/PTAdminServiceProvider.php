@@ -655,7 +655,6 @@ final class PTAdminServiceProvider extends ServiceProvider
             $resource
                 ->hook('list.prepare', AdminRuntimeHook::class, 'prepareList')
                 ->hook('create.prepare', AdminRuntimeHook::class, 'prepareCreate')
-                ->hook('create.after', AdminRuntimeHook::class, 'created')
                 ->hook('update.prepare', AdminRuntimeHook::class, 'prepareUpdate')
                 ->hook('update.after', AdminRuntimeHook::class, 'updated')
                 ->hook('delete.before', AdminRuntimeHook::class, 'deleting')

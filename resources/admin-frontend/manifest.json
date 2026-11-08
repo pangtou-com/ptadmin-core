@@ -7,9 +7,9 @@
   "entry": "./index.html",
   "files": [
     {
-      "path": "assets/LoginPage-CSHHRGK8.js",
+      "path": "assets/LoginPage-BDoPkxfU.js",
       "size": 5827,
-      "sha256": "2621d44432b38b24ea78e7a40e912ebf9cfa1a676cf19c230aa8b222e5894250"
+      "sha256": "36d99b5a3a0d2e782932ecfa94c7b02203765a9fb3e3acf1c39e716616a1e6be"
     },
     {
       "path": "assets/_admin-shared-runtime_element-plus-DNW8tGSz.js",
@@ -42,9 +42,9 @@
       "sha256": "611c29c36abb92d80712c5e1d9b68390de70a08b3010cdcfe277cd3b942dce82"
     },
     {
-      "path": "assets/index-EofCq-17.js",
-      "size": 1224364,
-      "sha256": "415c31a48888417f07d88bc180e9b5e353b51050d299a49512302ebed02b82b5"
+      "path": "assets/index-DUdyZprO.js",
+      "size": 1224400,
+      "sha256": "2e6cf4c03cc856671ba599929b016ef373cbdbf1f81c8396c5d8980a3a3ba85a"
     },
     {
       "path": "assets/index.esm-B3ROeNbW-BU_memu0.js",
@@ -159,10 +159,10 @@
     {
       "path": "index.html",
       "size": 5068,
-      "sha256": "5ea06eb24ce9a911fd8d2f2813368fd1ea6c4ac600a5b04f35d459af97f5030c"
+      "sha256": "46fe871852d340e7896ac64ff58683cffecdf8f57b395624ec42d0b08e461588"
     }
   ],
-  "artifact_sha256": "ed1c50a71608c6f484a0987d62527b9f5c32042f75a5cebc4db729ae1e13056a",
-  "git_commit": "8664198a623a3c0276d4052bd192146055679abf",
-  "source_sha256": "37f04175a2a2a95b0433cc39e28beecf63da9d4c8487ce10e639869e27353612"
+  "artifact_sha256": "7634c86b552a6f7187a5f444115861ba818b52a162af23826d10af3b02cf9cf8",
+  "git_commit": "9cb2ff45c9787963631532602e7909a88ab946d5",
+  "source_sha256": "8a94f452ab40be4979ee2ddfbde928f58053beb2b4d76c257dc75ea6cbc9f463"
 }

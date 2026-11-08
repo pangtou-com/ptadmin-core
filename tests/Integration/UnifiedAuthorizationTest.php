@@ -282,6 +282,107 @@ final class UnifiedAuthorizationTest extends TestCase
         self::assertLessThanOrEqual(3, count($queries));
     }
 
+    public function testOrdinaryUpdateCannotBypassExplicitPermissionManagementDeny(): void
+    {
+        $this->schemas();
+        $auth = app(AuthorizationService::class);
+        $this->grant('admin', ['view', 'update'], 'allow', 0);
+        $this->grant('admin', ['sync_permissions', 'sync_roles'], 'deny', 0);
+        self::assertFalse($auth->allows($this->admin, 'manage', 'cloud.market'));
+        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $this->withToken($token);
+        $permissions = [
+            ['resource_key' => 'admin.users', 'effect' => 'allow', 'abilities' => ['view', 'update'], 'scope_type' => 'all'],
+            ['resource_key' => 'cloud.market', 'effect' => 'allow', 'abilities' => ['manage'], 'scope_type' => 'all'],
+        ];
+        $this->postJson('/ptadmin/schema/action', ['operation' => 'executeAction', 'context' => [
+            'resource' => 'admin.admin_users', 'action' => 'sync_permissions', 'id' => $this->admin->id,
+            'formValues' => ['permissions' => $permissions],
+        ]])->assertForbidden();
+        $response = $this->putJson('/ptadmin/schema/action/admin.admin_users/records/'.$this->admin->id, [
+            'data' => ['permissions' => $permissions],
+        ]);
+        $response->assertStatus(422)->assertJsonPath('data.code', 'invalid_permission_input');
+        self::assertFalse($auth->allows($this->admin, 'manage', 'cloud.market'));
+        self::assertFalse($auth->allows($this->admin, 'sync_permissions', 'admin.admin_users'));
+    }
+
+    public function testRoleAssignmentActionCannotWritePersonalPermissions(): void
+    {
+        $this->schemas();
+        $auth = app(AuthorizationService::class);
+        $this->grant('admin', ['view', 'sync_roles'], 'allow', 0);
+        $this->grant('admin', ['sync_permissions'], 'deny', 0);
+        self::assertFalse($auth->allows($this->admin, 'manage', 'cloud.market'));
+        self::assertFalse($auth->allows($this->admin, 'sync_permissions', 'admin.admin_users'));
+        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $this->withToken($token)->postJson('/ptadmin/schema/action', ['operation' => 'executeAction', 'context' => [
+            'resource' => 'admin.admin_users', 'action' => 'sync_roles', 'id' => $this->admin->id,
+            'formValues' => ['role_ids' => [], 'permissions' => [
+                ['resource_key' => 'cloud.market', 'effect' => 'allow', 'abilities' => ['manage'], 'scope_type' => 'all'],
+            ]],
+        ]])->assertStatus(422)->assertJsonPath('data.code', 'invalid_permission_input');
+        self::assertFalse($auth->allows($this->admin, 'manage', 'cloud.market'));
+    }
+
+
+    public function testOrdinaryWritesRejectAuthorizationFieldsWithoutPartialChanges(): void
+    {
+        $this->schemas();
+        $this->grant('admin', ['create', 'update', 'view'], 'allow', 0);
+        $this->grant('admin', ['sync_roles', 'sync_permissions'], 'deny', 0);
+        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $this->withToken($token);
+        foreach (['role_ids' => [$this->role], 'permissions' => []] as $field => $value) {
+            $this->postJson('/ptadmin/schema/action/admin.admin_users/records', ['data' => [
+                'username' => 'blocked-'.$field, 'nickname' => '不应创建', 'password' => 'test-password', $field => $value,
+            ]])->assertStatus(422)->assertJsonPath('data.code', 'invalid_permission_input');
+            self::assertFalse(Admin::query()->where('username', 'blocked-'.$field)->exists());
+            $before = $this->admin->fresh()->nickname;
+            $this->putJson('/ptadmin/schema/action/admin.admin_users/records/'.$this->admin->id, ['data' => [
+                'nickname' => '不应保存', $field => $value,
+            ]])->assertStatus(422)->assertJsonPath('data.code', 'invalid_permission_input');
+            self::assertSame($before, $this->admin->fresh()->nickname);
+            self::assertSame(0, DB::table('admin_user_roles')->where('admin_id', $this->admin->id)->count());
+        }
+        $this->postJson('/ptadmin/schema/action/admin.admin_users/records', ['data' => [
+            'username' => 'plain-account', 'nickname' => '普通账号', 'password' => 'test-password',
+        ]])->assertOk()->assertJsonPath('data.item.role_ids', [])->assertJsonPath('data.item.permissions', []);
+    }
+
+    public function testIndependentAuthorizationActionsRespectTargetScopeAndRejectCrossFields(): void
+    {
+        $this->schemas();
+        $version = DB::table('schema_resources')->where('resource_key', 'admin.admin_users')->value('active_version_id');
+        $schema = json_decode(DB::table('schema_resource_versions')->where('id', $version)->value('schema_json'), true);
+        $schema['extensions']['authorization']['owner_field'] = 'id';
+        $schema['fields'][] = ['name' => 'id', 'type' => 'integer', 'persisted' => true];
+        DB::table('schema_resource_versions')->where('id', $version)->update(['schema_json' => json_encode($schema)]);
+        $this->grant('admin', ['view', 'sync_roles', 'sync_permissions'], 'allow', 0, 'self');
+        $other = Admin::query()->forceCreate(['username' => 'outside-scope', 'password' => 'unused', 'status' => 1]);
+        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $this->withToken($token);
+        foreach (['sync_roles' => ['role_ids' => [$this->role]], 'sync_permissions' => ['permissions' => []]] as $action => $data) {
+            $this->postJson('/ptadmin/schema/action', ['operation' => 'executeAction', 'context' => [
+                'resource' => 'admin.admin_users', 'action' => $action, 'id' => $other->id, 'formValues' => $data,
+            ]])->assertStatus(422)->assertJsonPath('data.code', 'record_not_found');
+        }
+        self::assertSame(0, DB::table('admin_user_roles')->where('admin_id', $other->id)->count());
+        $before = DB::table('admin_grants')->count();
+        $this->postJson('/ptadmin/schema/action', ['operation' => 'executeAction', 'context' => [
+            'resource' => 'admin.admin_users', 'action' => 'sync_permissions', 'id' => $this->admin->id,
+            'formValues' => ['permissions' => [], 'role_ids' => [$this->role]],
+        ]])->assertStatus(422)->assertJsonPath('data.code', 'invalid_permission_input');
+        $this->postJson('/ptadmin/schema/action', ['operation' => 'executeAction', 'context' => [
+            'resource' => 'admin.admin_users', 'action' => 'sync_permissions', 'id' => $this->admin->id, 'formValues' => [],
+        ]])->assertStatus(422);
+        self::assertSame($before, DB::table('admin_grants')->count());
+        $this->postJson('/ptadmin/schema/action', ['operation' => 'executeAction', 'context' => [
+            'resource' => 'admin.admin_users', 'action' => 'sync_roles', 'id' => $this->admin->id,
+            'formValues' => ['role_ids' => [$this->role]],
+        ]])->assertOk()->assertJsonPath('data.role_ids', [$this->role]);
+    }
+
     private function schemas(): void
     {
         app(SchemaFileSynchronizer::class)->sync(app(SchemaSourceDiscovery::class)->discoverCore());

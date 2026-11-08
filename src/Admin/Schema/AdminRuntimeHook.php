@@ -46,6 +46,7 @@ final class AdminRuntimeHook
         $prepared['created_at'] = $timestamp;
         $prepared['updated_at'] = $timestamp;
         if ($resourceKey === 'admin.admin_users') {
+            $this->assertAuthorizationFields($input);
             if (Admin::query()->where('username', (string) ($prepared['username'] ?? ''))->exists()) {
                 throw $this->error('username_conflict', '管理员用户名已经存在。', ['field' => 'username']);
             }
@@ -57,6 +58,7 @@ final class AdminRuntimeHook
             $prepared['is_founder'] = false;
         }
         if ($resourceKey === 'admin.admin_roles') {
+            $this->assertAuthorizationFields($input);
             if (AdminRole::query()->where('code', (string) ($prepared['code'] ?? ''))->exists()) {
                 throw $this->error('role_code_conflict', '角色编码已经存在。', ['field' => 'code']);
             }
@@ -109,14 +111,6 @@ final class AdminRuntimeHook
         return $query;
     }
 
-    public function created(RuntimeHookContext $context): void
-    {
-        [$resourceKey, $input, $schema, $id] = $this->contextValues($context, true);
-        if ($resourceKey === 'admin.admin_users') {
-            $this->syncUserRelations($id, $input);
-        }
-    }
-
     public function prepareUpdate(RuntimeHookContext $context, array $prepared): array
     {
         [$resourceKey, $input, $schema, $id] = $this->contextValues($context, true);
@@ -126,6 +120,7 @@ final class AdminRuntimeHook
             'admin.notification_templates',
         ], true) ? time() : now();
         if ($resourceKey === 'admin.admin_users') {
+            $this->assertAuthorizationFields($input);
             $admin = Admin::query()->findOrFail($id);
             if ((bool) $admin->getAttribute('is_founder') && array_key_exists('status', $input) && !(bool) $input['status']) {
                 throw $this->error('founder_protected', '创始人账号不能被禁用。', ['id' => $id]);
@@ -141,6 +136,7 @@ final class AdminRuntimeHook
                 }
             }
         } elseif ($resourceKey === 'admin.admin_roles') {
+            $this->assertAuthorizationFields($input);
             $role = AdminRole::query()->findOrFail($id);
             if (array_key_exists('code', $input) && (string) $input['code'] !== (string) $role->code) {
                 throw $this->error('role_code_immutable', '角色编码创建后不能修改。', ['id' => $id]);
@@ -168,7 +164,6 @@ final class AdminRuntimeHook
     {
         [$resourceKey, $input, $schema, $id] = $this->contextValues($context, true);
         if ($resourceKey === 'admin.admin_users') {
-            $this->syncUserRelations($id, $input);
             if (array_key_exists('status', $input) && !(bool) $input['status']) {
                 $this->sessions->revokeSubject(Admin::class, $id, 'admin');
             }
@@ -254,9 +249,24 @@ final class AdminRuntimeHook
         [$resourceKey, , $schema] = $this->contextValues($context);
         $action = (string) $context->actionKey;
         $id = (int) ($input['id'] ?? 0);
+        $data = (array) ($input['data'] ?? []);
+        if (in_array($resourceKey, ['admin.admin_users', 'admin.admin_roles'], true)) {
+            $allowed = match ($action) {
+                'sync_roles' => ['role_ids'],
+                'sync_permissions' => ['permissions'],
+                default => [],
+            };
+            $this->assertAuthorizationFields($data, $allowed);
+            if ($action === 'sync_permissions' && (!isset($data['permissions']) || !is_array($data['permissions']))) {
+                throw $this->error('invalid_permission', '权限设置必须提供权限列表。');
+            }
+        }
         if ($resourceKey === 'admin.admin_users' && $action === 'sync_roles') {
             $this->admin($id);
-            $this->syncUserRelations($id, (array) ($input['data'] ?? []));
+            if (!isset($data['role_ids']) || !is_array($data['role_ids'])) {
+                throw $this->error('invalid_role_selection', '角色设置必须提供角色列表。');
+            }
+            $this->syncUserRoles($id, $data['role_ids']);
             return ['id' => $id, 'role_ids' => $this->database->table('admin_user_roles')->where('admin_id', $id)->pluck('role_id')->map(static fn ($value): int => (int) $value)->values()->all()];
         }
         if ($resourceKey === 'admin.admin_users' && $action === 'sync_permissions') {
@@ -297,42 +307,48 @@ final class AdminRuntimeHook
         throw $this->error('action_not_available', 'Admin 动作未实现。', ['resource_key' => $resourceKey, 'action' => $action]);
     }
 
-    private function syncUserRelations(int $adminId, array $input): void
+    /** 授权写入只能进入各自的独立动作，普通资料写入和其他动作不得夹带授权字段。 */
+    private function assertAuthorizationFields(array $input, array $allowed = []): void
     {
-        if (array_key_exists('role_ids', $input)) {
-            $roleIds = array_values(array_unique(array_filter(
-                array_map('intval', (array) $input['role_ids']),
-                static fn (int $id): bool => $id > 0,
-            )));
-            $validRoleIds = $this->database->table('admin_roles')
-                ->whereIn('id', $roleIds)
-                ->where('status', 1)
-                ->whereNull('deleted_at')
-                ->pluck('id')
-                ->map(static fn ($id): int => (int) $id)
-                ->all();
-            sort($roleIds);
-            sort($validRoleIds);
-            if ($roleIds !== $validRoleIds) {
-                throw $this->error('invalid_role_selection', '角色选择包含不存在或已停用的角色。', ['role_ids' => $roleIds]);
+        foreach (['role_ids', 'permissions'] as $field) {
+            if (array_key_exists($field, $input) && !in_array($field, $allowed, true)) {
+                throw $this->error('invalid_permission_input', '请通过独立的角色或权限设置修改授权。', ['field' => $field]);
             }
+        }
+    }
 
-            $this->database->transaction(function () use ($adminId, $roleIds): void {
-                $this->database->table('admin_user_roles')->where('admin_id', $adminId)->delete();
-                $relations = array_map(static fn (int $roleId): array => [
-                        'admin_id' => $adminId,
-                        'role_id' => $roleId,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ], $roleIds);
-                if ($relations !== []) {
-                    $this->database->table('admin_user_roles')->insert($relations);
-                }
-            });
+    /** @param list<int> $roleIds */
+    private function syncUserRoles(int $adminId, array $roleIds): void
+    {
+        $roleIds = array_values(array_unique(array_filter(
+            array_map('intval', $roleIds),
+            static fn (int $id): bool => $id > 0,
+        )));
+        $validRoleIds = $this->database->table('admin_roles')
+            ->whereIn('id', $roleIds)
+            ->where('status', 1)
+            ->whereNull('deleted_at')
+            ->pluck('id')
+            ->map(static fn ($id): int => (int) $id)
+            ->all();
+        sort($roleIds);
+        sort($validRoleIds);
+        if ($roleIds !== $validRoleIds) {
+            throw $this->error('invalid_role_selection', '角色选择包含不存在或已停用的角色。', ['role_ids' => $roleIds]);
         }
-        if (array_key_exists('permissions', $input)) {
-            $this->syncAdminPermissions($adminId, (array) $input['permissions']);
-        }
+
+        $this->database->transaction(function () use ($adminId, $roleIds): void {
+            $this->database->table('admin_user_roles')->where('admin_id', $adminId)->delete();
+            $relations = array_map(static fn (int $roleId): array => [
+                    'admin_id' => $adminId,
+                    'role_id' => $roleId,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ], $roleIds);
+            if ($relations !== []) {
+                $this->database->table('admin_user_roles')->insert($relations);
+            }
+        });
     }
 
     private function syncAdminPermissions(int $adminId, array $permissions): void
