@@ -80,8 +80,9 @@ final class TaskController extends Controller
         try {
             $task = $tasks->get($taskId);
             $admin = $this->assertTaskPermissionForTask($task, $request, 'view');
-            if (!in_array($task['type'], [TaskManager::CORE_UPDATE, TaskManager::ADMIN_FRONTEND_UPDATE], true)
-                || (bool) $admin->getAttribute('is_founder')) {
+            $resource = $tasks->resourceFor((string) $task['type']);
+            $dispatchAbility = $task['type'] === TaskManager::CLOUD_PACKAGE ? 'manage' : 'create';
+            if ($this->authorization->allows($admin, $dispatchAbility, $resource)) {
                 $this->dispatcher->dispatch($task);
             }
             return AdminResponse::success('', $task);
@@ -157,7 +158,7 @@ final class TaskController extends Controller
     {
         if ($type === TaskManager::CLOUD_PACKAGE) {
             try {
-                app(\PTAdmin\Cloud\FounderAccess::class)->assert($request);
+                return app(\PTAdmin\Cloud\CloudAccess::class)->assert($request);
             } catch (\PTAdmin\Cloud\CloudException $exception) {
                 throw new TaskException($exception->getMessage(), 'forbidden');
             }
@@ -166,11 +167,6 @@ final class TaskController extends Controller
         $admin = is_array($session) ? Admin::query()->find($session['subject_id'] ?? null) : null;
         if (!$admin instanceof Admin) {
             throw new TaskException('The administrator account is unavailable.', 'unauthorized');
-        }
-        if ($ability !== 'view'
-            && in_array($type, [TaskManager::CORE_UPDATE, TaskManager::ADMIN_FRONTEND_UPDATE], true)
-            && !(bool) $admin->getAttribute('is_founder')) {
-            throw new TaskException('只有创始人可以执行系统更新操作。', 'forbidden');
         }
         $resource = app(TaskManager::class)->resourceFor($type);
         if (!$this->authorization->allows($admin, $ability, $resource)) {

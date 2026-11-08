@@ -46,11 +46,12 @@ final class SessionController extends Controller
         $applications = $this->applicationFrontends->resolve($menus);
         $modules = array_merge($applications['modules'], $plugins['plugins']);
         $identity = $this->authorization->identity($admin)->attributes;
+        $roles = $this->authorization->roles($admin);
 
         return AdminResponse::success('', [
             'user' => $this->authenticator->userPayload($admin),
             'permissions' => $permissions,
-            'roles' => $this->authorization->roles($admin),
+            'roles' => $roles,
             'menus' => (new MenuIconResolver())->resolve($menus, $plugins['plugins']),
             'theme' => (array) config('ptadmin.theme', []),
             'layout' => (array) config('ptadmin.layout', []),
@@ -60,7 +61,7 @@ final class SessionController extends Controller
                 'expires_at' => $session['expires_at'],
                 'absolute_expires_at' => $session['absolute_expires_at'],
             ],
-            'generation' => hash('sha256', (string) $session['id'].($identity === [] ? '' : json_encode($identity, JSON_THROW_ON_ERROR))),
+            'generation' => hash('sha256', (string) $session['id'].json_encode([$identity, $permissions, $roles, $menus], JSON_THROW_ON_ERROR)),
             ...($identity === [] ? [] : ['authorization' => $identity]),
             'features' => [
                 'task_center' => true,

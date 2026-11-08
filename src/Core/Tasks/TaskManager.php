@@ -27,7 +27,7 @@ final class TaskManager
 
     /** @var array<string, string> */
     private const TASK_PERMISSIONS = [
-        self::CLOUD_PACKAGE => 'addon.install',
+        self::CLOUD_PACKAGE => 'cloud.market',
         self::CORE_UPDATE => 'core.update',
         self::ADMIN_FRONTEND_UPDATE => 'admin.frontend',
         self::ADDON_DOWNLOAD => 'addon.download',

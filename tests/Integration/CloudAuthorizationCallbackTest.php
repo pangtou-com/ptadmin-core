@@ -70,8 +70,10 @@ final class CloudAuthorizationCallbackTest extends TestCase
     {
         config(['ptadmin.web_prefix' => $prefix, 'ptadmin.cloud.callback_redirect' => $override]);
         $admin = Admin::query()->forceCreate([
-            'username' => 'cloud-founder', 'nickname' => '创始人', 'password' => 'unused', 'status' => 1, 'is_founder' => true,
+            'username' => 'cloud-founder', 'nickname' => '创始人', 'password' => 'unused', 'status' => 1, 'is_founder' => false,
         ]);
+        app(\PTAdmin\Admin\Navigation\MenuSynchronizer::class)->syncCore();
+        app(\PTAdmin\Core\Install\InitialAdministratorPermissions::class)->grant($admin);
         $token = app(SessionManager::class)->issue('admin', $admin->id, 'admin')->toArray()['access_token'];
         $authorization = [];
         Http::fake(function (Request $request) use (&$authorization) {

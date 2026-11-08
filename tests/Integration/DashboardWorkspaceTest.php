@@ -62,7 +62,7 @@ final class DashboardWorkspaceTest extends TestCase
         DB::table('admin_grants')->where('id', $grant)->delete();
         self::assertSame('widget_unavailable', $service->query($admin, [['code' => 'site.any']])['results'][0]['error']['reason']);
         $admin->forceFill(['is_founder' => true])->save();
-        self::assertCount(2, $service->settings($admin)['available_widgets']);
+        self::assertSame([], $service->settings($admin)['available_widgets']);
     }
 
     public function testCompositePermissionsRejectEmptyDuplicateAndObjectValues(): void

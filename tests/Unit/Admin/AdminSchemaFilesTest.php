@@ -123,10 +123,10 @@ final class AdminSchemaFilesTest extends TestCase
         self::assertNotContains('permissions', $this->formFields($roles['views']['forms']['default']['children']));
         self::assertNotContains('permissions', $this->formFields($users['views']['forms']['default']['children']));
 
-        self::assertSame(['update', 'sync_roles', 'reset_password', 'delete'], array_column($users['views']['tables']['default']['operate']['actions'], 'action'));
+        self::assertSame(['update', 'sync_roles', 'sync_permissions', 'reset_password', 'delete'], array_column($users['views']['tables']['default']['operate']['actions'], 'action'));
         self::assertSame(
             ['field' => 'is_founder', 'op' => 'neq', 'value' => true],
-            $users['views']['tables']['default']['operate']['actions'][3]['show_when'],
+            $users['views']['tables']['default']['operate']['actions'][4]['show_when'],
         );
         self::assertNotContains('role_ids', $this->formFields($users['views']['forms']['default']['children']));
         self::assertContains('role_names', array_column($users['views']['tables']['default']['columns'], 'field'));
@@ -143,10 +143,8 @@ final class AdminSchemaFilesTest extends TestCase
         self::assertSame(['password', 'password_confirmation'], $this->formFields($users['views']['forms']['reset_password']['children']));
         self::assertSame('record', $users['actions']['sync_roles']['scope']);
         self::assertSame('record', $users['actions']['reset_password']['scope']);
-        self::assertSame(
-            ['field' => 'is_founder', 'op' => 'neq', 'value' => true],
-            $users['views']['tables']['default']['operate']['actions'][1]['show_when'],
-        );
+        self::assertArrayNotHasKey('show_when', $users['views']['tables']['default']['operate']['actions'][1]);
+        self::assertSame('record', $users['actions']['sync_permissions']['scope']);
         $avatarField = $this->formField($users['views']['forms']['default']['children'], 'avatar');
         self::assertSame('image-upload', $avatarField['component']);
         self::assertSame('url', $avatarField['props']['valueMode']);

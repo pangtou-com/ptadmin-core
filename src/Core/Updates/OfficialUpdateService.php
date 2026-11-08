@@ -32,7 +32,7 @@ final class OfficialUpdateService
             if ($scheduled && ($state['next_check_at'] ?? 0) > time()) {
                 return;
             }
-            // 手动检查也受冷却约束，防止重复点击及多个创始人同时请求上游。
+            // 手动检查也受冷却约束，防止重复点击及多位管理员同时请求上游。
             if (!$scheduled && ($state['last_attempt_at'] ?? 0) > time() - 60) {
                 throw new UpdateException('刚刚已执行检查，请一分钟后再试；可查看当前结果。', 'check_cooldown');
             }
@@ -106,7 +106,8 @@ final class OfficialUpdateService
         return $document;
     }
 
-    public function overview(int $receiver, bool $founder): array
+    /** @param array<string, bool> $canInstall 按组件裁决的发起更新权限。 */
+    public function overview(int $receiver, bool $canManage, array $canInstall = []): array
     {
         $this->assertInstalled();
         $versions = $this->installed->read();
@@ -157,7 +158,7 @@ final class OfficialUpdateService
             $components[] = ['component' => $component, 'current' => $current, 'comparison' => $comparison,
                 'latest' => $latest, 'recommended' => $recommended,
                 'blockers' => $latest ? $this->compatibility($latest, $versions) : [],
-                'update' => ['available' => $founder && $recommended !== null && !$expired && $error === null && $updateReasons === [], 'reasons' => $updateReasons],
+                'update' => ['available' => ($canInstall[$component] ?? false) && $recommended !== null && !$expired && $error === null && $updateReasons === [], 'reasons' => $updateReasons],
                 'release_url' => CloudProtocol::AUTHORIZATION_URL.'/releases'.($latest ? '/'.$component.'/'.rawurlencode($latest['version']) : '')];
         }
         $advisories = [];
@@ -183,10 +184,10 @@ final class OfficialUpdateService
         return ['check' => ['status' => $status, 'error' => $error, 'last_success_at' => $state['last_success_at'] ?? null,
                 'last_attempt_at' => $state['last_attempt_at'] ?? null, 'last_scheduled_at' => $state['last_scheduled_at'] ?? null,
                 'expires_at' => $document['expires_at'] ?? null, 'cached' => $document !== null, 'expired' => $expired,
-                'enabled' => (bool) config('ptadmin-updates.enabled'), 'can_check' => $founder && (bool) config('ptadmin-updates.enabled')],
-            'components' => $components, 'advisories' => $founder ? $advisories : [], 'host_version' => $versions['host_version'],
-            'environment' => $founder ? $environment : null,
-            'core_guidance' => $this->environment->guidance($environment, $core['version'] ?? null, $founder),
+                'enabled' => (bool) config('ptadmin-updates.enabled'), 'can_check' => $canManage && (bool) config('ptadmin-updates.enabled')],
+            'components' => $components, 'advisories' => $canManage ? $advisories : [], 'host_version' => $versions['host_version'],
+            'environment' => $canManage ? $environment : null,
+            'core_guidance' => $this->environment->guidance($environment, $core['version'] ?? null, $canManage),
             'shell_guidance' => '标准官方 Shell 可从兼容版本发起更新，系统保留模块、插件和备份；Git/CI 或自定义 Shell 请合并源码后按原流程部署。',
             'template_guidance' => '基础壳版本是创建来源。已有项目应比较配置、启动和依赖变化后选择性合并，不重新 create-project 或覆盖 app、routes、.env。',
         ];

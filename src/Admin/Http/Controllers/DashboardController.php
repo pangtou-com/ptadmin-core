@@ -56,8 +56,8 @@ final class DashboardController extends Controller
 
     public function synchronize(Request $request): JsonResponse
     {
-        if (!(bool) $this->admin($request)->getAttribute('is_founder')) {
-            return AdminResponse::error(40300, '只有创始人可以检查系统更新。', null, 403);
+        if (!app(\PTAdmin\Admin\Auth\AuthorizationService::class)->allows($this->admin($request), 'manage', 'system.maintenance')) {
+            return AdminResponse::error(40300, '当前账号没有系统维护权限。', null, 403);
         }
 
         return AdminResponse::success('', $this->dashboard->summary(true));

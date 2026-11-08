@@ -12,7 +12,7 @@ use PTAdmin\Cloud\CloudPackageExecutor;
 use PTAdmin\Cloud\CloudSessionManager;
 use PTAdmin\Cloud\Contracts\ProductDeliveryClientInterface;
 use PTAdmin\Cloud\ExecuteCloudPackageTask;
-use PTAdmin\Cloud\FounderAccess;
+use PTAdmin\Cloud\CloudAccess;
 use PTAdmin\Core\Http\Responses\AdminResponse;
 use PTAdmin\Core\Tasks\TaskManager;
 use PTAdmin\Core\Tasks\TaskException;
@@ -22,7 +22,7 @@ use Symfony\Component\HttpFoundation\Response;
 final class ProductDeliveryController
 {
     public function __construct(private readonly ProductDeliveryClientInterface $delivery,
-        private readonly \PTAdmin\Cloud\LicenseCodeDeliveryClient $codes, private readonly CloudSessionManager $sessions, private readonly FounderAccess $founders, private readonly TaskManager $tasks)
+        private readonly \PTAdmin\Cloud\LicenseCodeDeliveryClient $codes, private readonly CloudSessionManager $sessions, private readonly CloudAccess $access, private readonly TaskManager $tasks)
     {
     }
 
@@ -31,7 +31,7 @@ final class ProductDeliveryController
         $operation = $request->route('operation');
         $taskId = $request->route('taskId');
         try {
-            $this->founders->assert($request);
+            $this->access->assert($request);
             if ($operation === 'artifact') {
                 $task = $this->tasks->get($taskId);
                 if ($task['type'] !== CloudPackageExecutor::TYPE || $task['status'] !== 'succeeded' || !($task['result']['data']['download_ready'] ?? false)) {
@@ -55,7 +55,7 @@ final class ProductDeliveryController
             };
             $response = AdminResponse::success('', $result, $operation === 'package' ? 202 : 200);
         } catch (CloudException $exception) {
-            $status = match ($exception->errorCode) { 'founder_required', 'forbidden' => 403, 'unauthorized' => 401, 'too_many_requests' => 429, 'cloud_platform_unavailable' => 503, default => 422 };
+            $status = match ($exception->errorCode) { 'forbidden' => 403, 'unauthorized' => 401, 'too_many_requests' => 429, 'cloud_platform_unavailable' => 503, default => 422 };
             $response = AdminResponse::error($status * 100, $exception->getMessage(), ['error_code' => $exception->errorCode], $status);
         } catch (TaskException $exception) {
             $response = AdminResponse::error(40900, $exception->getMessage(), ['error_code' => $exception->errorCode, 'details' => $exception->details], 409);

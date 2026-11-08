@@ -38,9 +38,9 @@
                             {
                                 "action": "sync_roles",
                                 "title": "设置角色",
-                                "icon": "users",
-                                "show_when": { "field": "is_founder", "op": "neq", "value": true }
+                                "icon": "users"
                             },
+                            { "action": "sync_permissions", "title": "权限设置", "icon": "shield-check" },
                             { "action": "reset_password", "title": "重置密码", "icon": "key-round" },
                             {
                                 "action": "delete",
@@ -395,11 +395,12 @@
             "sync_roles": {
                 "title": "设置角色",
                 "kind": "custom",
-                "scope": "record",
-                "show_when": { "field": "is_founder", "op": "neq", "value": true }
+                "scope": "record"
             },
             "sync_permissions": {
-                "label": "设置直接授权"
+                "title": "权限设置",
+                "kind": "custom",
+                "scope": "record"
             },
             "reset_password": {
                 "title": "重置密码",

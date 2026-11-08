@@ -7,6 +7,7 @@ namespace PTAdmin\Core\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use PTAdmin\Admin\Models\Admin;
+use PTAdmin\Admin\Auth\AuthorizationService;
 use PTAdmin\Core\Http\Responses\AdminResponse;
 use PTAdmin\Core\Updates\OfficialUpdateService;
 use PTAdmin\Core\Updates\UpdateException;
@@ -32,11 +33,12 @@ final class OfficialUpdateController
     {
         $session = $request->attributes->get('ptadmin.session', []);
         $admin = Admin::query()->findOrFail($session['subject_id'] ?? null);
-        if (!$admin->is_founder || !$admin->status) {
-            return AdminResponse::error(40300, '只有创始人可以执行系统更新。', null, 403);
-        }
         $input = $request->validate(['component' => ['required', 'in:core,admin-shell'],
             'version' => ['required', 'string', 'max:80'], 'database_backup_confirmed' => ['sometimes', 'boolean']]);
+        $resource = $input['component'] === 'core' ? 'core.update' : 'admin.frontend';
+        if (!$admin->status || !app(AuthorizationService::class)->allows($admin, 'create', $resource)) {
+            return AdminResponse::error(40300, '当前账号没有该组件的更新权限。', null, 403);
+        }
         try {
             $task = $installer->submit($input['component'], $input['version'], (int) $admin->id,
                 $request->attributes->get('ptadmin.request_id'), $input['database_backup_confirmed'] ?? false);
@@ -53,9 +55,9 @@ final class OfficialUpdateController
     {
         $session = $request->attributes->get('ptadmin.session', []);
         $admin = Admin::query()->findOrFail($session['subject_id'] ?? null);
-        $founder = (bool) $admin->is_founder && (bool) $admin->status;
-        if ($action !== 'show' && !$founder) {
-            return AdminResponse::error(40300, '只有创始人可以检查官方版本和确认安全公告，请联系创始人或部署负责人处理更新。', ['reason' => 'founder_required'], 403);
+        $canManage = (bool) $admin->status && app(AuthorizationService::class)->allows($admin, 'manage', 'system.updates');
+        if ($action !== 'show' && !$canManage) {
+            return AdminResponse::error(40300, '当前账号没有版本检查和安全公告管理权限。', ['reason' => 'permission_required'], 403);
         }
         try {
             if ($action === 'check') {
@@ -64,7 +66,10 @@ final class OfficialUpdateController
                 $input = $request->validate(['revision' => ['required', 'integer', 'min:0']]);
                 $updates->acknowledge((int) $admin->id, $request->route('identifier'), (int) $input['revision']);
             }
-            return AdminResponse::success('', $updates->overview((int) $admin->id, $founder))->header('Cache-Control', 'no-store');
+            return AdminResponse::success('', $updates->overview((int) $admin->id, $canManage, [
+                'core' => app(AuthorizationService::class)->allows($admin, 'create', 'core.update'),
+                'admin-shell' => app(AuthorizationService::class)->allows($admin, 'create', 'admin.frontend'),
+            ]))->header('Cache-Control', 'no-store');
         } catch (UpdateException $exception) {
             $status = in_array($exception->reason, ['check_running', 'check_cooldown', 'revision_conflict'], true) ? 409 : 503;
             return AdminResponse::error($status * 100, $exception->getMessage(), ['reason' => $exception->reason], $status)->header('Cache-Control', 'no-store');

@@ -26,10 +26,6 @@ final class SchemaScopeResolver implements SchemaScopeResolverInterface
         if (!$subject instanceof Admin) {
             return $this->none();
         }
-        if ($this->authorization->identity($subject)->superuser) {
-            return $this->boundary?->resolve($subject, $resourceKey, $action, $this->activeSchema($resourceKey) ?? []);
-        }
-
         $decision = $this->authorization->decision($subject, $action, $resourceKey);
         if (!$decision->allowed || $decision->grants === []) {
             return $this->none();

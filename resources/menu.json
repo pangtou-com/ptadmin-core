@@ -98,7 +98,7 @@
                 "status": true,
                 "sort": 80,
                 "icon": "bell",
-                "abilities": ["list", "view"]
+                "abilities": ["list", "view", "create", "update", "delete"]
             },
             {
                 "resource_key": "assets",
@@ -119,6 +119,210 @@
                 "status": true,
                 "sort": 90,
                 "abilities": ["view", "remove"]
+            },
+            {
+                "resource_key": "admin.dashboard_widgets",
+                "title": "仪表盘布局",
+                "type": "action",
+                "is_menu": false,
+                "status": true,
+                "sort": 100,
+                "abilities": ["update"]
+            },
+            {
+                "resource_key": "system.maintenance",
+                "title": "系统维护",
+                "type": "action",
+                "is_menu": false,
+                "status": true,
+                "sort": 101,
+                "abilities": ["manage"]
+            },
+            {
+                "resource_key": "system.updates",
+                "title": "版本检查与安全提醒",
+                "type": "action",
+                "is_menu": false,
+                "status": true,
+                "sort": 102,
+                "abilities": ["manage"]
+            },
+            {
+                "resource_key": "core.update",
+                "title": "Core 更新",
+                "type": "action",
+                "is_menu": false,
+                "status": true,
+                "sort": 103,
+                "abilities": ["view", "create", "update"]
+            },
+            {
+                "resource_key": "admin.frontend",
+                "title": "后台界面更新",
+                "type": "action",
+                "is_menu": false,
+                "status": true,
+                "sort": 104,
+                "abilities": ["view", "create", "update"]
+            },
+            {
+                "resource_key": "cloud.market",
+                "title": "云市场",
+                "type": "action",
+                "is_menu": false,
+                "status": true,
+                "sort": 105,
+                "abilities": ["manage"]
+            },
+            {
+                "resource_key": "addon.manage",
+                "title": "插件管理",
+                "type": "action",
+                "is_menu": false,
+                "status": true,
+                "sort": 106,
+                "abilities": ["view", "update"]
+            },
+            {
+                "resource_key": "addon.download",
+                "title": "插件下载",
+                "type": "action",
+                "is_menu": false,
+                "status": true,
+                "sort": 107,
+                "abilities": ["view", "create", "update", "delete"]
+            },
+            {
+                "resource_key": "addon.install",
+                "title": "插件安装",
+                "type": "action",
+                "is_menu": false,
+                "status": true,
+                "sort": 108,
+                "abilities": ["view", "create", "update", "delete"]
+            },
+            {
+                "resource_key": "addon.update",
+                "title": "插件更新",
+                "type": "action",
+                "is_menu": false,
+                "status": true,
+                "sort": 109,
+                "abilities": ["view", "create", "update", "delete"]
+            },
+            {
+                "resource_key": "addon.uninstall",
+                "title": "插件卸载",
+                "type": "action",
+                "is_menu": false,
+                "status": true,
+                "sort": 110,
+                "abilities": ["view", "create", "update", "delete"]
+            },
+            {
+                "resource_key": "addon.frontend",
+                "title": "插件界面发布",
+                "type": "action",
+                "is_menu": false,
+                "status": true,
+                "sort": 111,
+                "abilities": ["view", "create", "update", "delete"]
+            },
+            {
+                "resource_key": "addon.enable",
+                "title": "启用插件",
+                "type": "action",
+                "is_menu": false,
+                "status": true,
+                "sort": 112,
+                "abilities": ["view", "create", "update", "delete"]
+            },
+            {
+                "resource_key": "addon.disable",
+                "title": "停用插件",
+                "type": "action",
+                "is_menu": false,
+                "status": true,
+                "sort": 113,
+                "abilities": ["view", "create", "update", "delete"]
+            },
+            {
+                "resource_key": "site.theme.install",
+                "title": "主题安装任务",
+                "type": "action",
+                "is_menu": false,
+                "status": true,
+                "sort": 114,
+                "abilities": ["view", "create", "update"]
+            },
+            {
+                "resource_key": "site.theme.remove",
+                "title": "主题移除任务",
+                "type": "action",
+                "is_menu": false,
+                "status": true,
+                "sort": 115,
+                "abilities": ["view", "create", "update"]
+            },
+            {
+                "resource_key": "admin.login_logs",
+                "title": "登录日志",
+                "type": "schema",
+                "target_resource_key": "admin.login_logs",
+                "is_menu": false,
+                "status": true,
+                "sort": 120,
+                "abilities": ["list", "view"]
+            },
+            {
+                "resource_key": "admin.operation_records",
+                "title": "操作日志",
+                "type": "schema",
+                "target_resource_key": "admin.operation_records",
+                "is_menu": false,
+                "status": true,
+                "sort": 120,
+                "abilities": ["list", "view"]
+            },
+            {
+                "resource_key": "admin.notification_scenes",
+                "title": "通知场景定义",
+                "type": "schema",
+                "target_resource_key": "admin.notification_scenes",
+                "is_menu": false,
+                "status": true,
+                "sort": 120,
+                "abilities": ["list", "view"]
+            },
+            {
+                "resource_key": "admin.notice_channels",
+                "title": "通知渠道",
+                "type": "schema",
+                "target_resource_key": "admin.notice_channels",
+                "is_menu": false,
+                "status": true,
+                "sort": 120,
+                "abilities": ["list", "view"]
+            },
+            {
+                "resource_key": "admin.notification_messages",
+                "title": "通知消息记录",
+                "type": "schema",
+                "target_resource_key": "admin.notification_messages",
+                "is_menu": false,
+                "status": true,
+                "sort": 120,
+                "abilities": ["list", "view"]
+            },
+            {
+                "resource_key": "admin.notification_deliveries",
+                "title": "通知投递记录",
+                "type": "schema",
+                "target_resource_key": "admin.notification_deliveries",
+                "is_menu": false,
+                "status": true,
+                "sort": 120,
+                "abilities": ["list", "view"]
             }
         ]
     },

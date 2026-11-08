@@ -317,29 +317,16 @@ final class AdminRuntimeHook
                 throw $this->error('invalid_role_selection', '角色选择包含不存在或已停用的角色。', ['role_ids' => $roleIds]);
             }
 
-            $admin = $this->admin($adminId);
-            if ((bool) $admin->getAttribute('is_founder')) {
-                $currentRoleIds = $this->database->table('admin_user_roles')
-                    ->where('admin_id', $adminId)
-                    ->pluck('role_id')
-                    ->map(static fn ($id): int => (int) $id)
-                    ->values()
-                    ->all();
-                sort($currentRoleIds);
-                if ($roleIds !== $currentRoleIds) {
-                    throw $this->error('founder_protected', '创始人账号不能设置角色。', ['id' => $adminId]);
-                }
-            }
-
             $this->database->transaction(function () use ($adminId, $roleIds): void {
                 $this->database->table('admin_user_roles')->where('admin_id', $adminId)->delete();
-                foreach ($roleIds as $roleId) {
-                    $this->database->table('admin_user_roles')->insert([
+                $relations = array_map(static fn (int $roleId): array => [
                         'admin_id' => $adminId,
                         'role_id' => $roleId,
                         'created_at' => now(),
                         'updated_at' => now(),
-                    ]);
+                    ], $roleIds);
+                if ($relations !== []) {
+                    $this->database->table('admin_user_roles')->insert($relations);
                 }
             });
         }
@@ -360,16 +347,15 @@ final class AdminRuntimeHook
 
     private function replacePermissions(string $subjectType, string $subjectId, array $permissions): void
     {
+        $resources = $this->database->table('admin_resources')->whereNull('deleted_at')
+            ->whereIn('resource_key', array_column($permissions, 'resource_key'))->get(['id', 'type', 'resource_key'])->keyBy('resource_key');
         $normalized = [];
         foreach ($permissions as $permission) {
             if (!is_array($permission)) {
                 throw $this->error('invalid_permission', '权限项必须是对象。');
             }
             $resourceKey = (string) ($permission['resource_key'] ?? '');
-            $resource = $this->database->table('admin_resources')
-                ->whereNull('deleted_at')
-                ->where('resource_key', $resourceKey)
-                ->first(['id', 'type']);
+            $resource = $resources->get($resourceKey);
             if (!$resource) {
                 throw $this->error('invalid_permission', '权限资源不存在。', ['resource_key' => $resourceKey]);
             }
@@ -396,7 +382,7 @@ final class AdminRuntimeHook
             }
             $this->assertPermissionScope($scopeType, $scopeValue);
             $expiresAt = $this->normalizeExpiresAt($permission['expires_at'] ?? null);
-            $priority = (int) ($permission['priority'] ?? ($subjectType === 'admin' ? 100 : 0));
+            $priority = (int) ($permission['priority'] ?? 0);
             if ($priority < 0 || $priority > 10000) {
                 throw $this->error('invalid_permission', '权限优先级必须在 0 到 10000 之间。', ['priority' => $priority]);
             }
@@ -413,8 +399,7 @@ final class AdminRuntimeHook
         }
         $this->database->transaction(function () use ($subjectType, $subjectId, $normalized): void {
             $this->database->table('admin_grants')->where('subject_type', $subjectType)->where('subject_id', $subjectId)->delete();
-            foreach ($normalized as $permission) {
-                $this->database->table('admin_grants')->insert([
+            $rows = array_map(static fn (array $permission): array => [
                     'subject_type' => $subjectType,
                     'subject_id' => $subjectId,
                     'resource_id' => $permission['resource_id'],
@@ -427,7 +412,9 @@ final class AdminRuntimeHook
                     'expires_at' => $permission['expires_at'],
                     'created_at' => now(),
                     'updated_at' => now(),
-                ]);
+                ], $normalized);
+            if ($rows !== []) {
+                $this->database->table('admin_grants')->insert($rows);
             }
         });
     }
@@ -792,11 +779,12 @@ final class AdminRuntimeHook
         return in_array($resourceKey, [
             'dashboard', 'assets', 'site', 'themes', 'admin.users', 'admin.roles', 'admin.menus', 'admin.logs',
             'admin.dictionaries',
-            'admin.notifications', 'admin.notification_templates',
+            'admin.notifications', 'admin.notification_templates', 'admin.login_logs', 'admin.operation_records',
             'admin.admin_users', 'admin.admin_roles', 'admin.admin_resources',
             'admin.dashboard_widgets', 'admin.notification_scenes', 'admin.notification_messages',
             'admin.notification_deliveries', 'admin.notice_channels',
             'schema.resources', 'admin.config', 'core.tasks', 'core.update',
+            'system.maintenance', 'system.updates', 'cloud.market', 'site.theme', 'site.theme.install', 'site.theme.remove',
             'admin.frontend', 'addon.manage', 'addon.download', 'addon.install',
             'addon.update', 'addon.uninstall', 'addon.frontend', 'addon.enable', 'addon.disable',
         ], true);

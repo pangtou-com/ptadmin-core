@@ -121,7 +121,11 @@ final class InstallService
             $result = DB::transaction(function () use ($username, $password, $nickname, $email, $mobile): array {
                 $admin = $this->resolveFounder($username, $password, $nickname, $email, $mobile);
                 $menuResult = $this->menus->syncCore();
-                $resources = ['resource_count' => count($menuResult['resource_keys'])];
+                $appMenus = $this->menus->syncApp(base_path());
+                if ($admin->wasRecentlyCreated) {
+                    app(InitialAdministratorPermissions::class)->grant($admin);
+                }
+                $resources = ['resource_count' => count($menuResult['resource_keys']) + count($appMenus['resource_keys'])];
 
                 return [
                     'admin' => [
@@ -425,15 +429,6 @@ final class InstallService
      */
     public function syncAuthorizationResources(): array
     {
-        $founderId = Admin::query()
-            ->where('is_founder', true)
-            ->where('status', true)
-            ->orderBy('id')
-            ->value('id');
-        if (null === $founderId) {
-            throw new RuntimeException('未找到可用的创始人账号，无法同步后台权限资源。');
-        }
-
         $resourceKeys = $this->menus->syncCore()['resource_keys'];
 
         return ['resource_count' => count($resourceKeys)];

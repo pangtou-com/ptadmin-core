@@ -53,11 +53,11 @@ class UpdateEnvironment
         return null;
     }
 
-    public function guidance(array $environment, ?string $target, bool $founder): array
+    public function guidance(array $environment, ?string $target, bool $canManage): array
     {
         $issues = [];
-        if (!$founder) {
-            $issues[] = ['code' => 'founder_required', 'message' => '当前账号不能发起官方版本检查，请联系创始人；实际部署还需要服务器或 CI 的部署权限。'];
+        if (!$canManage) {
+            $issues[] = ['code' => 'permission_required', 'message' => '当前账号不能发起官方版本检查，请联系有权限的管理员；实际部署还需要服务器或 CI 的部署权限。'];
         }
         if ($environment['composer'] === 'not_found') {
             $issues[] = ['code' => 'composer_not_found', 'message' => '当前 PHP 环境未找到可读取的 Composer。请部署负责人在命令行核对 composer --version；已有 composer.phar 时可配置 PTADMIN_COMPOSER_PATH。不能在服务器安装 Composer时，可在兼容的本地环境或 CI 安装依赖后交付包含 vendor 的部署包。'];

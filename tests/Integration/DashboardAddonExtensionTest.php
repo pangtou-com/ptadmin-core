@@ -48,6 +48,11 @@ final class DashboardAddonExtensionTest extends TestCase
         $this->artisan('migrate', ['--force' => true])->assertSuccessful();
         app(MenuSynchronizer::class)->syncCore();
         $this->admin = Admin::query()->forceCreate(['username' => 'dashboard-owner', 'password' => 'unused', 'status' => 1, 'is_founder' => true]);
+        DB::table('admin_resources')->insert(array_map(static fn (string $owner): array => [
+            'resource_key' => $owner.'.content', 'title' => $owner, 'type' => 'page', 'status' => 1,
+            'meta_json' => '{"abilities":["view"]}', 'created_at' => now(), 'updated_at' => now(),
+        ], ['alpha', 'beta']));
+        app(\PTAdmin\Core\Install\InitialAdministratorPermissions::class)->grant($this->admin);
         $this->alpha = new DashboardAlphaProvider();
         $this->beta = new DashboardBetaProvider();
         $this->app->instance(DashboardAlphaProvider::class, $this->alpha);
@@ -188,7 +193,7 @@ final class DashboardAddonExtensionTest extends TestCase
     public function testRealBearerPermissionRevocationPreventsQueriesAndStaleLayoutWrites(): void
     {
         $this->register('alpha', ['alpha.summary']);
-        $this->admin->forceFill(['is_founder' => false])->save();
+        DB::table('admin_grants')->where('subject_type', 'admin')->where('subject_id', (string) $this->admin->id)->delete();
         $this->grant('dashboard', ['view', 'update']);
         $this->grant('admin.dashboard_widgets', ['update']);
         $headers = ['Authorization' => 'Bearer '.app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token']];
@@ -242,6 +247,7 @@ final class DashboardAddonExtensionTest extends TestCase
         }
         $service->saveSettings($this->admin, [['widget_code' => 'alpha.summary', 'enabled' => true]]);
         $other = Admin::query()->forceCreate(['username' => 'second-dashboard-user', 'password' => 'unused', 'status' => 1, 'is_founder' => true]);
+        app(\PTAdmin\Core\Install\InitialAdministratorPermissions::class)->grant($other);
         self::assertNotContains('alpha.summary', array_column($service->settings($other)['selected_widgets'], 'code'));
         $result = $service->query($other, [['code' => 'alpha.summary']])['results'][0];
         self::assertSame($other->id, $result['data']['items'][0]['value']);
@@ -340,7 +346,7 @@ final class DashboardAddonExtensionTest extends TestCase
             'beta.custom' => array_replace($custom, ['permission' => 'beta.content.view', 'renderer' => ['entry' => 'beta.dashboard']]),
         ]));
         self::assertSame(['type' => 'custom'], $this->query(['beta.custom'])[0]['data']);
-        $this->admin->forceFill(['is_founder' => false])->save();
+        DB::table('admin_grants')->where('subject_type', 'admin')->where('subject_id', (string) $this->admin->id)->delete();
         self::assertSame([], app(DashboardService::class)->frontendReferences($this->admin));
         self::assertSame('widget_unavailable', $this->query(['alpha.custom'])[0]['error']['reason']);
         $this->grant('alpha.content', ['view']);

@@ -78,21 +78,26 @@ final class SystemInfoAccessTest extends TestCase
     {
         $this->getJson('/ptadmin/dashboard', $this->headers)->assertOk()->assertJsonPath('code', 0);
         $this->postJson('/ptadmin/dashboard/application-sync', [], $this->headers)
-            ->assertForbidden()->assertJsonPath('code', 40300)->assertJsonPath('message', '只有创始人可以检查系统更新。');
+            ->assertForbidden()->assertJsonPath('code', 40300)->assertJsonPath('message', '当前账号没有系统维护权限。');
         $this->postJson('/ptadmin/dashboard/application-sync')->assertUnauthorized();
     }
 
-    public function testFounderCanCheckAndRevokingFounderStatusTakesEffectForExistingSession(): void
+    public function testExplicitMaintenanceGrantCanBeRevokedForExistingSession(): void
     {
-        $this->admin->forceFill(['is_founder' => true])->save();
+        $grant = DB::table('admin_grants')->insertGetId([
+            'subject_type' => 'admin', 'subject_id' => (string) $this->admin->id,
+            'resource_id' => DB::table('admin_resources')->where('resource_key', 'system.maintenance')->value('id'),
+            'effect' => 'allow', 'abilities_json' => '["manage"]', 'created_at' => now(), 'updated_at' => now(),
+        ]);
         $this->postJson('/ptadmin/dashboard/application-sync', [], $this->headers)
             ->assertOk()->assertJsonPath('data.application_sync_status', 'success');
-        $this->admin->forceFill(['is_founder' => false])->save();
+        DB::table('admin_grants')->where('id', $grant)->delete();
         $this->postJson('/ptadmin/dashboard/application-sync', [], $this->headers)->assertForbidden();
     }
 
-    public function testNonFounderCannotCreateRetryOrCancelSystemUpdatesDespiteExplicitGrants(): void
+    public function testViewOnlyAccountCannotExecuteUpdatesOrDispatchWhenViewing(): void
     {
+        DB::table('admin_grants')->where('subject_id', (string) $this->admin->id)->update(['abilities_json' => '["view"]']);
         $tasks = app(TaskManager::class);
         foreach ([TaskManager::CORE_UPDATE, TaskManager::ADMIN_FRONTEND_UPDATE] as $type) {
             $before = $tasks->list();
@@ -110,6 +115,19 @@ final class SystemInfoAccessTest extends TestCase
             $this->postJson('/ptadmin/tasks/'.$id.'/retry', [], $this->headers)->assertForbidden();
             self::assertSame('failed', $tasks->get($id)['status']);
         }
+    }
+
+    public function testNonFounderWithTaskPermissionsCanCancelAndRetry(): void
+    {
+        $tasks = app(TaskManager::class);
+        $task = $tasks->create(TaskManager::ADMIN_FRONTEND_UPDATE);
+        $this->postJson('/ptadmin/tasks/'.$task['task_id'].'/cancel', [], $this->headers)->assertOk();
+        self::assertSame('cancelled', $tasks->get($task['task_id'])['status']);
+        $task = $tasks->create(TaskManager::CORE_UPDATE, [], null, 2);
+        $tasks->start($task['task_id']);
+        $tasks->fail($task['task_id'], ['message' => 'test failure']);
+        $this->postJson('/ptadmin/tasks/'.$task['task_id'].'/retry', [], $this->headers)->assertOk();
+        Bus::assertDispatchedAfterResponse(RunTaskAfterResponse::class);
     }
 
     public function testFounderCannotBypassOfficialPreflightThroughGenericTasks(): void

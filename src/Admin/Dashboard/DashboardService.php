@@ -267,7 +267,7 @@ final class DashboardService
             'login_count' => $count,
             'previous_login_at' => $previous !== null ? Carbon::parse((string) $previous->created_at)->toIso8601String() : null,
             'previous_login_ip' => $previous?->ip_address ?: null,
-            'can_manage_system' => (bool) $admin->getAttribute('is_founder'),
+            'can_manage_system' => $this->authorization->allows($admin, 'manage', 'system.maintenance'),
         ];
     }
 

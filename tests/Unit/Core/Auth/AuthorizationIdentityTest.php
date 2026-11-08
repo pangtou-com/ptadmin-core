@@ -69,13 +69,14 @@ final class AuthorizationIdentityTest extends TestCase
         $decision = (new AuthorizationService($db, $resolver))->decision($admin, 'view', 'community.records');
 
         self::assertTrue($decision->allowed);
-        self::assertSame('direct_grant_allow', $decision->reason);
+        self::assertSame('merged_grant_allow', $decision->reason);
     }
 
-    public function testMandatoryBoundaryAlsoAppliesToSuperusers(): void
+    public function testIdentityFlagDoesNotGrantAccessOrBypassScope(): void
     {
         $db = new SQLiteConnection(new PDO('sqlite::memory:'));
-        $db->statement('CREATE TABLE schema_resources (resource_key TEXT, deleted_at TEXT, active_version_id INTEGER)');
+        $db->statement('CREATE TABLE admin_resources (id INTEGER, resource_key TEXT, status INTEGER, deleted_at TEXT, sort INTEGER)');
+        $db->statement('CREATE TABLE admin_grants (subject_type TEXT, subject_id TEXT, expires_at TEXT)');
         $authorization = new AuthorizationService($db, $this->resolver(true));
         $boundary = new class implements DataScopeBoundaryInterface {
             public function resolve(Admin $admin, string $resourceKey, string $action, array $schema): ?ServerConstraint
@@ -84,8 +85,8 @@ final class AuthorizationIdentityTest extends TestCase
             }
         };
         $scopes = new SchemaScopeResolver($authorization, $db, new DataScopeRegistry(), $boundary);
-        self::assertSame(['field' => 'organization_id', 'operator' => 'eq', 'value' => 8], $scopes->resolve(new Admin(), 'business.records', 'list')->toArray());
-        self::assertNull((new SchemaScopeResolver($authorization, $db, new DataScopeRegistry()))->resolve(new Admin(), 'business.records', 'list'));
+        self::assertSame(['field' => 'id', 'operator' => 'in', 'value' => []], $scopes->resolve(new Admin(), 'business.records', 'list')->toArray());
+
     }
 
     private function resolver(bool $permitted): AuthorizationIdentityResolverInterface

@@ -238,7 +238,7 @@ final class OfficialUpdatesTest extends TestCase
     {
         $environment = ['composer' => 'detected', 'process_execution' => false, 'writable' => ['vendor' => false, 'composer.lock' => false], 'delivery' => 'ci'];
         $guide = (new UpdateEnvironment())->guidance($environment, '1.2.0', false);
-        self::assertSame(['founder_required', 'process_disabled', 'deployment_not_writable', 'managed_delivery'], array_column($guide['issues'], 'code'));
+        self::assertSame(['permission_required', 'process_disabled', 'deployment_not_writable', 'managed_delivery'], array_column($guide['issues'], 'code'));
         self::assertStringContainsString('不要设置 777', $guide['issues'][2]['message']);
         self::assertStringContainsString('不能只复制', implode(' ', $guide['steps']));
     }
@@ -286,7 +286,10 @@ final class OfficialUpdatesTest extends TestCase
     public function testHttpAuthorizationAndReadOnlyStatusNeverFetchUpstream(): void
     {
         $this->artisan('migrate', ['--force' => true])->assertExitCode(0);
-        Admin::query()->forceCreate(['username' => 'founder', 'password' => Hash::make('test-password'), 'status' => true, 'is_founder' => true]);
+        $founder = Admin::query()->forceCreate(['username' => 'founder', 'password' => Hash::make('test-password'), 'status' => true, 'is_founder' => true]);
+        app(\PTAdmin\Admin\Navigation\MenuSynchronizer::class)->syncCore();
+        app(\PTAdmin\Core\Install\InitialAdministratorPermissions::class)->grant($founder);
+        $founder->forceFill(['is_founder' => false])->save();
         Admin::query()->forceCreate(['username' => 'ordinary', 'password' => Hash::make('test-password'), 'status' => true, 'is_founder' => false]);
         $this->getJson('/ptadmin/system/updates')->assertUnauthorized();
         $this->postJson('/ptadmin/system/updates/install', ['component' => 'core', 'version' => '1.1.0'])->assertUnauthorized();

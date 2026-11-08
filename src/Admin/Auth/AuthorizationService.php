@@ -43,76 +43,57 @@ final class AuthorizationService
         if (!$this->identities->permits($admin, $resourceKey, $ability)) {
             return new AuthorizationDecision(false, 'identity_restricted');
         }
-        $identity = $this->identity($admin);
-        if ($identity->superuser) {
-            return new AuthorizationDecision(true, 'founder');
-        }
+        return $this->evaluate($admin, $ability, $resourceKey, $this->resources(), $this->grantRows($admin), $context);
+    }
 
-        $authorizationSubjectId = $identity->authorizationSubjectId ?? (int) $admin->getKey();
-
-        $resources = $this->authorizationResources($resourceKey);
-        if ($resources === []) {
-            return new AuthorizationDecision(false, 'resource_unavailable');
-        }
-
-        $direct = [];
-        foreach ($identity->directGrants ? $resources : [] as $resource) {
-            $direct = array_merge($direct, $this->grantsForSubject(
-                'admin',
-                (string) $authorizationSubjectId,
-                (int) $resource->id,
-                $ability,
-                $admin,
-                $context,
-            ));
-        }
-        if ($direct !== []) {
-            return $this->resolveGrants($direct, 'direct_grant');
-        }
-
-        $roleGrants = [];
-        foreach ($identity->roleIds as $roleId) {
-            foreach ($resources as $resource) {
-                foreach ($this->grantsForSubject(
-                    'role',
-                    (string) $roleId,
-                    (int) $resource->id,
-                    $ability,
-                    $admin,
-                    $context,
-                ) as $grant) {
-                    $roleGrants[] = $grant;
+    /** @param list<object> $resources @param list<object> $rows */
+    private function evaluate(Admin $admin, string $ability, string $resourceKey, array $resources, array $rows, ?AuthorizationContext $context = null): AuthorizationDecision
+    {
+        $resourceKeys = [$resourceKey];
+        foreach ($resources as $resource) {
+            if ((string) $resource->resource_key === $resourceKey) {
+                $meta = $this->decode((string) ($resource->meta_json ?? ''));
+                $target = (string) ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '');
+                if ($target !== '') {
+                    $resourceKeys[] = $target;
                 }
             }
         }
-
-        return $roleGrants === []
+        $resourceIds = [];
+        foreach ($resources as $resource) {
+            $meta = $this->decode((string) ($resource->meta_json ?? ''));
+            if (in_array((string) $resource->resource_key, $resourceKeys, true)
+                || in_array((string) ($meta['target_resource_key'] ?? $meta['resource_key'] ?? ''), $resourceKeys, true)) {
+                $resourceIds[] = (int) $resource->id;
+            }
+        }
+        if ($resourceIds === []) {
+            return new AuthorizationDecision(false, 'resource_unavailable');
+        }
+        $grants = $this->matchingGrants($rows, $resourceIds, $ability, $admin, $context);
+        return $grants === []
             ? new AuthorizationDecision(false, 'grant_not_found')
-            : $this->resolveGrants($roleGrants, 'role_grant');
+            : $this->resolveGrants($grants);
     }
 
     /** @return array<int, string> */
     public function permissions(Admin $admin): array
     {
-        if ($this->identity($admin)->superuser) {
-            return ['*'];
+        $resources = $this->resources();
+        $rows = $this->grantRows($admin);
+        $abilities = [];
+        foreach ($rows as $row) {
+            $abilities[(int) $row->resource_id] = array_merge($abilities[(int) $row->resource_id] ?? [], $this->decodeList((string) $row->abilities_json));
         }
-
-        $resources = $this->database->table('admin_resources')
-            ->whereNull('deleted_at')
-            ->where('status', 1)
-            ->orderBy('sort')
-            ->orderBy('id')
-            ->get();
-        $abilities = $this->declaredAbilities($admin);
         $permissions = [];
         foreach ($resources as $resource) {
             $candidates = array_values(array_unique(array_merge(
                 $abilities[(int) $resource->id] ?? [],
                 $this->resourceAbilities($resource),
+                [self::ACCESS_ABILITY],
             )));
             foreach ($candidates as $ability) {
-                if ($this->allows($admin, $ability, (string) $resource->resource_key)) {
+                if ($ability !== '*' && $this->identities->permits($admin, (string) $resource->resource_key, $ability) && $this->evaluate($admin, $ability, (string) $resource->resource_key, $resources, $rows)->allowed) {
                     $permissions[] = (string) $resource->resource_key.'.'.$ability;
                 }
             }
@@ -124,10 +105,6 @@ final class AuthorizationService
     /** @return list<string> */
     public function roles(Admin $admin): array
     {
-        if ($this->identity($admin)->superuser) {
-            return ['*'];
-        }
-
         return array_values(array_unique(array_map(
             static fn (mixed $code): string => (string) $code,
             $this->database->table('admin_roles as roles')
@@ -142,16 +119,14 @@ final class AuthorizationService
     /** @return array<int, array<string, mixed>> */
     public function menus(Admin $admin): array
     {
-        $resources = $this->database->table('admin_resources')
-            ->whereNull('deleted_at')
-            ->where('status', 1)
-            ->where('is_menu', 1)
-            ->orderBy('sort')
-            ->orderBy('id')
-            ->get();
+        $resources = $this->resources();
+        $rows = $this->grantRows($admin);
         $available = [];
         $allowed = [];
         foreach ($resources as $resource) {
+            if (!(bool) $resource->is_menu) {
+                continue;
+            }
             $meta = $this->decode((string) ($resource->meta_json ?? ''));
             $type = (string) ($resource->type ?? '');
             if (!in_array($type, ['group', 'schema', 'page', 'external'], true)) {
@@ -190,7 +165,8 @@ final class AuthorizationService
                 'node' => $menu,
                 'parent_key' => (string) ($resource->parent_key ?? ''),
             ];
-            if ($this->allows($admin, self::ACCESS_ABILITY, (string) $resource->resource_key)) {
+            if ($this->identities->permits($admin, (string) $resource->resource_key, self::ACCESS_ABILITY)
+                && $this->evaluate($admin, self::ACCESS_ABILITY, (string) $resource->resource_key, $resources, $rows)->allowed) {
                 $allowed[(string) $resource->resource_key] = true;
             }
         }
@@ -211,52 +187,23 @@ final class AuthorizationService
     }
 
     /** @return list<object> */
-    private function authorizationResources(string $resourceKey): array
+    private function resources(): array
     {
-        $resources = $this->database->table('admin_resources')
-            ->whereNull('deleted_at')
-            ->where('status', 1)
-            ->orderBy('sort')
-            ->orderBy('id')
-            ->get();
-        $matches = [];
-        foreach ($resources as $resource) {
-            $meta = $this->decode((string) ($resource->meta_json ?? ''));
-            if ((string) $resource->resource_key === $resourceKey
-                || (string) ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '') === $resourceKey
-            ) {
-                $matches[(int) $resource->id] = $resource;
-            }
-        }
-
-        return array_values($matches);
+        return $this->database->table('admin_resources')
+            ->whereNull('deleted_at')->where('status', 1)->orderBy('sort')->orderBy('id')->get()->all();
     }
 
-    /**
-     * @return list<AuthorizationGrant>
-     */
-    private function grantsForSubject(
-        string $subjectType,
-        string $subjectId,
-        int $resourceId,
-        string $ability,
-        Admin $admin,
-        ?AuthorizationContext $context,
-    ): array {
-        $rows = $this->database->table('admin_grants')
-            ->where('subject_type', $subjectType)
-            ->where('subject_id', $subjectId)
-            ->where('resource_id', $resourceId)
-            ->where(function ($query): void {
-                $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
-            })
-            ->get();
-
+    /** @param list<object> $rows @param list<int> $resourceIds @return list<AuthorizationGrant> */
+    private function matchingGrants(array $rows, array $resourceIds, string $ability, Admin $admin, ?AuthorizationContext $context): array
+    {
         $grants = [];
         foreach ($rows as $row) {
+            if (!in_array((int) $row->resource_id, $resourceIds, true)) {
+                continue;
+            }
             $abilities = $this->decodeList((string) $row->abilities_json);
             $effect = (string) $row->effect === 'allow' ? 'allow' : 'deny';
-            if (!$this->grantMatchesAbility($abilities, $ability, $effect)) {
+            if (!$this->grantMatchesAbility($abilities, $ability)) {
                 continue;
             }
 
@@ -269,8 +216,8 @@ final class AuthorizationService
             $scopeValue = $this->decodeNullable((string) ($row->scope_value_json ?? ''));
             $grants[] = new AuthorizationGrant(
                 (int) $row->id,
-                $subjectType,
-                $subjectId,
+                (string) $row->subject_type,
+                (string) $row->subject_id,
                 $effect,
                 $abilities,
                 (int) $row->priority,
@@ -284,7 +231,7 @@ final class AuthorizationService
     }
 
     /** @param list<string> $abilities */
-    private function grantMatchesAbility(array $abilities, string $ability, string $effect): bool
+    private function grantMatchesAbility(array $abilities, string $ability): bool
     {
         if (in_array($ability, $abilities, true) || in_array('*', $abilities, true)) {
             return true;
@@ -293,37 +240,17 @@ final class AuthorizationService
             return true;
         }
 
-        return $effect === 'allow'
-            && $ability !== self::ACCESS_ABILITY
-            && array_values(array_unique($abilities)) === [self::ACCESS_ABILITY];
+        return false;
     }
 
     /** @param list<AuthorizationGrant> $grants */
-    private function resolveGrants(array $grants, string $reason): AuthorizationDecision
+    private function resolveGrants(array $grants): AuthorizationDecision
     {
-        usort($grants, static function (AuthorizationGrant $left, AuthorizationGrant $right): int {
-            if ($left->priority !== $right->priority) {
-                return $right->priority <=> $left->priority;
-            }
-            if ($left->effect !== $right->effect) {
-                return $left->effect === 'deny' ? -1 : 1;
-            }
-
-            return $right->id <=> $left->id;
-        });
-
-        $priority = $grants[0]->priority;
-        $selected = array_values(array_filter(
-            $grants,
-            static fn (AuthorizationGrant $grant): bool => $grant->priority === $priority,
-        ));
-        foreach ($selected as $grant) {
-            if ($grant->effect === 'deny') {
-                return new AuthorizationDecision(false, $reason.'_deny', [$grant]);
-            }
+        $denied = array_values(array_filter($grants, static fn (AuthorizationGrant $grant): bool => $grant->effect === 'deny'));
+        if ($denied !== []) {
+            return new AuthorizationDecision(false, 'explicit_deny', $denied);
         }
-
-        return new AuthorizationDecision(true, $reason.'_allow', $selected);
+        return new AuthorizationDecision(true, 'merged_grant_allow', $grants);
     }
 
     /**
@@ -385,13 +312,13 @@ final class AuthorizationService
         return in_array($operator, ['neq', 'not_in'], true) ? !$matched : $matched;
     }
 
-    /** @return array<int, list<string>> */
-    private function declaredAbilities(Admin $admin): array
+    /** @return list<object> */
+    private function grantRows(Admin $admin): array
     {
         $identity = $this->identity($admin);
         $roleIds = $identity->roleIds;
         $authorizationSubjectId = $identity->authorizationSubjectId ?? (int) $admin->getKey();
-        $rows = $this->database->table('admin_grants')
+        return $this->database->table('admin_grants')
             ->where(function ($query) use ($authorizationSubjectId, $roleIds, $identity): void {
                 $query->whereRaw('1 = 0');
                 if ($identity->directGrants) {
@@ -408,19 +335,7 @@ final class AuthorizationService
             ->where(function ($query): void {
                 $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
             })
-            ->get(['resource_id', 'abilities_json']);
-
-        $abilities = [];
-        foreach ($rows as $row) {
-            foreach ($this->decodeList((string) $row->abilities_json) as $ability) {
-                $abilities[(int) $row->resource_id][] = $ability;
-            }
-        }
-        foreach ($abilities as $resourceId => $resourceAbilities) {
-            $abilities[$resourceId] = array_values(array_unique($resourceAbilities));
-        }
-
-        return $abilities;
+            ->get()->all();
     }
 
     /**

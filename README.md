@@ -22,7 +22,7 @@
 - Admin 个人资料、本人密码修改和本人会话管理接口；密码修改、账号禁用和管理员动作可撤销现有 Bearer Session。
 - Admin 登录成功/失败记录与后台写操作审计；登录日志和操作记录作为只读 Schema Resource 提供查询。
 - 资源中心通过 `/ptadmin/assets` 提供查询、详情、元数据更新、软删除和恢复；公开上传统一进入 `/ptadmin/storage/upload` 并创建资源记录，私有上传只作为后端服务提供，不进入资源中心。
-- 创始人、系统角色和核心权限资源保护，以及按资源/动作执行的服务端权限检查。
+- 创始人账号、系统角色和核心权限资源保护；创始人仅在安装时获取当前具体能力的个人授权快照，不绑定角色，不绕过统一授权。个人与角色授权合并，明确拒绝优先。
 - 未安装启动阶段提供安装状态查询接口 `GET /__ptadmin__/install/status`，不暴露敏感安装输入；安装完成后该路由不再注册。
 - 独立 `GET /__ptadmin__/install` 安装向导，复用原 PTAdmin 分步 UI，提供协议确认、PHP/扩展与目录权限检查、基础信息、SQLite/MySQL 数据库配置、创始人账号表单和流式安装进度；数据库连接、`APP_KEY` 和核心前端 manifest 在实际安装阶段校验，不单独展示“运行环境”检测分组。完成后进入自定义或随机后台目录，已安装实例返回 404。
 - 已安装实例通过 `PTADMIN_WEB_PREFIX` 提供后台入口和 SPA fallback；入口由 Core 路由校验 `installed.json`，静态 assets 与插件 plugins 仍由 Web Server 直接提供。
@@ -77,7 +77,7 @@ Core 内置配置定义位于 `resources/config.site.json`、`resources/config.m
 
 后台 Admin 资源和导航统一存储在 `admin_resources`。Core 资源声明位于 `resources/menu.json`，宿主插件资源声明位于 `addons/{code}/resources/menu.json`；两个文件使用相同的严格 JSON 数组格式，声明完整资源集合，不再使用 `Admin/resources.json`。资源类型为 `group`、`schema`、`page`、`external`、`action`，其中 `action` 只参与授权，其他类型通过 `is_menu` 决定是否进入 Session 菜单。安装、`ptadmin:admin:sync` 和插件生命周期共用幂等资源同步逻辑。
 
-授权的数据范围位于 `admin_grants.scope_type` 和 `admin_grants.scope_value_json`，角色本身不保存全局范围。`all` 表示不附加记录条件；`self` 要求活动 Schema 在 `extensions.authorization.owner_field` 中显式指定持久化所有者字段。未知范围、非法范围参数、缺少活动 Schema 或缺少所有者声明时，Scope Resolver 返回空记录约束。多个同优先级允许授权以 OR 合并；同优先级拒绝授权仍优先。业务模块注册的范围处理器只能返回结构化 `ServerConstraint`，客户端筛选不能覆盖该约束。
+授权的数据范围位于 `admin_grants.scope_type` 和 `admin_grants.scope_value_json`，角色本身不保存全局范围。`all` 表示不附加记录条件；`self` 要求活动 Schema 在 `extensions.authorization.owner_field` 中显式指定持久化所有者字段。未知范围、非法范围参数、缺少活动 Schema 或缺少所有者声明时，Scope Resolver 返回空记录约束。个人与所有有效角色的允许授权以 OR 合并；任一有效明确拒绝均优先，不受 `priority` 影响。业务模块注册的范围处理器只能返回结构化 `ServerConstraint`，客户端筛选不能覆盖该约束。
 
 ## 数据字典
 

@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 use PTAdmin\Admin\Models\Admin;
 use PTAdmin\Admin\Auth\AuthorizationService;
 
-final class FounderAccess
+final class CloudAccess
 {
     public function __construct(private readonly AuthorizationService $authorization)
     {
@@ -21,8 +21,8 @@ final class FounderAccess
         if (!$admin instanceof Admin) {
             throw new CloudException('管理员会话无效。', 'unauthorized');
         }
-        if (!(bool) $admin->getAttribute('is_founder') || !(bool) $admin->getAttribute('status') || !$this->authorization->identity($admin)->superuser) {
-            throw new CloudException('只有创始人可以使用云市场。', 'founder_required');
+        if (!(bool) $admin->getAttribute('status') || !$this->authorization->allows($admin, 'manage', 'cloud.market')) {
+            throw new CloudException('当前账号没有云市场管理权限。', 'forbidden');
         }
         return $admin;
     }

@@ -64,7 +64,7 @@ use PTAdmin\Cloud\Contracts\DirectiveDocumentationGeneratorInterface;
 use PTAdmin\Cloud\ArtisanDirectiveDocumentationGenerator;
 use PTAdmin\Cloud\Console\DirectiveDocumentationCommand;
 use PTAdmin\Cloud\EncryptedCloudSessionStore;
-use PTAdmin\Cloud\FounderAccess;
+use PTAdmin\Cloud\CloudAccess;
 use PTAdmin\Cloud\HttpCloudClient;
 use PTAdmin\Core\Theme\ActiveThemeResolver;
 use PTAdmin\Core\Theme\ThemeCatalog;
@@ -222,7 +222,7 @@ final class PTAdminServiceProvider extends ServiceProvider
                 $app->make('encrypter'),
             );
         });
-        $this->app->singleton(FounderAccess::class);
+        $this->app->singleton(CloudAccess::class);
         $this->app->singleton(TaskExecutorRegistry::class, static function ($app): TaskExecutorRegistry {
             $registry = new TaskExecutorRegistry();
             $registry->register(\PTAdmin\Cloud\CloudPackageExecutor::TYPE, $app->make(\PTAdmin\Cloud\CloudPackageExecutor::class));

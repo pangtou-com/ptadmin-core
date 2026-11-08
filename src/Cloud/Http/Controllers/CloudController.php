@@ -16,7 +16,7 @@ use PTAdmin\Cloud\CloudProtocol;
 use Illuminate\Support\Facades\Cache;
 use PTAdmin\Cloud\Contracts\CloudClientInterface;
 use PTAdmin\Cloud\Contracts\CloudCatalogInterface;
-use PTAdmin\Cloud\FounderAccess;
+use PTAdmin\Cloud\CloudAccess;
 use PTAdmin\Core\Http\Responses\AdminResponse;
 use PTAdmin\Core\Auth\Session\SessionManager;
 
@@ -24,7 +24,7 @@ final class CloudController extends Controller
 {
     public function __construct(
         private CloudClientInterface $client,
-        private FounderAccess $founders,
+        private CloudAccess $access,
         private CacheRepository $cache,
         private CloudSessionManager $manager,
     ) {
@@ -33,7 +33,7 @@ final class CloudController extends Controller
     public function session(Request $request): JsonResponse
     {
         try {
-            $this->founders->assert($request);
+            $this->access->assert($request);
             return AdminResponse::success('', $this->manager->summary())->header('Cache-Control', 'no-store');
         } catch (CloudException $exception) {
             return $this->error($exception);
@@ -43,7 +43,7 @@ final class CloudController extends Controller
     public function authorize(Request $request): JsonResponse
     {
         try {
-            $this->founders->assert($request);
+            $this->access->assert($request);
             $state = $this->randomToken(32);
             $verifier = $this->randomToken(48);
             $redirectUri = route('ptadmin.cloud.session.callback');
@@ -96,8 +96,9 @@ final class CloudController extends Controller
                 throw new CloudException('平台未返回授权码。', 'cloud_oauth_state_invalid');
             }
             $admin = Admin::query()->find($pending['admin_id'] ?? null);
-            if (!$admin instanceof Admin || !(bool) $admin->getAttribute('is_founder') || !(bool) $admin->getAttribute('status')) {
-                throw new CloudException('云市场授权发起人已无权继续操作。', 'founder_required');
+            if (!$admin instanceof Admin || !(bool) $admin->getAttribute('status')
+                || !app(\PTAdmin\Admin\Auth\AuthorizationService::class)->allows($admin, 'manage', 'cloud.market')) {
+                throw new CloudException('云市场授权发起人已无权继续操作。', 'forbidden');
             }
             $origin = collect(app(SessionManager::class)->forSubject($pending['subject_type'], $admin->getKey(), $pending['guard_name']))->firstWhere('id', $pending['session_id']);
             $now = gmdate('Y-m-d H:i:s');
@@ -119,7 +120,7 @@ final class CloudController extends Controller
     public function logout(Request $request): JsonResponse
     {
         try {
-            $this->founders->assert($request);
+            $this->access->assert($request);
             $this->manager->logout();
             return AdminResponse::success('云市场已退出。');
         } catch (CloudException $exception) {
@@ -130,7 +131,7 @@ final class CloudController extends Controller
     public function catalog(Request $request, CloudCatalogInterface $catalog): JsonResponse
     {
         try {
-            $this->founders->assert($request);
+            $this->access->assert($request);
             return AdminResponse::success('', $catalog->catalog($request->only(['product_type', 'keyword', 'category', 'page', 'per_page', 'codes'])));
         } catch (CloudException $exception) {
             return $this->error($exception);
@@ -140,7 +141,7 @@ final class CloudController extends Controller
     public function order(Request $request): JsonResponse
     {
         try {
-            $this->founders->assert($request);
+            $this->access->assert($request);
             return AdminResponse::success('', $this->client->createOrder($this->token(), $request->all()));
         } catch (CloudException $exception) {
             return $this->error($exception);
@@ -150,7 +151,7 @@ final class CloudController extends Controller
     public function showOrder(Request $request, string $orderId): JsonResponse
     {
         try {
-            $this->founders->assert($request);
+            $this->access->assert($request);
             return AdminResponse::success('', $this->client->order($this->token(), $orderId));
         } catch (CloudException $exception) {
             return $this->error($exception);
@@ -160,7 +161,7 @@ final class CloudController extends Controller
     public function license(Request $request): JsonResponse
     {
         try {
-            $this->founders->assert($request);
+            $this->access->assert($request);
             return AdminResponse::success('', $this->client->previewLicense($this->token(), $request->all()));
         } catch (CloudException $exception) {
             return $this->error($exception);
@@ -170,7 +171,7 @@ final class CloudController extends Controller
     public function migrateIp(Request $request): JsonResponse
     {
         try {
-            $this->founders->assert($request);
+            $this->access->assert($request);
             return AdminResponse::success('', $this->client->migrateIp($this->token(), $request->all()));
         } catch (CloudException $exception) {
             return $this->error($exception);
@@ -180,7 +181,7 @@ final class CloudController extends Controller
     public function requestMigration(Request $request): JsonResponse
     {
         try {
-            $this->founders->assert($request);
+            $this->access->assert($request);
             return AdminResponse::success('', $this->client->requestInstanceMigration($this->token(), $request->all()));
         } catch (CloudException $exception) {
             return $this->error($exception);
@@ -190,7 +191,7 @@ final class CloudController extends Controller
     public function products(Request $request): JsonResponse
     {
         try {
-            $this->founders->assert($request);
+            $this->access->assert($request);
             return AdminResponse::success('', $this->client->products($this->token(), $request->only(['page'])));
         } catch (CloudException $exception) {
             return $this->error($exception);
@@ -200,7 +201,7 @@ final class CloudController extends Controller
     public function submitRelease(Request $request, string $type): JsonResponse
     {
         try {
-            $this->founders->assert($request);
+            $this->access->assert($request);
             return AdminResponse::success('', $this->client->submitRelease($this->token(), $type, $request->only(['product_id', 'changelog', 'name', 'content_base64', 'source_package'])));
         } catch (CloudException $exception) {
             return $this->error($exception);
@@ -221,7 +222,7 @@ final class CloudController extends Controller
     {
         $status = match ($exception->errorCode) {
             'unauthorized' => 401,
-            'founder_required', 'forbidden' => 403,
+            'forbidden' => 403,
             'cloud_session_required', 'cloud_oauth_state_invalid', 'cloud_authorization_denied', 'invalid_request' => 422,
             default => 503,
         };

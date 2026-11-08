@@ -21,7 +21,7 @@ final class AccountAuthorizationIdentityResolver implements AuthorizationIdentit
             ->where('roles.status', 1)->whereNull('roles.deleted_at')
             ->pluck('roles.id')->map(static fn ($id): int => (int) $id)->all();
 
-        return new AuthorizationIdentity($ids, superuser: (bool) $admin->getAttribute('is_founder'));
+        return new AuthorizationIdentity($ids);
     }
 
     public function permits(Admin $admin, string $resourceKey, string $ability): bool
