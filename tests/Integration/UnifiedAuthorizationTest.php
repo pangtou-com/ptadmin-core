@@ -133,6 +133,22 @@ final class UnifiedAuthorizationTest extends TestCase
         self::assertNotEmpty($auth->menus($this->admin));
     }
 
+    public function testViewDenialDoesNotImplicitlyDenyAccessAndAccessDenialBeatsLegacyViewAllow(): void
+    {
+        $auth = app(AuthorizationService::class);
+        $this->grant('admin', ['view'], 'allow', 0);
+        $deny = $this->grant('admin', ['view'], 'deny', 0);
+        self::assertFalse($auth->allows($this->admin, 'view', 'admin.users'));
+        self::assertTrue($auth->allows($this->admin, 'access', 'admin.users'));
+        self::assertContains('admin.users.access', $auth->permissions($this->admin));
+        self::assertNotEmpty($auth->menus($this->admin));
+        DB::table('admin_grants')->where('id', $deny)->update(['abilities_json' => json_encode(['access'])]);
+        self::assertFalse($auth->allows($this->admin, 'access', 'admin.users'));
+        self::assertTrue($auth->allows($this->admin, 'view', 'admin.users'));
+        self::assertNotContains('admin.users.access', $auth->permissions($this->admin));
+        self::assertSame([], $auth->menus($this->admin));
+    }
+
     public function testPersonalAndRoleScopesAreCombinedWithinMandatoryBoundary(): void
     {
         $this->schemas();

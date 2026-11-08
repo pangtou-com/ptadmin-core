@@ -203,7 +203,7 @@ final class AuthorizationService
             }
             $abilities = $this->decodeList((string) $row->abilities_json);
             $effect = (string) $row->effect === 'allow' ? 'allow' : 'deny';
-            if (!$this->grantMatchesAbility($abilities, $ability)) {
+            if (!$this->grantMatchesAbility($abilities, $ability, $effect)) {
                 continue;
             }
 
@@ -231,12 +231,12 @@ final class AuthorizationService
     }
 
     /** @param list<string> $abilities */
-    private function grantMatchesAbility(array $abilities, string $ability): bool
+    private function grantMatchesAbility(array $abilities, string $ability, string $effect): bool
     {
         if (in_array($ability, $abilities, true) || in_array('*', $abilities, true)) {
             return true;
         }
-        if ($ability === self::ACCESS_ABILITY && in_array(self::LEGACY_MENU_ACCESS_ABILITY, $abilities, true)) {
+        if ($effect === 'allow' && $ability === self::ACCESS_ABILITY && in_array(self::LEGACY_MENU_ACCESS_ABILITY, $abilities, true)) {
             return true;
         }
 
