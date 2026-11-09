@@ -62,6 +62,9 @@ class UpdateEnvironment
         if ($environment['composer'] === 'not_found') {
             $issues[] = ['code' => 'composer_not_found', 'message' => '当前 PHP 环境未找到可读取的 Composer。请部署负责人在命令行核对 composer --version；已有 composer.phar 时可配置 PTADMIN_COMPOSER_PATH。不能在服务器安装 Composer时，可在兼容的本地环境或 CI 安装依赖后交付包含 vendor 的部署包。'];
         }
+        if (!is_executable(config('ptadmin-updates.php_binary'))) {
+            $issues[] = ['code' => 'php_cli_unavailable', 'message' => '配置的 PHP CLI 不可执行，请核对 PTADMIN_UPDATE_PHP_BINARY 的路径与权限；也可由部署负责人在终端使用匹配版本的 PHP 更新。'];
+        }
         if (!$environment['process_execution']) {
             $issues[] = ['code' => 'process_disabled', 'message' => '当前 PHP 禁止启动进程。无需为网页更新开放执行权限；请通过 SSH、主机面板或 CI 执行依赖构建，再部署验证后的结果。'];
         }
@@ -80,16 +83,16 @@ class UpdateEnvironment
                 'composer check-platform-reqs --no-dev',
             ];
         }
-        return ['mode' => 'maintainer_deployment', 'issues' => $issues,
+        return ['mode' => 'maintainer_deployment', 'target_version' => $commands !== [] ? $target : null, 'issues' => $issues,
             'summary' => '标准可写安装可确认目标版本后执行更新；Git/CI 和受限环境按以下部署流程处理，依赖兼容性仍需验证。',
-            'commands' => $commands, 'command_context' => '仅供部署负责人在项目源码分支或隔离构建环境执行；先评估目标版本说明并验证依赖变化。',
+            'commands' => $commands, 'command_context' => '在包含 composer.json 的项目源码根目录或隔离构建环境执行，使用有部署权限的终端账号；先备份并阅读目标版本说明。网页账号找到 Composer 不代表可以运行或成功解决依赖。',
             'steps' => [
                 '先备份数据库、.env、用户上传文件与当前部署版本，并阅读目标版本的兼容要求、升级步骤及恢复说明。',
                 '在有 Composer 的开发环境或 CI 更新 Core 约束和锁文件，测试宿主业务、插件及 Shell；依赖冲突时根据 Composer 报错调整，不使用 --ignore-platform-reqs 绕过要求。',
                 '服务器有 Composer：按部署流程执行 composer install --no-dev --prefer-dist --optimize-autoloader，从已提交的锁文件安装，不在正式机直接运行全量 composer update。',
                 '服务器没有 Composer 或禁止执行命令：在与目标 PHP、扩展、操作系统及架构兼容的环境构建，交付包含 vendor 的完整项目部署产物；不能只复制 ptadmin/core 一个目录。',
                 '通过有权部署账号或 CI 发布。保留线上 .env、storage、上传文件、应用身份及安装记录；只读镜像应重建镜像，不能临时开放网页写 vendor。',
-                '按具体版本说明执行迁移、ptadmin:sync、缓存处理和进程重启；没有 SSH 时由主机面板或运维执行，不新增公开 PHP 升级脚本。不确定迁移要求时暂停部署并联系维护者。',
+                '依赖部署后，在维护窗口按版本说明执行 php artisan optimize:clear、php artisan migrate --force、php artisan ptadmin:sync，并按原部署配置重建缓存、重启 PHP 和队列；全部验证完成再退出维护。没有 SSH 时由主机面板或运维执行。',
                 '核对实际 Core 与 Shell 版本、登录、菜单、插件和业务功能，随后重新检查官方版本。数据库迁移不可逆时须按升级前备份恢复，回退代码不能恢复数据库。',
             ]];
     }

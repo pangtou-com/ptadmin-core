@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace PTAdmin\Core\Tasks\Executors;
 
 use PTAdmin\Core\Tasks\{TaskExecutorInterface, TaskManager, TaskStore};
-use PTAdmin\Core\Updates\{OfficialUpdateInstaller, OfficialUpdateWorkspace, UpdateEnvironment, UpdateException, UpdateFiles};
-use Symfony\Component\Process\Process;
+use PTAdmin\Core\Updates\{OfficialUpdateInstaller, OfficialUpdateWorkspace, UpdateEnvironment, UpdateException, UpdateFiles, UpdateRuntimeProbe};
 
 final class CoreUpdateExecutor implements TaskExecutorInterface
 {
@@ -32,15 +31,7 @@ final class CoreUpdateExecutor implements TaskExecutorInterface
                 throw new UpdateException('依赖和备份目录必须在同一文件系统，并提供可运行的 Composer。', 'update_unavailable');
             }
             $php = config('ptadmin-updates.php_binary');
-            $probe = new Process([$php, '-r', 'echo json_encode([PHP_SAPI, PHP_VERSION, get_loaded_extensions()]);']);
-            $probe->setTimeout(10)->run();
-            $runtime = json_decode($probe->getOutput(), true);
-            $extensions = array_values(array_diff(get_loaded_extensions(), ['Zend OPcache', 'xdebug']));
-            if (!$probe->isSuccessful() || !is_array($runtime) || ($runtime[0] ?? null) !== 'cli'
-                || ($runtime[1] ?? null) !== PHP_VERSION || array_diff($extensions, $runtime[2] ?? []) !== []
-                || array_diff($runtime[2] ?? [], [...$extensions, 'Zend OPcache', 'xdebug']) !== []) {
-                throw new UpdateException('PHP CLI 与当前应用的 PHP 版本或扩展不一致，请通过部署流程更新。', 'update_unavailable');
-            }
+            app(UpdateRuntimeProbe::class)->assertUsable($php, $composer);
             $inputs = [];
             foreach (['composer.json', 'composer.lock'] as $file) {
                 $inputs[$file] = hash_file('sha256', base_path($file));

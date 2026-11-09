@@ -110,6 +110,57 @@ final class OfficialUpdateInstallTest extends TestCase
         return $tasks->get($task['task_id']);
     }
 
+    public function testShellUpdateRemainsAvailableWithoutComposer(): void
+    {
+        config(['ptadmin-updates.composer_path' => $this->directory.'/missing-composer']);
+        $this->versions['application-template'] = ['version' => null, 'known' => false];
+        $this->versions['host_version'] = null;
+        $service = app(\PTAdmin\Core\Updates\OfficialUpdateService::class);
+        $service->check();
+        $overview = $service->overview(1, true, ['admin-shell' => true]);
+        self::assertFalse($overview['environment']['online_core_update']);
+        self::assertTrue($overview['components'][1]['update']['available']);
+        self::assertSame('succeeded', $this->execute()['status']);
+    }
+
+    public function testSequenceChecksIntermediateCompatibilityAndRecoveryBeforeOfferingUpdates(): void
+    {
+        $this->versions['application-template'] = ['version' => null, 'known' => false];
+        $this->versions['host_version'] = null;
+        $this->catalog['results'][1]['compatibility']['core'] = '^1.1';
+        $this->catalog['results'][] = ['component' => 'core', 'version' => '1.1.0', 'status' => 'published',
+            'compatibility' => ['php' => '^8.2', 'laravel' => '^12.68'], 'github_url' => '', 'gitee_url' => '',
+            'changelog' => '', 'breaking_changes' => '', 'upgrade_steps' => '', 'rollback_steps' => '',
+            'composer_package' => 'ptadmin/core', 'composer_version' => '1.1.0', 'git_commit' => str_repeat('a', 40)];
+        $service = app(\PTAdmin\Core\Updates\OfficialUpdateService::class);
+        $service->check();
+        $overview = $service->overview(1, true, ['core' => true, 'admin-shell' => true]);
+        self::assertSame(['component' => 'core', 'version' => '1.1.0', 'target_version' => '1.1.0'], $overview['components'][1]['prerequisite']);
+        self::assertFalse($overview['components'][1]['update']['available']);
+        self::assertTrue($overview['components'][0]['update']['permitted']);
+        $this->versions['core']['version'] = '1.1.0';
+        $overview = $service->overview(1, true, ['admin-shell' => true]);
+        self::assertNull($overview['components'][1]['prerequisite']);
+        self::assertTrue($overview['components'][1]['update']['available']);
+        self::assertFalse($service->overview(1, true)['components'][1]['update']['available']);
+        $this->versions['core']['version'] = '1.0.0';
+        $manifestPath = public_path('admin_test/manifest.json');
+        $manifest = UpdateFiles::read($manifestPath);
+        $manifest['backend_constraint'] = '<1.1';
+        UpdateFiles::write($manifestPath, $manifest);
+        self::assertNull($service->overview(1, true)['components'][1]['prerequisite']);
+        $manifest['backend_constraint'] = '^1.0';
+        UpdateFiles::write($manifestPath, $manifest);
+        config(['ptadmin.addon.path' => $this->directory.'/addons']);
+        UpdateFiles::write($this->directory.'/addons/example/manifest.json', ['code' => 'example', 'compatibility' => ['ptadmin/core' => '<1.1']]);
+        self::assertNull($service->overview(1, true)['components'][1]['prerequisite']);
+        UpdateFiles::write($this->directory.'/updates/operations/failed/journal.json', ['status' => 'database_started']);
+        $overview = $service->overview(1, true, ['core' => true, 'admin-shell' => true]);
+        self::assertTrue($overview['recovery_required']);
+        self::assertFalse($overview['components'][0]['update']['available']);
+        self::assertFalse($overview['components'][1]['update']['available']);
+    }
+
     public function testOfficialDownloadSwitchesShellAndPreservesModulesPluginsAndUserFiles(): void
     {
         foreach (['modules/app/app.js', 'plugins/cms/plugin.js', 'user.txt'] as $path) {

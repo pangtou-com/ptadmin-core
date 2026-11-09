@@ -21,52 +21,91 @@ final class OfficialUpdateService
     ) {
     }
 
-    public function check(bool $scheduled = false): void
+    public function check(): void
     {
         $this->assertInstalled();
         if (!config('ptadmin-updates.enabled')) {
             throw new UpdateException('官方版本联网检查已由部署配置关闭，仍可查看缓存和人工更新指引。', 'checks_disabled');
         }
-        $this->store->locked(function () use ($scheduled): void {
+        $this->store->locked(function (): void {
             $state = $this->store->read();
-            if ($scheduled && ($state['next_check_at'] ?? 0) > time()) {
-                return;
-            }
-            // 手动检查也受冷却约束，防止重复点击及多位管理员同时请求上游。
-            if (!$scheduled && ($state['last_attempt_at'] ?? 0) > time() - 60) {
+            if (($state['last_attempt_at'] ?? 0) > time() - 60) {
                 throw new UpdateException('刚刚已执行检查，请一分钟后再试；可查看当前结果。', 'check_cooldown');
             }
-            $state['last_attempt_at'] = time();
-            if ($scheduled) {
-                $state['last_scheduled_at'] = time();
-            }
-            try {
-                $document = $this->fetchCatalog();
-                $envelope = ['document' => $document];
-                $state['envelope'] = $envelope;
-                $state['last_success_at'] = time();
-                $state['failure_count'] = 0;
-                $state['error'] = null;
-                $state['next_check_at'] = time() + 86400 + random_int(0, 1800);
-            } catch (\Throwable $error) {
-                $state['failure_count'] = min(8, ($state['failure_count'] ?? 0) + 1);
-                $state['error'] = $error instanceof UpdateException ? ['code' => $error->reason, 'message' => $error->getMessage()]
-                    : ['code' => 'network_failed', 'message' => '获取官方目录失败，请检查服务器网络、TLS 与时钟后重试；上次已校验缓存仍保留。'];
-                $state['next_check_at'] = time() + min(86400, 900 * 2 ** ($state['failure_count'] - 1)) + random_int(0, 300);
-            }
-            $this->store->write($state);
+            $this->performCheck($state, false);
         });
     }
 
+    /** 登录请求已完成；独立请求中的失败不传播到后台正常使用流程。 */
+    public function checkOnLogin(string $sessionId, int $expiresAt): bool
+    {
+        if (!$this->installation->isInstalled() || !config('ptadmin-updates.enabled')) {
+            return false;
+        }
+        try {
+            return $this->store->locked(function () use ($sessionId, $expiresAt): bool {
+                $state = $this->store->read();
+                $now = now();
+                $timestamp = $now->getTimestamp();
+                $sessions = array_filter($state['login_check_sessions'] ?? [], static fn (int $expiry): bool => $expiry > $timestamp);
+                $sessionHash = hash('sha256', $sessionId);
+                if (isset($sessions[$sessionHash]) || $expiresAt <= $timestamp) {
+                    return false;
+                }
+                // 即使本次配额已耗尽，同一登录会话也不在页面刷新时补发检查。
+                $sessions[$sessionHash] = $expiresAt;
+                $state['login_check_sessions'] = $sessions;
+                $today = $now->toDateString();
+                if (($state['login_check_day'] ?? '') !== $today) {
+                    $state['login_check_day'] = $today;
+                    $state['login_check_count'] = 0;
+                }
+                $due = $state['login_check_count'] < 2
+                    && ($state['last_login_check_at'] ?? 0) <= $timestamp - 43200
+                    && ($state['last_attempt_at'] ?? 0) <= $timestamp - 60;
+                if ($due) {
+                    $state['login_check_count']++;
+                    $state['last_login_check_at'] = $timestamp;
+                }
+                // 先占用名额；超时、断网或进程退出也计入次数。
+                $this->store->write($state);
+                return $due && $this->performCheck($state, true);
+            });
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function performCheck(array $state, bool $automatic): bool
+    {
+        $state['last_attempt_at'] = now()->getTimestamp();
+        $this->store->write($state);
+        $succeeded = false;
+        try {
+            $state['envelope'] = ['document' => $this->fetchCatalog($automatic)];
+            $state['last_success_at'] = now()->getTimestamp();
+            $state['error'] = null;
+            $succeeded = true;
+        } catch (\Throwable $error) {
+            if (!$automatic) {
+                $state['error'] = $error instanceof UpdateException ? ['code' => $error->reason, 'message' => $error->getMessage()]
+                    : ['code' => 'network_failed', 'message' => '获取官方目录失败，请检查服务器网络、TLS 与时钟后重试；上次已校验缓存仍保留。'];
+            }
+        }
+        $this->store->write($state);
+        return $succeeded;
+    }
+
     /** 更新执行必须重新读取发布状态，不使用过期缓存或受检查冷却限制。 */
-    public function fetchCatalog(): array
+    public function fetchCatalog(bool $automatic = false): array
     {
         $this->assertInstalled();
         if (!config('ptadmin-updates.enabled')) {
             throw new UpdateException('官方联网检查已关闭。', 'checks_disabled');
         }
-        $response = Http::acceptJson()->timeout(20)->connectTimeout(5)
-            ->withOptions(['allow_redirects' => false, 'stream' => true])
+        $deadline = microtime(true) + ($automatic ? 4 : 20);
+        $response = Http::acceptJson()->timeout($automatic ? 4 : 20)->connectTimeout($automatic ? 1 : 5)
+            ->withOptions(['allow_redirects' => false, 'stream' => true, 'read_timeout' => $automatic ? 1 : 5])
             ->get(CloudProtocol::SITE_URL.'/api/cloud/official/releases');
         if (!$response->successful()) {
             throw new UpdateException('官方目录暂不可用，请稍后重试；服务器需允许访问 cloud.api.pangtou.com 的 HTTPS 服务。', 'network_failed');
@@ -74,6 +113,10 @@ final class OfficialUpdateService
         $stream = $response->toPsrResponse()->getBody();
         $body = '';
         while (!$stream->eof() && strlen($body) <= 16 * 1024 * 1024) {
+            if (microtime(true) >= $deadline) {
+                $stream->close();
+                throw new UpdateException('官方目录读取超时。', 'network_failed');
+            }
             $chunk = $stream->read(65536);
             if ($chunk === '') {
                 break;
@@ -107,15 +150,19 @@ final class OfficialUpdateService
     }
 
     /** @param array<string, bool> $canInstall 按组件裁决的发起更新权限。 */
-    public function overview(int $receiver, bool $canManage, array $canInstall = []): array
+    public function overview(int $receiver, bool $canManage, array $canInstall = [], bool $showUpdates = true, string $sessionId = ''): array
     {
         $this->assertInstalled();
         $versions = $this->installed->read();
+        if (!$showUpdates) {
+            $canManage = false;
+            $canInstall = [];
+        }
         $state = [];
         $document = null;
         $error = null;
         try {
-            $state = $this->store->read();
+            $state = $showUpdates ? $this->store->read() : [];
             $error = $state['error'] ?? null;
             if (isset($state['envelope'])) {
                 $document = $this->verifier->verify($state['envelope'], true);
@@ -134,6 +181,7 @@ final class OfficialUpdateService
         }
         $status = $error !== null ? 'failed' : ($document === null ? 'never' : ($expired ? 'expired' : 'current'));
         $components = [];
+        $policy = app(OfficialUpdatePolicy::class);
         foreach (OfficialCatalogVerifier::COMPONENTS as $component) {
             $releases = array_values(array_filter($document['results'] ?? [], static fn (array $release): bool => $release['component'] === $component && ReleaseVersion::stable($release['version'])));
             usort($releases, static fn (array $a, array $b): int => ReleaseVersion::compare($b['version'], $a['version']));
@@ -153,13 +201,32 @@ final class OfficialUpdateService
                 $comparison = $current['custom'] ? 'custom' : 'unknown';
                 $recommended = null;
             }
-            $updateReasons = $component === 'application-template' ? ['基础壳来源不执行覆盖更新。']
-                : app(OfficialUpdatePolicy::class)->blockers($component, $versions);
+            $updateReasons = !$showUpdates ? [] : ($component === 'application-template' ? ['基础壳来源不执行覆盖更新。']
+                : $policy->blockers($component, $versions));
+            if ($component === 'core' && $recommended !== null) {
+                $updateReasons = [...$updateReasons, ...$policy->releaseBlockers($recommended, $versions)];
+            }
             $components[] = ['component' => $component, 'current' => $current, 'comparison' => $comparison,
                 'latest' => $latest, 'recommended' => $recommended,
                 'blockers' => $latest ? $this->compatibility($latest, $versions) : [],
-                'update' => ['available' => ($canInstall[$component] ?? false) && $recommended !== null && !$expired && $error === null && $updateReasons === [], 'reasons' => $updateReasons],
+                'prerequisite' => null,
+                'update' => ['permitted' => $canInstall[$component] ?? false, 'available' => ($canInstall[$component] ?? false) && $recommended !== null && !$expired && $error === null && $updateReasons === [], 'reasons' => $updateReasons],
                 'release_url' => CloudProtocol::AUTHORIZATION_URL.'/releases'.($latest ? '/'.$component.'/'.rawurlencode($latest['version']) : '')];
+        }
+        $coreTarget = $components[0]['recommended'];
+        if ($coreTarget !== null && $policy->releaseBlockers($coreTarget, $versions) === []) {
+            $projected = $versions;
+            $projected['core']['version'] = $coreTarget['version'];
+            foreach ($components as &$entry) {
+                if ($entry['component'] === 'admin-shell' && $entry['comparison'] !== 'custom' && $entry['comparison'] !== 'unknown'
+                    && $entry['latest'] !== null && $entry['current']['known']
+                    && ReleaseVersion::compare($entry['latest']['version'], $entry['current']['version']) > 0
+                    && $this->compatibility($entry['latest'], $versions) !== []
+                    && $this->compatibility($entry['latest'], $projected) === []) {
+                    $entry['prerequisite'] = ['component' => 'core', 'version' => $coreTarget['version'], 'target_version' => $entry['latest']['version']];
+                }
+            }
+            unset($entry);
         }
         $advisories = [];
         foreach ($document['advisories'] ?? [] as $advisory) {
@@ -179,18 +246,49 @@ final class OfficialUpdateService
                         fn (array $release): bool => $release['component'] === $advisory['component'] && $release['version'] === $advisory['fixed_version'] && $this->compatibility($release, $versions) === [])) > 0];
             }
         }
-        $environment = $this->environment->inspect();
+        $environment = $showUpdates ? $this->environment->inspect() : null;
         $core = $components[0]['recommended'];
-        return ['check' => ['status' => $status, 'error' => $error, 'last_success_at' => $state['last_success_at'] ?? null,
-                'last_attempt_at' => $state['last_attempt_at'] ?? null, 'last_scheduled_at' => $state['last_scheduled_at'] ?? null,
+        return ['check' => ['visible' => $showUpdates, 'status' => $status, 'error' => $error, 'last_success_at' => $state['last_success_at'] ?? null,
+                'last_attempt_at' => $state['last_attempt_at'] ?? null, 'last_login_check_at' => $state['last_login_check_at'] ?? null,
                 'expires_at' => $document['expires_at'] ?? null, 'cached' => $document !== null, 'expired' => $expired,
                 'enabled' => (bool) config('ptadmin-updates.enabled'), 'can_check' => $canManage && (bool) config('ptadmin-updates.enabled')],
+            'reminders' => ['can_dismiss' => $showUpdates && $canManage,
+                'session_dismissed' => $showUpdates && ($state['dismissed_sessions'][hash('sha256', $sessionId)] ?? 0) > time(),
+                'ignored_versions' => $showUpdates ? ($state['ignored_versions'][(string) $receiver] ?? []) : []],
+            'recovery_required' => $showUpdates && $policy->recoveryRequired(),
             'components' => $components, 'advisories' => $canManage ? $advisories : [], 'host_version' => $versions['host_version'],
             'environment' => $canManage ? $environment : null,
-            'core_guidance' => $this->environment->guidance($environment, $core['version'] ?? null, $canManage),
-            'shell_guidance' => '标准官方 Shell 可从兼容版本发起更新，系统保留模块、插件和备份；Git/CI 或自定义 Shell 请合并源码后按原流程部署。',
-            'template_guidance' => '基础壳版本是创建来源。已有项目应比较配置、启动和依赖变化后选择性合并，不重新 create-project 或覆盖 app、routes、.env。',
+            'core_guidance' => $showUpdates ? $this->environment->guidance($environment, $core['version'] ?? null, $canManage)
+                : ['mode' => 'maintainer_deployment', 'summary' => '', 'issues' => [], 'commands' => [], 'command_context' => '', 'steps' => []],
+            'shell_guidance' => !$showUpdates ? '' : '标准官方 Shell 可从兼容版本发起更新，系统保留模块、插件和备份；Git/CI 或自定义 Shell 请合并源码后按原流程部署。',
+            'template_guidance' => !$showUpdates ? '' : '基础壳版本是创建来源。已有项目应比较配置、启动和依赖变化后选择性合并，不重新 create-project 或覆盖 app、routes、.env。',
         ];
+    }
+
+    /** 只抑制普通版本提醒；安全公告及可安装目标保持独立。 */
+    public function dismissReminder(int $receiver, string $sessionId, int $expiresAt, string $mode, ?string $component = null, ?string $version = null): void
+    {
+        $this->assertInstalled();
+        $this->store->locked(function () use ($receiver, $sessionId, $expiresAt, $mode, $component, $version): void {
+            $state = $this->store->read();
+            if ($mode === 'session') {
+                $sessions = array_filter($state['dismissed_sessions'] ?? [], static fn (int $expiry): bool => $expiry > time());
+                $sessions[hash('sha256', $sessionId)] = $expiresAt;
+                $state['dismissed_sessions'] = $sessions;
+            } elseif ($mode === 'version' && in_array($component, ['core', 'admin-shell'], true)
+                && ReleaseVersion::valid($version) && ReleaseVersion::stable($version)) {
+                $document = $this->verifier->verify($state['envelope'] ?? [], true);
+                $matches = array_filter($document['results'], static fn (array $release): bool => $release['component'] === $component && $release['version'] === $version);
+                if ($matches === []) {
+                    throw new UpdateException('目标版本已变化，请刷新版本信息后再设置提醒。', 'revision_conflict');
+                }
+                $ignored = $state['ignored_versions'][(string) $receiver][$component] ?? [];
+                $state['ignored_versions'][(string) $receiver][$component] = array_values(array_unique([...$ignored, $version]));
+            } else {
+                throw new UpdateException('请选择有效的提醒范围和版本。', 'invalid_target');
+            }
+            $this->store->write($state);
+        });
     }
 
     public function acknowledge(int $receiver, string $identifier, int $revision): void

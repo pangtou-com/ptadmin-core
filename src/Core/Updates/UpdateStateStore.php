@@ -23,10 +23,11 @@ final class UpdateStateStore
             if (!is_array($state)) {
                 throw new \RuntimeException();
             }
+            unset($state['next_check_at'], $state['last_scheduled_at']);
             // 旧目录缓存只保留签名字节；切换后重新联网获取 document，保留公告已读记录。
             if (isset($state['envelope']['signed_payload']) && !isset($state['envelope']['document'])) {
                 unset($state['envelope'], $state['last_success_at'], $state['last_attempt_at'],
-                    $state['next_check_at'], $state['error'], $state['failure_count']);
+                    $state['error'], $state['failure_count']);
             }
             return $state;
         } catch (\Throwable) {

@@ -184,7 +184,7 @@ final class OfficialUpdatesTest extends TestCase
         $service = app(OfficialUpdateService::class);
         self::assertSame('never', $service->overview(1, true)['check']['status']);
         $this->upstream();
-        $service->check(true);
+        $service->checkOnLogin('session-one', time() + 86400);
         $result = $service->overview(1, true);
         self::assertSame('current', $result['check']['status']);
         self::assertTrue($result['advisories'][0]['acknowledged']);
@@ -192,14 +192,14 @@ final class OfficialUpdatesTest extends TestCase
         Http::assertSentCount(1);
     }
 
-    public function testScheduleAndConcurrentCheckDoNotRepeatNetwork(): void
+    public function testLoginAndConcurrentCheckDoNotRepeatNetwork(): void
     {
         $this->upstream();
         $service = app(OfficialUpdateService::class);
-        $service->check(true);
-        $service->check(true);
+        $service->checkOnLogin('session-one', time() + 86400);
+        $service->checkOnLogin('session-one', time() + 86400);
         Http::assertSentCount(1);
-        self::assertNotNull($service->overview(1, true)['check']['last_scheduled_at']);
+        self::assertNotNull($service->overview(1, true)['check']['last_login_check_at']);
         try {
             $service->check();
             self::fail('手动检查应冷却');
@@ -209,6 +209,8 @@ final class OfficialUpdatesTest extends TestCase
         $lock = fopen($this->directory.'/updates/check.lock', 'c');
         flock($lock, LOCK_EX);
         try {
+            self::assertFalse($service->checkOnLogin('concurrent', time() + 86400));
+            Http::assertSentCount(1);
             $service->check();
             self::fail('并发检查应拒绝');
         } catch (UpdateException $exception) {
@@ -217,6 +219,73 @@ final class OfficialUpdatesTest extends TestCase
             flock($lock, LOCK_UN);
             fclose($lock);
         }
+    }
+
+    public function testLoginQuotaIncludesFailuresAndIsSharedAcrossSessionsAndDays(): void
+    {
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-09 00:01:00'));
+        Http::fake(['*' => Http::response('offline', 503)]);
+        $service = app(OfficialUpdateService::class);
+        $expires = now()->addDays(3)->getTimestamp();
+        self::assertFalse($service->checkOnLogin('one', $expires));
+        self::assertFalse($service->checkOnLogin('two', $expires));
+        Http::assertSentCount(1);
+        self::assertNull($service->overview(1, true)['check']['error']);
+        $this->travel(12)->hours();
+        self::assertFalse($service->checkOnLogin('one', $expires));
+        self::assertFalse($service->checkOnLogin('three', $expires));
+        Http::assertSentCount(2);
+        self::assertSame(2, app(UpdateStateStore::class)->read()['login_check_count']);
+        $this->travel(11)->hours();
+        self::assertFalse($service->checkOnLogin('four', $expires));
+        Http::assertSentCount(2);
+        $this->travel(1)->hours();
+        self::assertFalse($service->checkOnLogin('five', $expires));
+        Http::assertSentCount(3);
+        self::assertSame(1, app(UpdateStateStore::class)->read()['login_check_count']);
+        self::assertArrayNotHasKey('one', app(UpdateStateStore::class)->read()['login_check_sessions']);
+        $this->travelBack();
+    }
+
+    public function testAutomaticOfflineCheckPreservesCacheAndNeverReportsSuccessOrFailureToUi(): void
+    {
+        $this->upstream();
+        $service = app(OfficialUpdateService::class);
+        $service->check();
+        $previous = app(UpdateStateStore::class)->read();
+        $this->state(['last_attempt_at' => 0]);
+        Http::swap(new \Illuminate\Http\Client\Factory());
+        Http::fake(['*' => Http::failedConnection()]);
+        self::assertFalse($service->checkOnLogin('offline', time() + 86400));
+        $state = app(UpdateStateStore::class)->read();
+        self::assertSame($previous['envelope'], $state['envelope']);
+        self::assertSame($previous['last_success_at'], $state['last_success_at']);
+        self::assertNull($state['error']);
+        self::assertFalse($service->checkOnLogin('offline-again', time() + 86400));
+        config(['ptadmin-updates.enabled' => false]);
+        self::assertFalse($service->checkOnLogin('disabled', time() + 86400));
+        config(['ptadmin-updates.enabled' => true]);
+        file_put_contents($this->directory.'/updates/state.json', '{broken');
+        self::assertFalse($service->checkOnLogin('broken-cache', time() + 86400));
+    }
+
+    public function testAutomaticNetworkHasShortTimeoutAndNoRetry(): void
+    {
+        Http::fake(function ($request, array $options) {
+            self::assertSame(4, $options['timeout']);
+            self::assertSame(1, $options['connect_timeout']);
+            self::assertSame(1, $options['read_timeout']);
+            self::assertFalse($request->hasHeader('Authorization'));
+            return Http::response('offline', 503);
+        });
+        self::assertFalse(app(OfficialUpdateService::class)->checkOnLogin('timeout', time() + 86400));
+        Http::assertSentCount(1);
+    }
+
+    public function testProviderDoesNotRegisterAutomaticUpdateSchedule(): void
+    {
+        $events = app(\Illuminate\Console\Scheduling\Schedule::class)->events();
+        self::assertSame([], array_filter($events, static fn ($event): bool => str_contains($event->command ?? '', 'ptadmin:updates:check')));
     }
 
     public function testUnknownAndCustomVersionsRequireReviewInsteadOfClaimingSafe(): void
@@ -289,7 +358,7 @@ final class OfficialUpdatesTest extends TestCase
         $founder = Admin::query()->forceCreate(['username' => 'founder', 'password' => Hash::make('test-password'), 'status' => true, 'is_founder' => true]);
         app(\PTAdmin\Admin\Navigation\MenuSynchronizer::class)->syncCore();
         app(\PTAdmin\Core\Install\InitialAdministratorPermissions::class)->grant($founder);
-        $founder->forceFill(['is_founder' => false])->save();
+
         Admin::query()->forceCreate(['username' => 'ordinary', 'password' => Hash::make('test-password'), 'status' => true, 'is_founder' => false]);
         $this->getJson('/ptadmin/system/updates')->assertUnauthorized();
         $this->postJson('/ptadmin/system/updates/install', ['component' => 'core', 'version' => '1.1.0'])->assertUnauthorized();
@@ -308,6 +377,56 @@ final class OfficialUpdatesTest extends TestCase
         $this->withToken($token)->postJson('/ptadmin/system/updates/check')->assertOk()->assertJsonPath('data.check.status', 'current');
         $this->postJson('/ptadmin/system/updates/advisories/PT-2026-001/acknowledge', ['revision' => 1])->assertOk()->assertJsonPath('data.advisories.0.acknowledged', true);
         $this->postJson('/ptadmin/system/updates/advisories/PT-2026-001/acknowledge', ['revision' => '1'])->assertOk();
+        $this->state(['last_attempt_at' => 0]);
+        $this->upstream();
+        $this->postJson('/ptadmin/system/updates/check-on-login')->assertOk()->assertJsonPath('data.check.visible', true);
+        $this->postJson('/ptadmin/system/updates/check-on-login')->assertOk()->assertJsonPath('data', null);
+        Http::assertSentCount(1);
+        $this->postJson('/ptadmin/system/updates/reminders/dismiss', ['mode' => 'version'])->assertUnprocessable();
+        $this->postJson('/ptadmin/system/updates/reminders/dismiss', ['mode' => 'version', 'component' => 'core', 'version' => '2.0.0'])
+            ->assertOk()->assertJsonPath('data.reminders.ignored_versions.core', ['2.0.0']);
+        $this->postJson('/ptadmin/system/updates/reminders/dismiss', ['mode' => 'session'])
+            ->assertOk()->assertJsonPath('data.reminders.session_dismissed', true);
+        $this->getJson('/ptadmin/system/updates')->assertOk()->assertJsonPath('data.reminders.session_dismissed', true);
+        // 即使普通管理员持有同样权限，也不能通过接口看到更新或发起自动检查。
+        $founder->forceFill(['is_founder' => false])->save();
+        $this->postJson('/ptadmin/system/updates/reminders/dismiss', ['mode' => 'session'])->assertForbidden();
+        $this->getJson('/ptadmin/system/updates')->assertOk()->assertJsonPath('data.check.visible', false)
+            ->assertJsonPath('data.components.0.latest', null)->assertJsonPath('data.components.0.recommended', null)
+            ->assertJsonPath('data.advisories', [])->assertJsonPath('data.environment', null);
+        $this->postJson('/ptadmin/system/updates/check-on-login')->assertForbidden();
+        $this->postJson('/ptadmin/system/updates/check')->assertForbidden();
+        $this->postJson('/ptadmin/system/updates/install', ['component' => 'core', 'version' => '1.1.0', 'database_backup_confirmed' => true])->assertForbidden();
+        Http::assertSentCount(1);
+    }
+
+    public function testReminderPreferencesPersistWithoutChangingUpdateTargetsOrSecurityWarnings(): void
+    {
+        $this->upstream();
+        $service = app(OfficialUpdateService::class);
+        $service->check();
+        $before = $service->overview(1, true, [], true, 'login-one');
+        $service->dismissReminder(1, 'login-one', time() + 3600, 'version', 'core', '2.0.0');
+        $service->dismissReminder(1, 'login-one', time() + 3600, 'version', 'core', '2.0.0');
+        $after = $service->overview(1, true, [], true, 'login-one');
+        self::assertSame(['core' => ['2.0.0']], $after['reminders']['ignored_versions']);
+        self::assertSame($before['components'], $after['components']);
+        self::assertSame($before['advisories'], $after['advisories']);
+        self::assertSame([], $service->overview(2, true)['reminders']['ignored_versions']);
+        $service->dismissReminder(1, 'login-one', time() + 3600, 'session');
+        self::assertTrue($service->overview(1, true, [], true, 'login-one')['reminders']['session_dismissed']);
+        $nextLogin = $service->overview(1, true, [], true, 'login-two');
+        self::assertFalse($nextLogin['reminders']['session_dismissed']);
+        self::assertSame(['core' => ['2.0.0']], $nextLogin['reminders']['ignored_versions']);
+        self::assertArrayNotHasKey('login-one', app(UpdateStateStore::class)->read()['dismissed_sessions']);
+        $document = $this->document();
+        $document['results'][] = $this->release('2.1.0');
+        $this->state(['envelope' => ['document' => $document]]);
+        $newer = $service->overview(1, true);
+        self::assertSame('2.1.0', $newer['components'][0]['latest']['version']);
+        self::assertNotContains('2.1.0', $newer['reminders']['ignored_versions']['core']);
+        $this->expectException(UpdateException::class);
+        $service->dismissReminder(1, 'login-two', time() + 3600, 'version', 'core', '99.0.0');
     }
 
     public function testInstalledVersionReaderUsesPublicAndDoesNotInferTemplateFromCore(): void

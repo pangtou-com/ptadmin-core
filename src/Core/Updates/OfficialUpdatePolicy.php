@@ -4,11 +4,53 @@ declare(strict_types=1);
 
 namespace PTAdmin\Core\Updates;
 
+use Composer\Semver\Semver;
+
 /** 同一策略用于界面能力提示和执行前复核，不能由浏览器指定下载地址或部署目录。 */
 final class OfficialUpdatePolicy
 {
     public function __construct(private readonly UpdateEnvironment $environment)
     {
+    }
+
+    /** Core 前置兼容检查同时用于顺序引导和真正执行。 */
+    public function releaseBlockers(array $release, array $versions): array
+    {
+        $version = $release['version'];
+        $issues = [];
+        if (($release['composer_package'] ?? null) !== 'ptadmin/core' || ltrim($release['composer_version'] ?? '', 'v') !== $version
+            || !is_string($release['git_commit'] ?? null) || !preg_match('/^[a-f0-9]{40}$/D', $release['git_commit'])) {
+            $issues[] = 'Core 发行缺少准确的 Composer 包版本和提交。';
+        }
+        if (!$versions['admin-shell']['known'] || ($versions['admin-shell']['integrity'] ?? '') !== 'verified') {
+            $issues[] = '当前 Shell 清单缺失或文件未通过校验，请先修复后再更新 Core。';
+        }
+        $manifestPath = public_path(config('ptadmin.web_prefix').'/manifest.json');
+        if (is_file($manifestPath)) {
+            $manifest = UpdateFiles::read($manifestPath);
+            if (!Semver::satisfies($version, $manifest['backend_constraint'] ?? '0.0.0')) {
+                $issues[] = '当前 Shell 不兼容目标 Core，请先部署兼容 Shell。';
+            }
+        }
+        foreach (glob(config('ptadmin.addon.path', base_path('addons')).'/*/manifest.json') ?: [] as $path) {
+            $addon = UpdateFiles::read($path);
+            $constraint = $addon['compatibility']['ptadmin/core'] ?? null;
+            if (is_string($constraint) && !Semver::satisfies($version, $constraint)) {
+                $issues[] = '插件 '.($addon['code'] ?? basename(dirname($path))).' 不兼容目标 Core，请先处理插件版本。';
+            }
+        }
+        return $issues;
+    }
+
+    public function recoveryRequired(): bool
+    {
+        foreach (glob(config('ptadmin-updates.path').'/operations/*/journal.json') ?: [] as $path) {
+            $journal = UpdateFiles::read($path);
+            if (!in_array($journal['status'] ?? '', ['completed', 'restored'], true)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public function blockers(string $component, array $versions): array
@@ -95,12 +137,8 @@ final class OfficialUpdatePolicy
                 $reasons[] = '应用已处于维护状态，请先完成原维护操作。';
             }
         }
-        foreach (glob(config('ptadmin-updates.path').'/operations/*/journal.json') ?: [] as $path) {
-            $journal = UpdateFiles::read($path);
-            if (!in_array($journal['status'] ?? '', ['completed', 'restored'], true)) {
-                $reasons[] = '存在未恢复的更新，请先使用该任务的恢复工具处理。';
-                break;
-            }
+        if ($this->recoveryRequired()) {
+            $reasons[] = '存在未恢复的更新，请先使用该任务的恢复工具处理。';
         }
         return array_values(array_unique($reasons));
     }

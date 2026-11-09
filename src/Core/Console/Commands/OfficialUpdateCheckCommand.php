@@ -11,7 +11,7 @@ use PTAdmin\Core\Updates\UpdateException;
 
 final class OfficialUpdateCheckCommand extends Command
 {
-    protected $signature = 'ptadmin:updates:check {--scheduled : 按本地错峰及退避时间执行}';
+    protected $signature = 'ptadmin:updates:check';
     protected $description = '检查官方版本目录与安全公告，不执行依赖更新或替换文件';
 
     public function handle(OfficialUpdateService $updates, InstallStateStore $installation): int
@@ -20,11 +20,8 @@ final class OfficialUpdateCheckCommand extends Command
             $this->error('请先完成安装，再检查官方版本。');
             return self::FAILURE;
         }
-        if ($this->option('scheduled') && !config('ptadmin-updates.enabled')) {
-            return self::SUCCESS;
-        }
         try {
-            $updates->check((bool) $this->option('scheduled'));
+            $updates->check();
             $result = $updates->overview(0, true);
             if ($result['check']['error'] !== null) {
                 $this->error($result['check']['error']['message']);

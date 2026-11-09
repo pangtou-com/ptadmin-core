@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace PTAdmin\Core\Updates;
 
-use Composer\Semver\Semver;
 use PTAdmin\Core\Tasks\TaskManager;
 
 final class OfficialUpdateInstaller
@@ -56,27 +55,7 @@ final class OfficialUpdateInstaller
                 $issues[] = '当前 Shell 的版本和摘要未在官方目录登记，请由维护者核对。';
             }
         } else {
-            if (($release['composer_package'] ?? null) !== 'ptadmin/core' || ltrim($release['composer_version'] ?? '', 'v') !== $version
-                || !is_string($release['git_commit'] ?? null) || !preg_match('/^[a-f0-9]{40}$/D', $release['git_commit'])) {
-                $issues[] = 'Core 发行缺少准确的 Composer 包版本和提交。';
-            }
-            if (!$versions['admin-shell']['known'] || ($versions['admin-shell']['integrity'] ?? '') !== 'verified') {
-                $issues[] = '当前 Shell 清单缺失或文件未通过校验，请先修复后再更新 Core。';
-            }
-            $manifestPath = public_path(config('ptadmin.web_prefix').'/manifest.json');
-            if (is_file($manifestPath)) {
-                $manifest = UpdateFiles::read($manifestPath);
-                if (!Semver::satisfies($version, $manifest['backend_constraint'] ?? '0.0.0')) {
-                    $issues[] = '当前 Shell 不兼容目标 Core，请先部署兼容 Shell。';
-                }
-            }
-            foreach (glob(config('ptadmin.addon.path', base_path('addons')).'/*/manifest.json') ?: [] as $path) {
-                $addon = UpdateFiles::read($path);
-                $constraint = $addon['compatibility']['ptadmin/core'] ?? null;
-                if (is_string($constraint) && !Semver::satisfies($version, $constraint)) {
-                    $issues[] = '插件 '.($addon['code'] ?? basename(dirname($path))).' 不兼容目标 Core，请先处理插件版本。';
-                }
-            }
+            $issues = [...$issues, ...$this->policy->releaseBlockers($release, $versions)];
         }
         if ($issues !== []) {
             throw new UpdateException(implode(' ', $issues), 'incompatible_release');

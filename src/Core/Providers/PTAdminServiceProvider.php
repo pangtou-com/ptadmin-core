@@ -624,10 +624,6 @@ final class PTAdminServiceProvider extends ServiceProvider
             MenuSyncCommand::class,
             AddonSetupCommand::class,
         ]);
-        $this->callAfterResolving(\Illuminate\Console\Scheduling\Schedule::class, static function ($schedule): void {
-            // 这里只声明计划，实际命令再次检查安装状态；不在 Provider 启动时联网或连接数据库。
-            $schedule->command('ptadmin:updates:check --scheduled')->everyFifteenMinutes();
-        });
     }
 
     private function registerAdminRuntimeBindings(): void
