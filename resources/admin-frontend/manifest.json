@@ -1,15 +1,15 @@
 {
   "manifest_version": 1,
-  "frontend_version": "0.5.0",
+  "frontend_version": "0.5.1",
   "backend_constraint": ">=0.6.0 <1.0.0",
   "api_protocol": 1,
   "schema_protocol": 1,
   "entry": "./index.html",
   "files": [
     {
-      "path": "assets/LoginPage-BDoPkxfU.js",
+      "path": "assets/LoginPage-Bcp2x81D.js",
       "size": 5827,
-      "sha256": "36d99b5a3a0d2e782932ecfa94c7b02203765a9fb3e3acf1c39e716616a1e6be"
+      "sha256": "b9abea5f420c21eedc3a40505491aa585378cf804bbb4a3962bcb09208e3a222"
     },
     {
       "path": "assets/_admin-shared-runtime_element-plus-DNW8tGSz.js",
@@ -32,9 +32,9 @@
       "sha256": "ef44ae59842e037563a26e27b13fd555ea318083757289e4b3f6bbb8be3023d6"
     },
     {
-      "path": "assets/index-BKCKYKIz.css",
-      "size": 637217,
-      "sha256": "b9ab1109d7bd0e22a65a129cbada7a380872f90cf341a35ec21adb155aa34148"
+      "path": "assets/index-B7SUY7tA.js",
+      "size": 1237810,
+      "sha256": "26d86cc380d2fc85b6777d88fbe99435329e6c89fceb967bc9295f321316d9da"
     },
     {
       "path": "assets/index-Bd0SVahD.js",
@@ -42,9 +42,9 @@
       "sha256": "611c29c36abb92d80712c5e1d9b68390de70a08b3010cdcfe277cd3b942dce82"
     },
     {
-      "path": "assets/index-DUdyZprO.js",
-      "size": 1224400,
-      "sha256": "2e6cf4c03cc856671ba599929b016ef373cbdbf1f81c8396c5d8980a3a3ba85a"
+      "path": "assets/index-QyIwsLip.css",
+      "size": 636602,
+      "sha256": "aaec69ff0caa7f731b62323a9d14ea1f4e5d66096c3c0fbdaa4d433ae6df49be"
     },
     {
       "path": "assets/index.esm-B3ROeNbW-BU_memu0.js",
@@ -159,10 +159,10 @@
     {
       "path": "index.html",
       "size": 5068,
-      "sha256": "46fe871852d340e7896ac64ff58683cffecdf8f57b395624ec42d0b08e461588"
+      "sha256": "37fcff53bab030f2fa8ea70d159f12fffef6ac481d76d1fca0a356de1ee675a0"
     }
   ],
-  "artifact_sha256": "7634c86b552a6f7187a5f444115861ba818b52a162af23826d10af3b02cf9cf8",
-  "git_commit": "9cb2ff45c9787963631532602e7909a88ab946d5",
-  "source_sha256": "8a94f452ab40be4979ee2ddfbde928f58053beb2b4d76c257dc75ea6cbc9f463"
+  "artifact_sha256": "04fbebcccece1de40c1a6bc66f240abe8525eae8b6f8a5250d131180aae95d19",
+  "git_commit": "4d2587088ec32e45acd54eb11cf013cf2b5dd9cb",
+  "source_sha256": "01cce0071c3bb76a31eeb8aa8d2fc25bc60337ecdc05e78eb9d389e17754384f"
 }
