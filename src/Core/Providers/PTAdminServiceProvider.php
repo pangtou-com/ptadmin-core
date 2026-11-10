@@ -591,6 +591,7 @@ final class PTAdminServiceProvider extends ServiceProvider
 
         $this->app['router']->aliasMiddleware('ptadmin.session', AuthenticateSessionMiddleware::class);
         $this->app['router']->aliasMiddleware('ptadmin.permission', RequirePermissionMiddleware::class);
+        $this->app['router']->aliasMiddleware('ptadmin.founder', \PTAdmin\Admin\Http\Middleware\RequireFounderMiddleware::class);
         $this->app['router']->aliasMiddleware('ptadmin.audit', RecordAdminOperationMiddleware::class);
         $this->loadRoutesFrom(__DIR__.'/../../../routes/ptadmin.php');
         if ($loadAddonRuntime) {

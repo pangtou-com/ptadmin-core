@@ -273,6 +273,9 @@ final class MenuSynchronizer
         $byKey = [];
         foreach ($definitions as $definition) {
             $key = $definition['resource_key'];
+            if (in_array($key, \PTAdmin\Admin\Auth\FounderAccess::RESOURCE_KEYS, true)) {
+                throw new RuntimeException('云市场和插件管理为创始人专属固定功能，不能声明为菜单或权限资源：'.$key);
+            }
             if (isset($byKey[$key])) {
                 throw new RuntimeException(sprintf('资源声明重复：%s', $key));
             }

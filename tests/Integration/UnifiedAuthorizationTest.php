@@ -38,6 +38,7 @@ final class UnifiedAuthorizationTest extends TestCase
         $app['config']->set('database.connections.testing', ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
         $app['config']->set('ptadmin.addon.path', $this->storage.'/addons');
         $app['config']->set('cache.default', 'array');
+        $app['config']->set('ptadmin.cloud.session_path', $this->storage.'/app/ptadmin/cloud/session.json');
         $app['config']->set('app.key', 'base64:'.base64_encode(str_repeat('a', 32)));
         $app['config']->set('ptadmin.tasks.path', $this->storage.'/app/ptadmin/tasks');
         mkdir($this->storage.'/app/ptadmin/install', 0700, true);
@@ -200,10 +201,10 @@ final class UnifiedAuthorizationTest extends TestCase
         ]])->assertForbidden();
     }
 
-    public function testFounderWithoutGrantsCannotUseManagementEndpoints(): void
+    public function testFounderCloudAccessDoesNotBypassOtherManagementPermissions(): void
     {
         $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
-        $this->withToken($token)->getJson('/ptadmin/cloud/session')->assertForbidden();
+        $this->withToken($token)->getJson('/ptadmin/cloud/session')->assertOk();
         $this->postJson('/ptadmin/system/updates/check')->assertForbidden();
         $this->postJson('/ptadmin/system/updates/install', ['component' => 'core', 'version' => '1.0.0'])->assertForbidden();
     }
@@ -242,17 +243,162 @@ final class UnifiedAuthorizationTest extends TestCase
         self::assertTrue($auth->allows($other, 'update', 'admin.admin_users'));
     }
 
-    public function testCloudManagementGrantAlsoAllowsItsDeliveryTaskProgress(): void
+    public function testCloudMarketRequiresFounderEvenWithPersonalAndRoleGrants(): void
     {
         $this->admin->forceFill(['is_founder' => false])->save();
-        $this->resource = (int) DB::table('admin_resources')->where('resource_key', 'cloud.market')->value('id');
+        $this->resource = DB::table('admin_resources')->insertGetId([
+            'resource_key' => 'cloud.market', 'title' => '旧云市场', 'type' => 'action', 'status' => 1,
+            'meta_json' => json_encode(['abilities' => ['manage']]), 'created_at' => now(), 'updated_at' => now(),
+        ]);
         $this->grant('admin', ['manage'], 'allow', 0);
+        $this->grant('role', ['manage'], 'allow', 0);
+        DB::table('admin_user_roles')->insert(['admin_id' => $this->admin->id, 'role_id' => $this->role, 'created_at' => now(), 'updated_at' => now()]);
         \Illuminate\Support\Facades\Bus::fake();
-        $task = app(\PTAdmin\Core\Tasks\TaskManager::class)->create(\PTAdmin\Core\Tasks\TaskManager::CLOUD_PACKAGE);
+        $tasks = app(\PTAdmin\Core\Tasks\TaskManager::class);
+        $task = $tasks->create(\PTAdmin\Core\Tasks\TaskManager::CLOUD_PACKAGE);
         $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
-        $this->withToken($token)->getJson('/ptadmin/tasks/'.$task['task_id'])->assertOk();
+        $this->withToken($token);
+        foreach (['session', 'session/authorize', 'catalog', 'developer/products'] as $path) {
+            $this->getJson('/ptadmin/cloud/'.$path)->assertForbidden();
+        }
+        foreach (['session/logout', 'orders', 'delivery/options', 'delivery/package', 'licenses/preview'] as $path) {
+            $this->postJson('/ptadmin/cloud/'.$path, [])->assertForbidden();
+        }
+        $path = '/ptadmin/tasks/'.$task['task_id'];
+        $this->getJson($path)->assertForbidden();
+        $this->getJson($path.'/events')->assertForbidden();
+        $this->getJson($path.'/stream')->assertForbidden();
+        $this->postJson($path.'/retry')->assertForbidden();
+        $this->postJson($path.'/cancel')->assertForbidden();
+        \Illuminate\Support\Facades\Bus::assertNothingDispatched();
+
+        $this->admin->forceFill(['is_founder' => true])->save();
         DB::table('admin_grants')->delete();
-        $this->getJson('/ptadmin/tasks/'.$task['task_id'])->assertForbidden();
+        $this->getJson('/ptadmin/cloud/session')->assertOk();
+        $this->getJson($path)->assertOk();
+        \Illuminate\Support\Facades\Bus::assertDispatchedAfterResponse(\PTAdmin\Cloud\ExecuteCloudPackageTask::class);
+        $this->getJson($path.'/events')->assertOk();
+        $this->postJson($path.'/cancel')->assertOk();
+    }
+
+    public function testCloudResourceRetirementPreservesHistoryAndCannotBeRecreated(): void
+    {
+        $this->resource = DB::table('admin_resources')->insertGetId([
+            'resource_key' => 'cloud.market', 'title' => '旧云市场', 'type' => 'action', 'status' => 1,
+            'is_menu' => 0, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $grant = $this->grant('admin', ['manage'], 'allow', 0);
+        $migration = require dirname(__DIR__, 2).'/database/migrations/2026_11_10_140001_retire_cloud_market_authorization_resource.php';
+        $migration->up();
+        $deletedAt = DB::table('admin_resources')->where('id', $this->resource)->value('deleted_at');
+        self::assertNotNull($deletedAt);
+        self::assertTrue(DB::table('admin_grants')->where('id', $grant)->exists());
+        $migration->up();
+        self::assertSame($deletedAt, DB::table('admin_resources')->where('id', $this->resource)->value('deleted_at'));
+        app(MenuSynchronizer::class)->syncCore();
+        self::assertSame(0, DB::table('admin_resources')->where('resource_key', 'cloud.market')->whereNull('deleted_at')->count());
+        $this->schemas();
+        app(InitialAdministratorPermissions::class)->grant($this->admin);
+        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $this->withToken($token);
+        $results = $this->getJson('/ptadmin/schema/action/admin.admin_resources/records?limit=500')->assertOk()->json('data.results');
+        self::assertNotContains('cloud.market', array_column($results, 'resource_key'));
+        $permissions = $this->getJson('/ptadmin/schema/action/admin.admin_users/records/'.$this->admin->id)->assertOk()->json('data.item.permissions');
+        self::assertNotContains('cloud.market', array_column($permissions, 'resource_key'));
+        $this->postJson('/ptadmin/schema/action/admin.admin_resources/records', ['data' => [
+            'resource_key' => 'cloud.market', 'title' => '云市场', 'type' => 'action', 'is_menu' => false, 'status' => true,
+        ]])->assertStatus(422)->assertJsonPath('data.code', 'reserved_resource_key');
+    }
+
+    public function testAddonManagementRequiresFounderAndDoesNotUseLegacyGrants(): void
+    {
+        \Illuminate\Support\Facades\Bus::fake();
+        $this->admin->forceFill(['is_founder' => false])->save();
+        foreach (\PTAdmin\Admin\Auth\FounderAccess::RESOURCE_KEYS as $key) {
+            $this->resource = DB::table('admin_resources')->insertGetId([
+                'resource_key' => $key, 'title' => $key, 'type' => 'action', 'status' => 1,
+                'meta_json' => json_encode(['abilities' => ['view', 'create', 'update', 'delete']]),
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $this->grant('admin', ['*'], 'allow', 0);
+            $this->grant('role', ['*'], 'allow', 0);
+        }
+        $this->bindRole();
+        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $this->withToken($token);
+        foreach (['/ptadmin/addons', '/ptadmin/addons/demo/configuration', '/ptadmin/addons/demo/configuration/general'] as $path) {
+            $this->getJson($path)->assertForbidden();
+        }
+        $this->patchJson('/ptadmin/addons/demo/configuration/general', [])->assertForbidden();
+        foreach (['download', 'demo/install', 'demo/update', 'demo/uninstall', 'demo/frontend-sync', 'demo/enable', 'demo/disable'] as $path) {
+            $this->postJson('/ptadmin/addons/'.$path, [])->assertForbidden();
+        }
+        $tasks = app(\PTAdmin\Core\Tasks\TaskManager::class);
+        $types = ['addon.download', 'addon.install', 'addon.update', 'addon.uninstall', 'addon.frontend_sync', 'addon.enable', 'addon.disable'];
+        foreach ($types as $type) {
+            $task = $tasks->create($type);
+            $path = '/ptadmin/tasks/'.$task['task_id'];
+            $this->postJson('/ptadmin/tasks', ['type' => $type])->assertForbidden();
+            $this->getJson($path)->assertForbidden();
+            $this->getJson($path.'/events')->assertForbidden();
+            $this->getJson($path.'/stream')->assertForbidden();
+            $this->postJson($path.'/retry')->assertForbidden();
+            $this->postJson($path.'/cancel')->assertForbidden();
+            $tasks->cancel($task['task_id']);
+        }
+        \Illuminate\Support\Facades\Bus::assertNothingDispatched();
+        $this->resource = (int) DB::table('admin_resources')->where('resource_key', 'admin.config')->value('id');
+        $this->grant('admin', ['view', 'update'], 'allow', 0);
+        $this->getJson('/ptadmin/config/addon/demo/general')->assertForbidden();
+        $this->putJson('/ptadmin/config/addon/demo/general', ['data' => []])->assertForbidden();
+        $this->admin->forceFill(['is_founder' => true])->save();
+        DB::table('admin_grants')->delete();
+        $this->getJson('/ptadmin/addons')->assertOk();
+        $this->getJson('/ptadmin/addons/demo/configuration')->assertOk();
+        $this->postJson('/ptadmin/addons/download', [])->assertStatus(422)->assertJsonPath('data.error_code', 'addon_source_required');
+        foreach ($types as $type) {
+            $response = $this->postJson('/ptadmin/tasks', ['type' => $type])->assertCreated();
+            $path = '/ptadmin/tasks/'.$response->json('data.task_id');
+            $this->getJson($path)->assertOk();
+            $this->getJson($path.'/events')->assertOk();
+            $this->postJson($path.'/cancel')->assertOk();
+        }
+        $this->admin->forceFill(['is_founder' => false])->save();
+        $this->getJson('/ptadmin/addons')->assertForbidden();
+    }
+
+    public function testAddonResourceRetirementKeepsHistoryAndBlocksRecreation(): void
+    {
+        $keys = array_values(array_diff(\PTAdmin\Admin\Auth\FounderAccess::RESOURCE_KEYS, ['cloud.market']));
+        foreach ($keys as $key) {
+            $this->resource = DB::table('admin_resources')->insertGetId([
+                'resource_key' => $key, 'title' => $key, 'type' => 'action', 'status' => 1,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $this->grant('admin', ['*'], 'allow', 0);
+        }
+        $grants = DB::table('admin_grants')->get();
+        $migration = require dirname(__DIR__, 2).'/database/migrations/2026_11_10_150001_retire_addon_management_authorization_resources.php';
+        $migration->up();
+        $retired = DB::table('admin_resources')->whereIn('resource_key', $keys)->get();
+        $migration->up();
+        app(MenuSynchronizer::class)->syncCore();
+        self::assertEquals($retired, DB::table('admin_resources')->whereIn('resource_key', $keys)->get());
+        self::assertEquals($grants, DB::table('admin_grants')->get());
+        self::assertSame([], app(AuthorizationService::class)->permissions($this->admin));
+        $this->schemas();
+        app(InitialAdministratorPermissions::class)->grant($this->admin);
+        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $this->withToken($token);
+        $listed = array_column($this->getJson('/ptadmin/schema/action/admin.admin_resources/records?limit=500')->assertOk()->json('data.results'), 'resource_key');
+        foreach ($keys as $key) {
+            self::assertNotContains($key, $listed);
+            $id = $retired->firstWhere('resource_key', $key)->id;
+            $this->postJson('/ptadmin/schema/action/admin.admin_resources/records/'.$id.'/restore')->assertStatus(422)->assertJsonPath('data.code', 'action_not_available');
+            $this->postJson('/ptadmin/schema/action/admin.admin_resources/records', ['data' => [
+                'resource_key' => $key, 'title' => $key, 'type' => 'action', 'is_menu' => false, 'status' => true,
+            ]])->assertStatus(422)->assertJsonPath('data.code', 'reserved_resource_key');
+        }
     }
 
     public function testDirectResourceDenyOverridesAnAliasAllow(): void

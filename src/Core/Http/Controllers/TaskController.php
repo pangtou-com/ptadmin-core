@@ -80,9 +80,8 @@ final class TaskController extends Controller
         try {
             $task = $tasks->get($taskId);
             $admin = $this->assertTaskPermissionForTask($task, $request, 'view');
-            $resource = $tasks->resourceFor((string) $task['type']);
-            $dispatchAbility = $task['type'] === TaskManager::CLOUD_PACKAGE ? 'manage' : 'create';
-            if ($this->authorization->allows($admin, $dispatchAbility, $resource)) {
+            // 固定系统任务已通过创始人身份校验，不再查询可分配权限。
+            if (TaskManager::requiresFounder((string) $task['type']) || $this->authorization->allows($admin, 'create', $tasks->resourceFor((string) $task['type']))) {
                 $this->dispatcher->dispatch($task);
             }
             return AdminResponse::success('', $task);
@@ -156,12 +155,12 @@ final class TaskController extends Controller
 
     private function assertTaskPermission(Request $request, string $type, string $ability): Admin
     {
-        if ($type === TaskManager::CLOUD_PACKAGE) {
-            try {
-                return app(\PTAdmin\Cloud\CloudAccess::class)->assert($request);
-            } catch (\PTAdmin\Cloud\CloudException $exception) {
-                throw new TaskException($exception->getMessage(), 'forbidden');
+        if (TaskManager::requiresFounder($type)) {
+            $founder = app(\PTAdmin\Admin\Auth\FounderAccess::class)->resolve($request);
+            if ($founder === null) {
+                throw new TaskException('此任务仅允许启用的创始人账号操作。', 'forbidden');
             }
+            return $founder;
         }
         $session = $request->attributes->get('ptadmin.session');
         $admin = is_array($session) ? Admin::query()->find($session['subject_id'] ?? null) : null;

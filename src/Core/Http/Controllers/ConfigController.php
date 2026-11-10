@@ -59,6 +59,10 @@ final class ConfigController extends Controller
 
     public function show(string $ownerType, string $ownerCode, string $configKey, Request $request, ConfigService $configs): JsonResponse
     {
+        if ($ownerType === 'addon' && app(\PTAdmin\Admin\Auth\FounderAccess::class)->resolve($request) === null) {
+            return AdminResponse::error(40300, '插件配置仅允许启用的创始人账号操作。', null, 403);
+        }
+
         try {
             $configs->assertGenericAccess($ownerType, $ownerCode, $configKey);
             return AdminResponse::success('', $configs->get(
@@ -92,6 +96,10 @@ final class ConfigController extends Controller
 
     public function update(string $ownerType, string $ownerCode, string $configKey, Request $request, ConfigService $configs): JsonResponse
     {
+        if ($ownerType === 'addon' && app(\PTAdmin\Admin\Auth\FounderAccess::class)->resolve($request) === null) {
+            return AdminResponse::error(40300, '插件配置仅允许启用的创始人账号操作。', null, 403);
+        }
+
         $payload = $request->all();
         $data = $payload['data'] ?? $payload;
         if (!is_array($data)) {

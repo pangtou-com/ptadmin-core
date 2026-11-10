@@ -103,6 +103,44 @@ final class MenuChildrenSynchronizationTest extends TestCase
         yield '插件' => ['addon', 'demo', '/plugins/demo'];
     }
 
+    public function testCloudMarketCannotBeDeclaredByAnApplication(): void
+    {
+        $this->write([['resource_key' => 'cloud.market', 'title' => '云市场', 'type' => 'action', 'abilities' => ['manage']]]);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('创始人专属固定功能');
+        $this->menus->syncApp($this->root);
+    }
+
+    public function testCoreOperationsBelongToTheirFunctionsWithoutRegranting(): void
+    {
+        $menus = app(MenuSynchronizer::class);
+        $menus->syncCore();
+        $parents = [
+            'admin.dashboard_widgets' => 'dashboard',
+            'admin.notification_scenes' => 'admin.notification_templates',
+            'admin.notice_channels' => 'admin.notification_templates',
+            'admin.notification_messages' => 'admin.notification_templates',
+            'admin.notification_deliveries' => 'admin.notification_templates',
+            'admin.login_logs' => 'admin.logs', 'admin.operation_records' => 'admin.logs',
+        ];
+        $before = DB::table('admin_resources')->whereIn('resource_key', array_keys($parents))->get()->keyBy('resource_key');
+        DB::table('admin_resources')->whereIn('resource_key', array_keys($parents))->update(['parent_key' => 'admin']);
+        $grantId = DB::table('admin_grants')->insertGetId([
+            'subject_type' => 'admin', 'subject_id' => '5', 'resource_id' => $before['admin.dashboard_widgets']->id,
+            'abilities_json' => '["update"]', 'effect' => 'allow', 'scope_type' => 'all',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $grant = DB::table('admin_grants')->find($grantId);
+        $menus->syncCore();
+        foreach ($parents as $key => $parent) {
+            $this->assertDatabaseHas('admin_resources', [
+                'id' => $before[$key]->id, 'resource_key' => $key, 'parent_key' => $parent, 'meta_json' => $before[$key]->meta_json,
+            ]);
+        }
+        self::assertEquals($grant, DB::table('admin_grants')->find($grantId));
+        self::assertSame(0, $menus->syncCore()['updated']);
+    }
+
     public function testTreeAndFlatFormsAreEquivalentAndRemovedChildrenAreDisabled(): void
     {
         $child = ['resource_key' => 'demo.page', 'type' => 'page', 'path' => 'page', 'is_menu' => true];

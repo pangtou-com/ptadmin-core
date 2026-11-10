@@ -54,7 +54,8 @@ final class InitialAdministratorInstallationTest extends TestCase
         $auth = app(AuthorizationService::class);
         self::assertTrue($admin->is_founder);
         self::assertSame([], $auth->roles($admin));
-        self::assertTrue($auth->allows($admin, 'manage', 'cloud.market'));
+        self::assertFalse($auth->allows($admin, 'manage', 'cloud.market'));
+        self::assertFalse(DB::table('admin_resources')->where('resource_key', 'cloud.market')->exists());
         self::assertTrue($auth->allows($admin, 'list', 'host.orders'));
         self::assertTrue($auth->allows($admin, 'sync_permissions', 'admin.admin_users'));
         $count = DB::table('admin_grants')->count();

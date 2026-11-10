@@ -30,6 +30,7 @@ final class CloudAuthorizationCallbackTest extends TestCase
         $app->useStoragePath($this->storage);
         $app['config']->set('app.key', 'base64:'.base64_encode(str_repeat('b', 32)));
         $app['config']->set('cache.default', 'array');
+        $app['config']->set('ptadmin.cloud.session_path', $this->storage.'/app/ptadmin/cloud/session.json');
         $app['config']->set('database.default', 'testing');
         $app['config']->set('database.connections.testing', ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
         $app['config']->set('ptadmin.addon.path', $this->storage.'/addons');
@@ -70,10 +71,9 @@ final class CloudAuthorizationCallbackTest extends TestCase
     {
         config(['ptadmin.web_prefix' => $prefix, 'ptadmin.cloud.callback_redirect' => $override]);
         $admin = Admin::query()->forceCreate([
-            'username' => 'cloud-founder', 'nickname' => '创始人', 'password' => 'unused', 'status' => 1, 'is_founder' => false,
+            'username' => 'cloud-founder', 'nickname' => '创始人', 'password' => 'unused', 'status' => 1, 'is_founder' => true,
         ]);
         app(\PTAdmin\Admin\Navigation\MenuSynchronizer::class)->syncCore();
-        app(\PTAdmin\Core\Install\InitialAdministratorPermissions::class)->grant($admin);
         $token = app(SessionManager::class)->issue('admin', $admin->id, 'admin')->toArray()['access_token'];
         $authorization = [];
         Http::fake(function (Request $request) use (&$authorization) {
@@ -101,4 +101,25 @@ final class CloudAuthorizationCallbackTest extends TestCase
         $this->get($callback)->assertStatus(422);
         Http::assertSentCount(2);
     }
+    public function testCallbackRejectsAnInitiatorWhoIsNoLongerFounder(): void
+    {
+        $admin = Admin::query()->forceCreate([
+            'username' => 'former-founder', 'password' => 'unused', 'status' => 1, 'is_founder' => true,
+        ]);
+        $token = app(SessionManager::class)->issue('admin', $admin->id, 'admin')->toArray()['access_token'];
+        $authorization = [];
+        Http::fake(function (Request $request) use (&$authorization) {
+            self::assertSame(CloudProtocol::SITE_URL.'/api/cloud/requests', $request->url());
+            $authorization = $request->data();
+            return Http::response(['code' => 0, 'data' => ['request_key' => str_repeat('a', 64)]]);
+        });
+        $response = $this->withToken($token)->getJson('/ptadmin/cloud/session/authorize')->assertOk();
+        $cookie = collect($response->headers->getCookies())->first(fn ($cookie) => str_starts_with($cookie->getName(), 'ptadmin_cloud_'));
+        $admin->forceFill(['is_founder' => false])->save();
+        $callback = $authorization['redirect_uri'].'?'.http_build_query(['state' => $authorization['state'], 'code' => str_repeat('c', 64)]);
+        $this->withUnencryptedCookie($cookie->getName(), $cookie->getValue())->get($callback)->assertForbidden();
+        self::assertNull(app(CloudSessionStoreInterface::class)->get());
+        Http::assertSentCount(1);
+    }
+
 }

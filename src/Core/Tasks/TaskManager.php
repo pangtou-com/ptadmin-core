@@ -381,6 +381,14 @@ final class TaskManager
         return $result;
     }
 
+    public static function requiresFounder(string $type): bool
+    {
+        return in_array($type, [
+            self::CLOUD_PACKAGE, self::ADDON_DOWNLOAD, self::ADDON_INSTALL, self::ADDON_UPDATE,
+            self::ADDON_UNINSTALL, self::ADDON_FRONTEND_SYNC, self::ADDON_ENABLE, self::ADDON_DISABLE,
+        ], true);
+    }
+
     public static function permissionFor(string $type): string
     {
         if (!isset(self::TASK_PERMISSIONS[$type])) {

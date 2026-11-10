@@ -96,10 +96,10 @@ final class CloudController extends Controller
                 throw new CloudException('平台未返回授权码。', 'cloud_oauth_state_invalid');
             }
             $admin = Admin::query()->find($pending['admin_id'] ?? null);
-            if (!$admin instanceof Admin || !(bool) $admin->getAttribute('status')
-                || !app(\PTAdmin\Admin\Auth\AuthorizationService::class)->allows($admin, 'manage', 'cloud.market')) {
+            if (!$admin instanceof Admin) {
                 throw new CloudException('云市场授权发起人已无权继续操作。', 'forbidden');
             }
+            $this->access->assertFounder($admin);
             $origin = collect(app(SessionManager::class)->forSubject($pending['subject_type'], $admin->getKey(), $pending['guard_name']))->firstWhere('id', $pending['session_id']);
             $now = gmdate('Y-m-d H:i:s');
             if ($origin === null || $origin['revoked_at'] !== null || $origin['expires_at'] <= $now || $origin['absolute_expires_at'] <= $now) {

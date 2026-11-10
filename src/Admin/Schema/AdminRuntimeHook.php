@@ -582,6 +582,9 @@ final class AdminRuntimeHook
     private function assertAdminResourceDefinition(array $resource, int $currentId = 0): void
     {
         $resourceKey = trim((string) ($resource['resource_key'] ?? ''));
+        if (in_array($resourceKey, \PTAdmin\Admin\Auth\FounderAccess::RESOURCE_KEYS, true)) {
+            throw $this->error('reserved_resource_key', '云市场和插件管理为创始人专属固定功能，不能创建或修改为权限资源。', ['resource_key' => $resourceKey]);
+        }
         $type = (string) ($resource['type'] ?? '');
         $parentKey = trim((string) ($resource['parent_key'] ?? ''));
         $path = trim((string) ($resource['path'] ?? ''));
