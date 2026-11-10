@@ -12,6 +12,7 @@ use Orchestra\Testbench\TestCase;
 use PTAdmin\Addon\Lifecycle\AddonUsagePermissions;
 use PTAdmin\Addon\Lifecycle\Installer;
 use PTAdmin\Addon\Lifecycle\LifecycleStore;
+use PTAdmin\Addon\Exception\AddonException;
 use PTAdmin\Admin\Auth\AuthorizationService;
 use PTAdmin\Admin\Models\Admin;
 use PTAdmin\Admin\Navigation\MenuSynchronizer;
@@ -22,6 +23,8 @@ use PTAdmin\Cloud\Contracts\ProductDeliveryClientInterface;
 use PTAdmin\Core\Auth\Session\SessionManager;
 use PTAdmin\Core\Providers\PTAdminServiceProvider;
 use PTAdmin\Core\Tasks\TaskManager;
+use PTAdmin\Core\Tasks\Executors\AddonTaskExecutor;
+use PTAdmin\Core\Tests\Support\SignedAddonPackage;
 use RuntimeException;
 
 final class AddonUsagePermissionsTest extends TestCase
@@ -217,6 +220,8 @@ final class AddonUsagePermissionsTest extends TestCase
 
     public function testCloudConfirmationKeepsLocalRolesOutOfPlatformRequests(): void
     {
+        config(['ptadmin.addon.require_signature' => true]);
+        SignedAddonPackage::sign($this->root.'/package');
         Bus::fake();
         $this->login($this->founder);
         app(CloudSessionManager::class)->store(['access_token' => 'test-token', 'refresh_token' => 'refresh', 'expires_at' => time() + 3600]);
@@ -252,9 +257,35 @@ final class AddonUsagePermissionsTest extends TestCase
         $tasks = app(TaskManager::class);
         $tasks->start($task['task_id']);
         app(CloudPackageExecutor::class)->execute($task, $tasks);
+        self::assertSame('cloud_market', app(LifecycleStore::class)->read('usage-addon')['cloud_delivery']['source']);
         self::assertSame(0, DB::table('admin_grants')->where('subject_type', 'admin')->count());
         self::assertSame(1, DB::table('admin_grants')->where('subject_type', 'role')->count());
         self::assertSame($selection, app(AddonUsagePermissions::class)->options('usage-addon')['selection']);
+    }
+
+    public function testLocalInstallRequestCannotSupplyCloudTrust(): void
+    {
+        Bus::fake();
+        config(['ptadmin.addon.require_signature' => true]);
+        SignedAddonPackage::sign($this->root.'/package');
+        $this->login($this->founder);
+        $claim = ['source' => 'cloud_market', 'code' => 'usage-addon', 'version' => '1.0.0'];
+        $task = $this->postJson('/ptadmin/addons/usage-addon/install', [
+            'source' => $this->root.'/package', 'cloud_delivery' => $claim, 'cloudTrust' => $claim,
+        ])->assertStatus(202)->json('data');
+        self::assertArrayNotHasKey('cloud_delivery', $task['payload']);
+        self::assertArrayNotHasKey('cloudTrust', $task['payload']);
+        $tasks = app(TaskManager::class);
+        $tasks->start($task['task_id']);
+        $task['payload']['cloud_delivery'] = $claim;
+        try {
+            app(AddonTaskExecutor::class)->execute($task, $tasks);
+            self::fail('本地任务不得从任务载荷取得云市场信任。');
+        } catch (AddonException $exception) {
+            self::assertSame('trusted_policy_unconfigured', $exception->errorCode);
+        }
+        self::assertNull(app(LifecycleStore::class)->read('usage-addon'));
+        self::assertSame(0, DB::table('admin_grants')->count());
     }
 
     private function login(Admin $admin): void

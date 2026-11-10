@@ -11,6 +11,7 @@ use PTAdmin\Addon\Exception\AddonException;
 use PTAdmin\Addon\Lifecycle\LifecycleStore;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
 use PTAdmin\Addon\Manifest\TrustPolicy;
+use PTAdmin\Addon\Manifest\CloudPackageTrust;
 use RuntimeException;
 
 /**
@@ -308,7 +309,10 @@ final class FrontendRegistry
                 if (!is_string($runtimeProfile) || !in_array($runtimeProfile, $this->supportedRuntimeProfiles, true)) {
                     throw new AddonException('The addon frontend Runtime Profile is unsupported.', 'frontend_runtime_profile_unsupported');
                 }
-                $this->trustPolicy->assertTrusted($manifest);
+                $cloudDelivery = $this->lifecycle->read($code)['cloud_delivery'] ?? null;
+                if (!CloudPackageTrust::matches($this->verifier, $manifest, $cloudDelivery)) {
+                    $this->trustPolicy->assertTrusted($manifest);
+                }
                 $entry['runtime_profile'] = $runtimeProfile;
                 $entry['trust'] = $this->trust($code, $manifest);
             }
@@ -560,6 +564,12 @@ final class FrontendRegistry
         $verifiedAt = $state['updated_at'] ?? null;
         if (is_string($verifiedAt) && $verifiedAt !== '') {
             $trust['verified_at'] = $verifiedAt;
+        }
+        $cloudDelivery = $state['cloud_delivery'] ?? null;
+        if (CloudPackageTrust::matches($this->verifier, $manifest, $cloudDelivery)) {
+            $trust['verified'] = true;
+            $trust['manifest_sha256'] = $cloudDelivery['manifest_sha256'];
+            return $trust;
         }
         $verifiedManifest = $state['manifest'] ?? null;
         if ((!is_array($verifiedManifest) || !is_array($verifiedManifest['verified_files'] ?? null))

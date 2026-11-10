@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PTAdmin\Cloud;
 
 use PTAdmin\Addon\Lifecycle\Installer;
+use PTAdmin\Addon\Manifest\CloudPackageTrust;
 use PTAdmin\Cloud\Contracts\CloudClientInterface;
 use PTAdmin\Cloud\Contracts\ProductDeliveryClientInterface;
 use PTAdmin\Core\Tasks\TaskExecutorInterface;
@@ -12,7 +13,7 @@ use PTAdmin\Core\Tasks\TaskManager;
 use PTAdmin\Core\Tasks\TaskStore;
 use PTAdmin\Core\Theme\ThemeInstaller;
 
-/** 云授权只在取得安装包时检查；取得后复用普通本地安装器。 */
+/** 云授权只在取得安装包时检查；验证交付后为安装器提供具体包的信任上下文。 */
 final class CloudPackageExecutor implements TaskExecutorInterface
 {
     public const TYPE = TaskManager::CLOUD_PACKAGE;
@@ -62,6 +63,7 @@ final class CloudPackageExecutor implements TaskExecutorInterface
             $payload['operation'] === 'update', $payload['code'], $artifact['sha256'],
             static function (string $stage, int $progress, string $message) use ($tasks, $id): void {
                 $tasks->heartbeat($id, $stage, 30 + (int) round($progress * 0.7), $message);
-            }, $payload['usage_permissions'] ?? null);
+            }, $payload['usage_permissions'] ?? null,
+            new CloudPackageTrust($preview['code'], $preview['version'], $artifact['sha256']));
     }
 }

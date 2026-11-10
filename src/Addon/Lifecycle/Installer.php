@@ -10,6 +10,7 @@ use PTAdmin\Addon\Exception\AddonException;
 use PTAdmin\Addon\Catalog\AddonCatalog;
 use PTAdmin\Addon\Frontend\FrontendPublisher;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
+use PTAdmin\Addon\Manifest\CloudPackageTrust;
 use PTAdmin\Addon\Package\PackageExtractor;
 use PTAdmin\Addon\Resource\ResourceSynchronizerInterface;
 use PTAdmin\Addon\Runtime\RuntimeLifecycleValidator;
@@ -60,6 +61,7 @@ final class Installer
      * @param string|null $expectedSha256 下载阶段记录的 artifact 摘要，用于安装前再次确认包未被替换
      * @param callable(string, int, string): void|null $onProgress 阶段变化回调，由任务执行器写入过程日志
      * @param array{founder:bool,role_ids:list<int>}|null $usagePermissions null 沿用已保存选择，首次默认创始人
+     * @param CloudPackageTrust|null $cloudTrust 仅由已验证云交付创建，普通安装入口不得从请求构造
      * @return array<string, mixed>
      * @throws \JsonException
      * @throws \Throwable
@@ -72,11 +74,13 @@ final class Installer
         ?string $expectedSha256 = null,
         ?callable $onProgress = null,
         ?array $usagePermissions = null,
+        ?CloudPackageTrust $cloudTrust = null,
     ): array {
         if ($onProgress !== null) {
             $onProgress('verify', 10, '正在校验安装包摘要。');
         }
         $this->verifyArtifactChecksum($source, $expectedSha256);
+        $cloudTrust?->assertArtifact($source);
         $stage = $this->stagingPath.'/'.bin2hex(random_bytes(8));
         if (!is_dir($stage) && !mkdir($stage, 0700, true) && !is_dir($stage)) {
             throw new RuntimeException('Unable to create addon task staging directory.');
@@ -94,7 +98,8 @@ final class Installer
             if ($onProgress !== null) {
                 $onProgress('verifying', 30, '正在校验插件清单与签名。');
             }
-            $manifest = $this->verifier->verify($package, $this->requireSignature);
+            $manifest = $this->verifier->verify($package, $this->requireSignature, cloudTrust: $cloudTrust);
+            $cloudDelivery = $cloudTrust?->record($this->verifier, $manifest);
             $code = strtolower((string) $manifest['code']);
             if ($expectedCode !== null && strcasecmp($expectedCode, $code) !== 0) {
                 throw new AddonException('The addon code does not match the requested operation.', 'addon_code_mismatch');
@@ -147,12 +152,12 @@ final class Installer
             }
             $resourcesStarted = true;
             $synced = $this->resourceSynchronizer?->sync($target, $code) ?? ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'notices' => 0, 'admin_resources' => 0];
-            $activate = function () use ($target, $code, $manifest, $frontendSource, $webPrefix, $update, $onProgress, $previousLifecycle, $permissionSelection): void {
+            $activate = function () use ($target, $code, $manifest, $frontendSource, $webPrefix, $update, $onProgress, $previousLifecycle, $permissionSelection, $cloudDelivery): void {
                 if ($onProgress !== null) {
                     $onProgress('install_hooks', 75, '正在执行插件安装流程。');
                 }
                 $this->lifecycleRegistrar?->invoke('install', $target, $code, $manifest);
-                $this->lifecycle->transition($code, 'ready', ['version' => $manifest['version'], 'manifest' => $manifest]);
+                $this->lifecycle->transition($code, 'ready', ['version' => $manifest['version'], 'manifest' => $manifest, 'cloud_delivery' => $cloudDelivery]);
                 $disabled = $update && ($previousLifecycle['disabled_by_user'] ?? false) === true;
                 $metadata = ['disabled_by_user' => $disabled];
                 if ($permissionSelection !== null && $this->usagePermissions !== null) {

@@ -31,10 +31,11 @@ final class ManifestVerifier
     /**
      * 验证插件目录及其 manifest；要求签名时同时执行签名校验和 trusted 发布者策略。
      * 市场入库可关闭当前宿主版本匹配，但约束语法、签名和信任策略仍执行；安装保持默认检查。
+     * cloudTrust 仅由安装器在复核云包摘要后传入，以具体交付包替代部署公钥白名单，始终验证签名。
      *
      * @return array<string, mixed> 已附加 verified_files 的规范化 manifest 数据
      */
-    public function verify(string $directory, bool $requireSignature = true, bool $checkBackendCompatibility = true): array
+    public function verify(string $directory, bool $requireSignature = true, bool $checkBackendCompatibility = true, ?CloudPackageTrust $cloudTrust = null): array
     {
         $loaded = $this->loadManifest($directory);
         $root = $loaded['root'];
@@ -43,9 +44,13 @@ final class ManifestVerifier
         $this->assertComposerMapping($root, $manifest);
         $files = $this->buildFileList($root, $manifest);
         $this->assertDirectiveDocumentation($root, $manifest, $files);
-        if ($requireSignature) {
+        if ($requireSignature || $cloudTrust !== null) {
             $this->verifySignature($manifest, $files);
-            $this->trustPolicy?->assertTrusted($manifest);
+            if ($cloudTrust !== null) {
+                $cloudTrust->assertManifest($manifest);
+            } else {
+                $this->trustPolicy?->assertTrusted($manifest);
+            }
         }
         $manifest['verified_files'] = $files;
         return $manifest;
@@ -55,7 +60,7 @@ final class ManifestVerifier
      * 读取运行时 manifest 元数据。
      *
      * 运行时加载允许本地插件二次开发，因此这里只校验 manifest 结构和兼容性，不处理签名、文件清单或文件摘要。
-     * 正式包签名由未来的 artifact 安装流程负责。
+     * 正式包签名由 artifact 安装流程负责。
      *
      * @return array<string, mixed>
      */
