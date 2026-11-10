@@ -9,10 +9,6 @@ use PTAdmin\Admin\Models\Admin;
 
 final class AuthorizationService
 {
-    private const ACCESS_ABILITY = 'access';
-
-    private const LEGACY_MENU_ACCESS_ABILITY = 'view';
-
     private readonly AuthorizationIdentityResolverInterface $identities;
 
     public function __construct(private ConnectionInterface $database, ?AuthorizationIdentityResolverInterface $identities = null)
@@ -49,6 +45,9 @@ final class AuthorizationService
     /** @param list<object> $resources @param list<object> $rows */
     private function evaluate(Admin $admin, string $ability, string $resourceKey, array $resources, array $rows, ?AuthorizationContext $context = null): AuthorizationDecision
     {
+        if ($ability === 'access') {
+            return new AuthorizationDecision(false, 'ability_unavailable');
+        }
         $resourceKeys = [$resourceKey];
         foreach ($resources as $resource) {
             if ((string) $resource->resource_key === $resourceKey) {
@@ -81,17 +80,9 @@ final class AuthorizationService
     {
         $resources = $this->resources();
         $rows = $this->grantRows($admin);
-        $abilities = [];
-        foreach ($rows as $row) {
-            $abilities[(int) $row->resource_id] = array_merge($abilities[(int) $row->resource_id] ?? [], $this->decodeList((string) $row->abilities_json));
-        }
         $permissions = [];
         foreach ($resources as $resource) {
-            $candidates = array_values(array_unique(array_merge(
-                $abilities[(int) $resource->id] ?? [],
-                $this->resourceAbilities($resource),
-                [self::ACCESS_ABILITY],
-            )));
+            $candidates = $this->resourceAbilities($resource);
             foreach ($candidates as $ability) {
                 if ($ability !== '*' && $this->identities->permits($admin, (string) $resource->resource_key, $ability) && $this->evaluate($admin, $ability, (string) $resource->resource_key, $resources, $rows)->allowed) {
                     $permissions[] = (string) $resource->resource_key.'.'.$ability;
@@ -123,7 +114,8 @@ final class AuthorizationService
         $rows = $this->grantRows($admin);
         $available = [];
         $allowed = [];
-        foreach ($resources as $resource) {
+        $navigation = $this->database->table('admin_menus')->whereNull('deleted_at')->where('status', true)->orderBy('sort')->orderBy('id')->get();
+        foreach ($navigation as $resource) {
             if (!(bool) $resource->is_menu) {
                 continue;
             }
@@ -165,8 +157,13 @@ final class AuthorizationService
                 'node' => $menu,
                 'parent_key' => (string) ($resource->parent_key ?? ''),
             ];
-            if ($this->identities->permits($admin, (string) $resource->resource_key, self::ACCESS_ABILITY)
-                && $this->evaluate($admin, self::ACCESS_ABILITY, (string) $resource->resource_key, $resources, $rows)->allowed) {
+            $entry = (string) $resource->entry_permission;
+            $position = strrpos($entry, '.');
+            $entryResource = $position === false ? '' : substr($entry, 0, $position);
+            $entryAbility = $position === false ? '' : substr($entry, $position + 1);
+            if ($type !== 'group' && ($resource->visibility === 'authenticated'
+                || ($entryResource !== '' && $this->identities->permits($admin, $entryResource, $entryAbility)
+                    && $this->evaluate($admin, $entryAbility, $entryResource, $resources, $rows)->allowed))) {
                 $allowed[(string) $resource->resource_key] = true;
             }
         }
@@ -179,6 +176,13 @@ final class AuthorizationService
                 $included[$parentKey] = true;
                 $seen[$parentKey] = true;
                 $parentKey = (string) $available[$parentKey]['parent_key'];
+            }
+        }
+        foreach ($included as $key => $_) {
+            if (!isset($allowed[$key])) {
+                $available[$key]['node']['type'] = 'group';
+                $available[$key]['node']['path'] = '';
+                unset($available[$key]['node']['target_resource_key'], $available[$key]['node']['resource_key'], $available[$key]['node']['external_url']);
             }
         }
         $menus = array_values(array_intersect_key($available, $included));
@@ -203,7 +207,7 @@ final class AuthorizationService
             }
             $abilities = $this->decodeList((string) $row->abilities_json);
             $effect = (string) $row->effect === 'allow' ? 'allow' : 'deny';
-            if (!$this->grantMatchesAbility($abilities, $ability, $effect)) {
+            if (!$this->grantMatchesAbility($abilities, $ability)) {
                 continue;
             }
 
@@ -231,12 +235,9 @@ final class AuthorizationService
     }
 
     /** @param list<string> $abilities */
-    private function grantMatchesAbility(array $abilities, string $ability, string $effect): bool
+    private function grantMatchesAbility(array $abilities, string $ability): bool
     {
         if (in_array($ability, $abilities, true) || in_array('*', $abilities, true)) {
-            return true;
-        }
-        if ($effect === 'allow' && $ability === self::ACCESS_ABILITY && in_array(self::LEGACY_MENU_ACCESS_ABILITY, $abilities, true)) {
             return true;
         }
 

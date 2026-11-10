@@ -34,13 +34,14 @@ final class AddonSetupCommand extends Command
 
         $resources = is_array($result['resources'] ?? null) ? $result['resources'] : [];
         $this->info(sprintf(
-            '插件 %s Setup 完成：state=%s，frontend=%s，Schema=%d，配置=%d，字典=%d，后台资源=%d。',
+            '插件 %s Setup 完成：state=%s，frontend=%s，Schema=%d，配置=%d，字典=%d，导航=%d，权限资源=%d。',
             (string) ($result['code'] ?? $code),
             (string) ($result['state'] ?? 'unknown'),
             ($result['frontend'] ?? false) ? 'published' : 'unchanged',
             (int) ($resources['schemas'] ?? 0),
             (int) ($resources['configs'] ?? 0),
             (int) ($resources['dicts'] ?? 0),
+            (int) ($resources['admin_menus'] ?? 0),
             (int) ($resources['admin_resources'] ?? 0),
         ));
 

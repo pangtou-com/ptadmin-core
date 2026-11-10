@@ -46,7 +46,7 @@ final class ResourceSynchronizer implements ResourceSynchronizerInterface
     /**
      * 以插件 code 作为稳定 Owner 同步全部资源，并拒绝需要显式危险发布确认的 Schema 变更。
      *
-     * @return array{schemas:int,configs:int,dicts:int,notices:int,admin_resources:int}
+     * @return array{schemas:int,configs:int,dicts:int,notices:int,admin_menus:int,admin_resources:int}
      */
     public function sync(string $directory, string $code): array
     {
@@ -54,7 +54,7 @@ final class ResourceSynchronizer implements ResourceSynchronizerInterface
         ($this->autoloader ??= new AddonAutoloader())->register($directory, $manifest);
         $this->runtime->prepareServices($directory, $manifest);
         return $this->frontend->withAddonDesignFlows($directory, $manifest, function () use ($directory, $code): array {
-            $counts = ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'notices' => 0, 'admin_resources' => 0];
+            $counts = ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'notices' => 0, 'admin_menus' => 0, 'admin_resources' => 0];
             $ownerCode = strtolower($code);
             $schemaKeys = [];
             $configKeys = [];
@@ -100,6 +100,7 @@ final class ResourceSynchronizer implements ResourceSynchronizerInterface
                     }
                 }
                 $menuResult = $this->menus->syncAddon($directory, $code);
+                $counts['admin_menus'] = count($menuResult['menu_keys']);
                 $counts['admin_resources'] = count($menuResult['resource_keys']);
                 $counts['dicts'] = $this->dictionaries->syncAddon($directory, $ownerCode);
                 $counts['notices'] = $this->notices->syncAddon($directory, $ownerCode);

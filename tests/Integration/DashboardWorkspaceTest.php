@@ -51,7 +51,7 @@ final class DashboardWorkspaceTest extends TestCase
         $admin = $this->admin();
         $service = app(DashboardService::class);
         self::assertSame([], $service->settings($admin)['available_widgets']);
-        $id = DB::table('admin_resources')->insertGetId(['resource_key' => 'site.orders', 'title' => '订单', 'type' => 'schema', 'status' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        $id = DB::table('admin_resources')->insertGetId(['resource_key' => 'site.orders', 'title' => '订单', 'meta_json' => '{"abilities":["list","detail"]}', 'type' => 'permission', 'status' => 1, 'created_at' => now(), 'updated_at' => now()]);
         $grant = DB::table('admin_grants')->insertGetId([
             'subject_type' => 'admin', 'subject_id' => (string) $admin->id, 'resource_id' => $id,
             'abilities_json' => '["list"]', 'effect' => 'allow', 'scope_type' => 'all', 'created_at' => now(), 'updated_at' => now(),
@@ -112,9 +112,11 @@ final class DashboardWorkspaceTest extends TestCase
         $this->operation($admin->id, now());
         $this->operation($admin->id, now()->subDays(2));
         $this->operation($admin->id + 1, now());
-        DB::table('admin_resources')->insert([
-            ['resource_key' => 'private.page', 'title' => '私有功能', 'type' => 'page', 'path' => '/private', 'is_menu' => 1, 'status' => 1, 'created_at' => now(), 'updated_at' => now()],
-            ['resource_key' => 'disabled.page', 'title' => '停用功能', 'type' => 'page', 'path' => '/disabled', 'is_menu' => 1, 'status' => 0, 'created_at' => now(), 'updated_at' => now()],
+        DB::table('admin_resources')->insert(['resource_key' => 'private.page', 'title' => '私有权限',
+            'type' => 'permission', 'meta_json' => '{"abilities":["view"]}', 'status' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('admin_menus')->insert([
+            ['resource_key' => 'private.page', 'title' => '私有功能', 'type' => 'page', 'path' => '/private', 'entry_permission' => 'private.page.view', 'is_menu' => 1, 'status' => 1, 'created_at' => now(), 'updated_at' => now()],
+            ['resource_key' => 'disabled.page', 'title' => '停用功能', 'type' => 'page', 'path' => '/disabled', 'entry_permission' => 'private.page.view', 'is_menu' => 1, 'status' => 0, 'created_at' => now(), 'updated_at' => now()],
         ]);
         $service = app(DashboardService::class);
         $welcome = $service->dashboard($admin)['welcome'];
@@ -130,7 +132,7 @@ final class DashboardWorkspaceTest extends TestCase
         DB::table('admin_grants')->insert([
             'subject_type' => 'admin', 'subject_id' => (string) $admin->id,
             'resource_id' => DB::table('admin_resources')->where('resource_key', 'private.page')->value('id'),
-            'abilities_json' => '["access"]', 'created_at' => now(), 'updated_at' => now(),
+            'abilities_json' => '["view"]', 'created_at' => now(), 'updated_at' => now(),
         ]);
         $authorized = $service->query($admin, [['code' => 'ptadmin.workspace-summary'], ['code' => 'ptadmin.quick-actions']])['results'];
         self::assertSame(1, array_column($authorized[0]['data']['items'], 'value', 'id')['available_functions']);

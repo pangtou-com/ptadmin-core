@@ -45,7 +45,8 @@ final class InitialAdministratorInstallationTest extends TestCase
         $this->app->setBasePath($this->root);
         file_put_contents($this->root.'/resources/menu.json', json_encode([[
             'resource_key' => 'host.orders', 'title' => '订单', 'type' => 'page', 'path' => 'orders',
-            'is_menu' => true, 'status' => true, 'abilities' => ['list', 'update'],
+            'is_menu' => true, 'status' => true, 'entry_permission' => 'host.orders.list',
+            'permissions' => [['resource_key' => 'host.orders', 'operations' => [['key' => 'list'], ['key' => 'update']]]],
         ]]));
         $input = ['username' => 'founder', 'password' => 'test-password', 'db_connection' => 'sqlite', 'db_database' => 'install.sqlite'];
         $result = app(InstallService::class)->install($input);

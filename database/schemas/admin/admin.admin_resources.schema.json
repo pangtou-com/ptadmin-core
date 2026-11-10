@@ -1,11 +1,11 @@
 {
     "resource": "admin.admin_resources",
-    "table_name": "admin_resources",
+    "table_name": "admin_menus",
     "migration_owner": "domain",
     "schema": {
         "name": "admin_resources",
-        "title": "菜单与权限资源",
-        "description": "以同一棵稳定资源树管理后台导航和服务端权限资源。",
+        "title": "后台导航",
+        "description": "管理独立导航层级与页面入口，业务权限由显式声明维护。",
         "features": {
             "layout": "single"
         },
@@ -46,7 +46,7 @@
                         "left": [
                             {
                                 "action": "create",
-                                "title": "新增资源"
+                                "title": "新增导航"
                             }
                         ],
                         "right": [
@@ -117,11 +117,6 @@
                         {
                             "type": "group",
                             "span": 24,
-                            "show_when": {
-                                "field": "type",
-                                "op": "neq",
-                                "value": "action"
-                            },
                             "children": [
                                 {
                                     "type": "field",
@@ -161,11 +156,54 @@
                                     "component": "icon-input",
                                     "props": {
                                         "icons": [
-                                            "bell", "blocks", "book-open-text", "building-2", "cloud",
-                                            "external-link", "file-text", "folder", "images", "key-round",
-                                            "layout-dashboard", "list-checks", "list-tree", "menu", "network",
-                                            "palette", "scroll-text", "settings", "shield-check", "users"
+                                            "bell",
+                                            "blocks",
+                                            "book-open-text",
+                                            "building-2",
+                                            "cloud",
+                                            "external-link",
+                                            "file-text",
+                                            "folder",
+                                            "images",
+                                            "key-round",
+                                            "layout-dashboard",
+                                            "list-checks",
+                                            "list-tree",
+                                            "menu",
+                                            "network",
+                                            "palette",
+                                            "scroll-text",
+                                            "settings",
+                                            "shield-check",
+                                            "users"
                                         ]
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "type": "group",
+                            "span": 24,
+                            "show_when": {
+                                "field": "type",
+                                "op": "neq",
+                                "value": "group"
+                            },
+                            "children": [
+                                {
+                                    "type": "field",
+                                    "field": "visibility",
+                                    "span": 12
+                                },
+                                {
+                                    "type": "field",
+                                    "field": "entry_permission",
+                                    "component": "admin-entry-permission-picker",
+                                    "span": 12,
+                                    "show_when": {
+                                        "field": "visibility",
+                                        "op": "eq",
+                                        "value": "permission"
                                     }
                                 }
                             ]
@@ -173,12 +211,7 @@
                         {
                             "type": "field",
                             "field": "is_menu",
-                            "span": 12,
-                            "show_when": {
-                                "field": "type",
-                                "op": "neq",
-                                "value": "action"
-                            }
+                            "span": 12
                         },
                         {
                             "type": "field",
@@ -277,11 +310,6 @@
                             "value": "external",
                             "label": "外部链接",
                             "description": "跳转到站外网址"
-                        },
-                        {
-                            "value": "action",
-                            "label": "操作权限",
-                            "description": "只用于授权，不显示在菜单中"
                         }
                     ]
                 }
@@ -318,8 +346,15 @@
                         "load_mode": "all",
                         "limit": 200,
                         "filters": [
-                            { "field": "is_menu", "value": true },
-                            { "field": "resource_key", "operator": "<>", "from": "form.resource_key" }
+                            {
+                                "field": "is_menu",
+                                "value": true
+                            },
+                            {
+                                "field": "resource_key",
+                                "operator": "<>",
+                                "from": "form.resource_key"
+                            }
                         ]
                     }
                 }
@@ -470,10 +505,22 @@
                     "mode": "static",
                     "value_policy": "closed",
                     "items": [
-                        { "value": "core", "label": "核心代码" },
-                        { "value": "addon", "label": "插件代码" },
-                        { "value": "custom", "label": "后台新增" },
-                        { "value": "unknown", "label": "来源未记录" }
+                        {
+                            "value": "core",
+                            "label": "核心代码"
+                        },
+                        {
+                            "value": "addon",
+                            "label": "插件代码"
+                        },
+                        {
+                            "value": "custom",
+                            "label": "后台新增"
+                        },
+                        {
+                            "value": "unknown",
+                            "label": "来源未记录"
+                        }
                     ]
                 }
             },
@@ -485,6 +532,37 @@
                 "readonly": true,
                 "formable": false,
                 "listable": true
+            },
+            {
+                "name": "entry_permission",
+                "type": "string",
+                "label": "入口业务权限",
+                "persisted": true,
+                "formable": true,
+                "listable": true,
+                "description": "填写已声明的资源编码.操作编码，不会创建或授予权限"
+            },
+            {
+                "name": "visibility",
+                "type": "string",
+                "label": "入口可见性",
+                "persisted": true,
+                "formable": true,
+                "default": "permission",
+                "options": {
+                    "mode": "static",
+                    "value_policy": "closed",
+                    "items": [
+                        {
+                            "value": "permission",
+                            "label": "按入口权限显示"
+                        },
+                        {
+                            "value": "authenticated",
+                            "label": "所有已登录管理员可见"
+                        }
+                    ]
+                }
             }
         ]
     }

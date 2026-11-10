@@ -81,6 +81,9 @@ Route::middleware($authenticatedMiddleware)
             ->where('identifier', '[A-Z][A-Z0-9.-]{0,79}')->name('acknowledge');
     });
 
+Route::middleware($authenticatedMiddleware)->get($apiPrefix.'/authorization/catalog', \PTAdmin\Admin\Http\Controllers\AuthorizationCatalogController::class)
+    ->name('ptadmin.authorization.catalog');
+
 Route::middleware($authenticatedMiddleware)
     ->prefix($apiPrefix.'/dashboard')
     ->as('ptadmin.dashboard.')

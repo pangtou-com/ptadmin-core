@@ -90,6 +90,28 @@ final class AddonUsagePermissionsTest extends TestCase
         }
     }
 
+    public function testInstallationCountsSharedNavigationAndPermissionsSeparately(): void
+    {
+        $path = $this->root.'/package/resources/menu.json';
+        $menus = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+        $menus[] = [
+            'resource_key' => 'usage.review', 'title' => '审核入口', 'type' => 'page', 'path' => 'review',
+            'entry_permission' => 'usage.entries.list', 'permissions' => [['ref' => 'usage.entries']],
+        ];
+        file_put_contents($path, json_encode($menus, JSON_THROW_ON_ERROR));
+
+        $result = app(Installer::class)->install($this->root.'/package', 'console');
+        self::assertSame(2, $result['resources']['admin_menus']);
+        self::assertSame(1, $result['resources']['admin_resources']);
+        self::assertSame(1, DB::table('admin_grants')->count());
+
+        $grants = DB::table('admin_grants')->get()->toArray();
+        $this->artisan('ptadmin:addon:setup', ['code' => 'usage-addon'])
+            ->expectsOutputToContain('导航=2，权限资源=1')
+            ->assertSuccessful();
+        self::assertEquals($grants, DB::table('admin_grants')->get()->toArray());
+    }
+
     public function testUpdateAddsNewAbilitiesWithoutRestoringRemovedOrChangingScopedAndDeniedGrants(): void
     {
         $selection = ['founder' => true, 'role_ids' => [$this->role]];
@@ -151,7 +173,7 @@ final class AddonUsagePermissionsTest extends TestCase
         $before = DB::table('admin_grants')->orderBy('id')->get();
         $this->install();
         self::assertEquals($before, DB::table('admin_grants')->whereIn('id', $before->pluck('id'))->orderBy('id')->get());
-        self::assertSame('["access","view"]', DB::table('admin_grants')->orderByDesc('id')->value('abilities_json'));
+        self::assertSame('["view"]', DB::table('admin_grants')->orderByDesc('id')->value('abilities_json'));
     }
 
     public function testFailureRollsBackGrantsAndPolicyAndRetryDoesNotDuplicate(): void
@@ -301,9 +323,9 @@ final class AddonUsagePermissionsTest extends TestCase
     private function package(array $abilities = ['list', 'view', 'delete'], bool $reports = false): void
     {
         file_put_contents($this->root.'/package/manifest.json', json_encode(['code' => 'usage-addon', 'version' => '1.0.0']));
-        $menus = [['resource_key' => 'usage.entries', 'title' => '插件内容', 'type' => 'page', 'path' => 'usage', 'is_menu' => true, 'abilities' => $abilities]];
+        $menus = [['resource_key' => 'usage.entries', 'title' => '插件内容', 'type' => 'page', 'path' => 'usage', 'is_menu' => true, 'entry_permission' => 'usage.entries.list', 'permissions' => [['resource_key' => 'usage.entries', 'operations' => array_map(static fn (string $key): array => ['key' => $key], $abilities)]]]];
         if ($reports) {
-            $menus[] = ['resource_key' => 'usage.reports', 'title' => '报表', 'type' => 'page', 'path' => 'reports', 'is_menu' => true, 'abilities' => ['list']];
+            $menus[] = ['resource_key' => 'usage.reports', 'title' => '报表', 'type' => 'page', 'path' => 'reports', 'is_menu' => true, 'entry_permission' => 'usage.reports.list', 'permissions' => [['resource_key' => 'usage.reports', 'operations' => [['key' => 'list']]]]];
         }
         file_put_contents($this->root.'/package/resources/menu.json', json_encode($menus));
     }

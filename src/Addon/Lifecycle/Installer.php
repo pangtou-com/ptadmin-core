@@ -151,7 +151,7 @@ final class Installer
                 $onProgress('sync_resources', 60, '正在同步插件资源。');
             }
             $resourcesStarted = true;
-            $synced = $this->resourceSynchronizer?->sync($target, $code) ?? ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'notices' => 0, 'admin_resources' => 0];
+            $synced = $this->resourceSynchronizer?->sync($target, $code) ?? ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'notices' => 0, 'admin_menus' => 0, 'admin_resources' => 0];
             $activate = function () use ($target, $code, $manifest, $frontendSource, $webPrefix, $update, $onProgress, $previousLifecycle, $permissionSelection, $cloudDelivery): void {
                 if ($onProgress !== null) {
                     $onProgress('install_hooks', 75, '正在执行插件安装流程。');
@@ -276,7 +276,7 @@ final class Installer
             $this->runtimeCache?->clear();
             $this->runMigrations($target);
             $synced = $this->resourceSynchronizer?->sync($target, $code)
-                ?? ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'notices' => 0, 'admin_resources' => 0];
+                ?? ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'notices' => 0, 'admin_menus' => 0, 'admin_resources' => 0];
             $resourcesChanged = true;
 
             if (!$activate) {

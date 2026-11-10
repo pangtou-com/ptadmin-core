@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
- * 后台权限资源模型。resource_key 同时用于服务端授权、菜单匹配和前端页面注册。
+ * 独立业务权限资源，resource_key 不随导航变化。
  *
  * @property int $id
  * @property string $resource_key

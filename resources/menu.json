@@ -8,18 +8,35 @@
         "status": true,
         "sort": 10,
         "icon": "layout-dashboard",
-        "abilities": ["view"],
-        "children": [
+        "permissions": [
+            {
+                "resource_key": "dashboard",
+                "title": "仪表盘",
+                "operations": [
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    }
+                ],
+                "scopes": [
+                    "all"
+                ]
+            },
             {
                 "resource_key": "admin.dashboard_widgets",
                 "title": "仪表盘布局",
-                "type": "action",
-                "is_menu": false,
-                "status": true,
-                "sort": 100,
-                "abilities": ["update"]
+                "operations": [
+                    {
+                        "key": "update",
+                        "title": "编辑"
+                    }
+                ],
+                "scopes": [
+                    "all"
+                ]
             }
-        ]
+        ],
+        "entry_permission": "dashboard.view"
     },
     {
         "resource_key": "admin",
@@ -29,209 +46,577 @@
         "status": true,
         "sort": 20,
         "icon": "settings",
-        "children": [
-            {
-                "resource_key": "admin.users",
-                "title": "管理员",
-                "type": "schema",
-                "target_resource_key": "admin.admin_users",
-                "path": "/admin/users",
-                "is_menu": true,
-                "status": true,
-                "sort": 10,
-                "icon": "users",
-                "abilities": ["list", "view", "create", "update", "delete", "restore", "purge", "sync_roles", "sync_permissions", "reset_password", "revoke_sessions"]
-            },
-            {
-                "resource_key": "admin.roles",
-                "title": "角色管理",
-                "type": "schema",
-                "target_resource_key": "admin.admin_roles",
-                "path": "/admin/roles",
-                "is_menu": true,
-                "status": true,
-                "sort": 20,
-                "icon": "shield-check",
-                "abilities": ["list", "view", "create", "update", "delete", "restore", "purge", "sync_permissions"]
-            },
-            {
-                "resource_key": "admin.menus",
-                "title": "后台导航",
-                "type": "schema",
-                "target_resource_key": "admin.admin_resources",
-                "path": "/admin/menus",
-                "is_menu": true,
-                "status": true,
-                "sort": 30,
-                "icon": "list-tree",
-                "abilities": ["list", "view", "create", "update", "delete", "restore", "purge", "move_resource", "move_menu"]
-            },
-            {
-                "resource_key": "admin.logs",
-                "title": "日志中心",
-                "type": "page",
-                "path": "/admin/logs",
-                "is_menu": true,
-                "status": true,
-                "sort": 40,
-                "icon": "scroll-text",
-                "abilities": ["view"],
-                "children": [
-                    {
-                        "resource_key": "admin.login_logs",
-                        "title": "登录日志",
-                        "type": "schema",
-                        "target_resource_key": "admin.login_logs",
-                        "is_menu": false,
-                        "status": true,
-                        "sort": 120,
-                        "abilities": ["list", "view"]
-                    },
-                    {
-                        "resource_key": "admin.operation_records",
-                        "title": "操作日志",
-                        "type": "schema",
-                        "target_resource_key": "admin.operation_records",
-                        "is_menu": false,
-                        "status": true,
-                        "sort": 120,
-                        "abilities": ["list", "view"]
-                    }
-                ]
-            },
-            {
-                "resource_key": "admin.dictionaries",
-                "title": "数据字典",
-                "type": "page",
-                "path": "/admin/dictionaries",
-                "is_menu": true,
-                "status": true,
-                "sort": 50,
-                "icon": "book-open-text",
-                "abilities": ["view", "create", "update", "delete"]
-            },
-            {
-                "resource_key": "admin.config",
-                "title": "系统配置",
-                "type": "page",
-                "path": "/settings",
-                "is_menu": true,
-                "status": true,
-                "sort": 60,
-                "icon": "settings",
-                "abilities": ["view", "design", "update"]
-            },
-            {
-                "resource_key": "admin.notification_templates",
-                "title": "通知场景",
-                "type": "schema",
-                "target_resource_key": "admin.notification_templates",
-                "path": "/admin/notifications/templates",
-                "is_menu": true,
-                "status": true,
-                "sort": 80,
-                "icon": "bell",
-                "abilities": ["list", "view", "create", "update", "delete"],
-                "children": [
-                    {
-                        "resource_key": "admin.notification_scenes",
-                        "title": "通知场景定义",
-                        "type": "schema",
-                        "target_resource_key": "admin.notification_scenes",
-                        "is_menu": false,
-                        "status": true,
-                        "sort": 120,
-                        "abilities": ["list", "view"]
-                    },
-                    {
-                        "resource_key": "admin.notice_channels",
-                        "title": "通知渠道",
-                        "type": "schema",
-                        "target_resource_key": "admin.notice_channels",
-                        "is_menu": false,
-                        "status": true,
-                        "sort": 120,
-                        "abilities": ["list", "view"]
-                    },
-                    {
-                        "resource_key": "admin.notification_messages",
-                        "title": "通知消息记录",
-                        "type": "schema",
-                        "target_resource_key": "admin.notification_messages",
-                        "is_menu": false,
-                        "status": true,
-                        "sort": 120,
-                        "abilities": ["list", "view"]
-                    },
-                    {
-                        "resource_key": "admin.notification_deliveries",
-                        "title": "通知投递记录",
-                        "type": "schema",
-                        "target_resource_key": "admin.notification_deliveries",
-                        "is_menu": false,
-                        "status": true,
-                        "sort": 120,
-                        "abilities": ["list", "view"]
-                    }
-                ]
-            },
-            {
-                "resource_key": "assets",
-                "title": "资源中心",
-                "type": "page",
-                "path": "/assets",
-                "is_menu": true,
-                "status": true,
-                "sort": 30,
-                "icon": "images",
-                "abilities": ["view", "upload", "update", "delete", "restore"]
-            },
+        "permissions": [
             {
                 "resource_key": "core.tasks",
                 "title": "任务中心",
-                "type": "action",
-                "is_menu": false,
-                "status": true,
-                "sort": 90,
-                "abilities": ["view", "remove"]
+                "operations": [
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    },
+                    {
+                        "key": "remove",
+                        "title": "remove"
+                    }
+                ],
+                "scopes": [
+                    "all"
+                ]
             },
             {
                 "resource_key": "system.maintenance",
                 "title": "系统维护",
-                "type": "action",
-                "is_menu": false,
-                "status": true,
-                "sort": 101,
-                "abilities": ["manage"]
+                "operations": [
+                    {
+                        "key": "manage",
+                        "title": "manage"
+                    }
+                ],
+                "scopes": [
+                    "all"
+                ]
             },
             {
                 "resource_key": "system.updates",
                 "title": "版本检查与安全提醒",
-                "type": "action",
-                "is_menu": false,
-                "status": true,
-                "sort": 102,
-                "abilities": ["manage"]
+                "operations": [
+                    {
+                        "key": "manage",
+                        "title": "manage"
+                    }
+                ],
+                "scopes": [
+                    "all"
+                ]
             },
             {
                 "resource_key": "core.update",
                 "title": "Core 更新",
-                "type": "action",
-                "is_menu": false,
-                "status": true,
-                "sort": 103,
-                "abilities": ["view", "create", "update"]
+                "operations": [
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    },
+                    {
+                        "key": "create",
+                        "title": "新增"
+                    },
+                    {
+                        "key": "update",
+                        "title": "编辑"
+                    }
+                ],
+                "scopes": [
+                    "all"
+                ]
             },
             {
                 "resource_key": "admin.frontend",
                 "title": "后台界面更新",
-                "type": "action",
-                "is_menu": false,
-                "status": true,
-                "sort": 104,
-                "abilities": ["view", "create", "update"]
+                "operations": [
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    },
+                    {
+                        "key": "create",
+                        "title": "新增"
+                    },
+                    {
+                        "key": "update",
+                        "title": "编辑"
+                    }
+                ],
+                "scopes": [
+                    "all"
+                ]
             }
         ]
+    },
+    {
+        "resource_key": "admin.users",
+        "title": "管理员",
+        "type": "schema",
+        "target_resource_key": "admin.admin_users",
+        "path": "/admin/users",
+        "is_menu": true,
+        "status": true,
+        "sort": 10,
+        "icon": "users",
+        "parent_key": "admin",
+        "permissions": [
+            {
+                "resource_key": "admin.users",
+                "title": "管理员",
+                "operations": [
+                    {
+                        "key": "list",
+                        "title": "查看列表"
+                    },
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    },
+                    {
+                        "key": "create",
+                        "title": "新增"
+                    },
+                    {
+                        "key": "update",
+                        "title": "编辑"
+                    },
+                    {
+                        "key": "delete",
+                        "title": "删除"
+                    },
+                    {
+                        "key": "restore",
+                        "title": "恢复"
+                    },
+                    {
+                        "key": "purge",
+                        "title": "彻底删除"
+                    },
+                    {
+                        "key": "sync_roles",
+                        "title": "设置角色"
+                    },
+                    {
+                        "key": "sync_permissions",
+                        "title": "设置权限"
+                    },
+                    {
+                        "key": "reset_password",
+                        "title": "reset_password"
+                    },
+                    {
+                        "key": "revoke_sessions",
+                        "title": "revoke_sessions"
+                    }
+                ],
+                "target_resource_key": "admin.admin_users",
+                "scopes": [
+                    "all"
+                ]
+            }
+        ],
+        "entry_permission": "admin.users.list"
+    },
+    {
+        "resource_key": "admin.roles",
+        "title": "角色管理",
+        "type": "schema",
+        "target_resource_key": "admin.admin_roles",
+        "path": "/admin/roles",
+        "is_menu": true,
+        "status": true,
+        "sort": 20,
+        "icon": "shield-check",
+        "parent_key": "admin",
+        "permissions": [
+            {
+                "resource_key": "admin.roles",
+                "title": "角色管理",
+                "operations": [
+                    {
+                        "key": "list",
+                        "title": "查看列表"
+                    },
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    },
+                    {
+                        "key": "create",
+                        "title": "新增"
+                    },
+                    {
+                        "key": "update",
+                        "title": "编辑"
+                    },
+                    {
+                        "key": "delete",
+                        "title": "删除"
+                    },
+                    {
+                        "key": "restore",
+                        "title": "恢复"
+                    },
+                    {
+                        "key": "purge",
+                        "title": "彻底删除"
+                    },
+                    {
+                        "key": "sync_permissions",
+                        "title": "设置权限"
+                    }
+                ],
+                "target_resource_key": "admin.admin_roles",
+                "scopes": [
+                    "all"
+                ]
+            }
+        ],
+        "entry_permission": "admin.roles.list"
+    },
+    {
+        "resource_key": "admin.menus",
+        "title": "后台导航",
+        "type": "schema",
+        "target_resource_key": "admin.admin_resources",
+        "path": "/admin/menus",
+        "is_menu": true,
+        "status": true,
+        "sort": 30,
+        "icon": "list-tree",
+        "parent_key": "admin",
+        "permissions": [
+            {
+                "resource_key": "admin.menus",
+                "title": "后台导航",
+                "operations": [
+                    {
+                        "key": "list",
+                        "title": "查看列表"
+                    },
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    },
+                    {
+                        "key": "create",
+                        "title": "新增"
+                    },
+                    {
+                        "key": "update",
+                        "title": "编辑"
+                    },
+                    {
+                        "key": "delete",
+                        "title": "删除"
+                    },
+                    {
+                        "key": "restore",
+                        "title": "恢复"
+                    },
+                    {
+                        "key": "purge",
+                        "title": "彻底删除"
+                    },
+                    {
+                        "key": "move_resource",
+                        "title": "move_resource"
+                    },
+                    {
+                        "key": "move_menu",
+                        "title": "move_menu"
+                    }
+                ],
+                "target_resource_key": "admin.admin_resources",
+                "scopes": [
+                    "all"
+                ]
+            }
+        ],
+        "entry_permission": "admin.menus.list"
+    },
+    {
+        "resource_key": "admin.logs",
+        "title": "日志中心",
+        "type": "page",
+        "path": "/admin/logs",
+        "is_menu": true,
+        "status": true,
+        "sort": 40,
+        "icon": "scroll-text",
+        "parent_key": "admin",
+        "permissions": [
+            {
+                "resource_key": "admin.logs",
+                "title": "日志中心",
+                "operations": [
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    }
+                ],
+                "scopes": [
+                    "all"
+                ]
+            },
+            {
+                "resource_key": "admin.login_logs",
+                "title": "登录日志",
+                "operations": [
+                    {
+                        "key": "list",
+                        "title": "查看列表"
+                    },
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    }
+                ],
+                "target_resource_key": "admin.login_logs",
+                "scopes": [
+                    "all"
+                ]
+            },
+            {
+                "resource_key": "admin.operation_records",
+                "title": "操作日志",
+                "operations": [
+                    {
+                        "key": "list",
+                        "title": "查看列表"
+                    },
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    }
+                ],
+                "target_resource_key": "admin.operation_records",
+                "scopes": [
+                    "all"
+                ]
+            }
+        ],
+        "entry_permission": "admin.logs.view"
+    },
+    {
+        "resource_key": "admin.dictionaries",
+        "title": "数据字典",
+        "type": "page",
+        "path": "/admin/dictionaries",
+        "is_menu": true,
+        "status": true,
+        "sort": 50,
+        "icon": "book-open-text",
+        "parent_key": "admin",
+        "permissions": [
+            {
+                "resource_key": "admin.dictionaries",
+                "title": "数据字典",
+                "operations": [
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    },
+                    {
+                        "key": "create",
+                        "title": "新增"
+                    },
+                    {
+                        "key": "update",
+                        "title": "编辑"
+                    },
+                    {
+                        "key": "delete",
+                        "title": "删除"
+                    }
+                ],
+                "scopes": [
+                    "all"
+                ]
+            }
+        ],
+        "entry_permission": "admin.dictionaries.view"
+    },
+    {
+        "resource_key": "admin.config",
+        "title": "系统配置",
+        "type": "page",
+        "path": "/settings",
+        "is_menu": true,
+        "status": true,
+        "sort": 60,
+        "icon": "settings",
+        "parent_key": "admin",
+        "permissions": [
+            {
+                "resource_key": "admin.config",
+                "title": "系统配置",
+                "operations": [
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    },
+                    {
+                        "key": "design",
+                        "title": "design"
+                    },
+                    {
+                        "key": "update",
+                        "title": "编辑"
+                    }
+                ],
+                "scopes": [
+                    "all"
+                ]
+            }
+        ],
+        "entry_permission": "admin.config.view"
+    },
+    {
+        "resource_key": "admin.notification_templates",
+        "title": "通知场景",
+        "type": "schema",
+        "target_resource_key": "admin.notification_templates",
+        "path": "/admin/notifications/templates",
+        "is_menu": true,
+        "status": true,
+        "sort": 80,
+        "icon": "bell",
+        "parent_key": "admin",
+        "permissions": [
+            {
+                "resource_key": "admin.notification_templates",
+                "title": "通知场景",
+                "operations": [
+                    {
+                        "key": "list",
+                        "title": "查看列表"
+                    },
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    },
+                    {
+                        "key": "create",
+                        "title": "新增"
+                    },
+                    {
+                        "key": "update",
+                        "title": "编辑"
+                    },
+                    {
+                        "key": "delete",
+                        "title": "删除"
+                    }
+                ],
+                "target_resource_key": "admin.notification_templates",
+                "scopes": [
+                    "all"
+                ]
+            },
+            {
+                "resource_key": "admin.notification_scenes",
+                "title": "通知场景定义",
+                "operations": [
+                    {
+                        "key": "list",
+                        "title": "查看列表"
+                    },
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    }
+                ],
+                "target_resource_key": "admin.notification_scenes",
+                "scopes": [
+                    "all"
+                ]
+            },
+            {
+                "resource_key": "admin.notice_channels",
+                "title": "通知渠道",
+                "operations": [
+                    {
+                        "key": "list",
+                        "title": "查看列表"
+                    },
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    }
+                ],
+                "target_resource_key": "admin.notice_channels",
+                "scopes": [
+                    "all"
+                ]
+            },
+            {
+                "resource_key": "admin.notification_messages",
+                "title": "通知消息记录",
+                "operations": [
+                    {
+                        "key": "list",
+                        "title": "查看列表"
+                    },
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    }
+                ],
+                "target_resource_key": "admin.notification_messages",
+                "scopes": [
+                    "all"
+                ]
+            },
+            {
+                "resource_key": "admin.notification_deliveries",
+                "title": "通知投递记录",
+                "operations": [
+                    {
+                        "key": "list",
+                        "title": "查看列表"
+                    },
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    }
+                ],
+                "target_resource_key": "admin.notification_deliveries",
+                "scopes": [
+                    "all"
+                ]
+            }
+        ],
+        "entry_permission": "admin.notification_templates.list"
+    },
+    {
+        "resource_key": "assets",
+        "title": "资源中心",
+        "type": "page",
+        "path": "/assets",
+        "is_menu": true,
+        "status": true,
+        "sort": 30,
+        "icon": "images",
+        "parent_key": "admin",
+        "permissions": [
+            {
+                "resource_key": "assets",
+                "title": "资源中心",
+                "operations": [
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    },
+                    {
+                        "key": "upload",
+                        "title": "upload"
+                    },
+                    {
+                        "key": "update",
+                        "title": "编辑"
+                    },
+                    {
+                        "key": "delete",
+                        "title": "删除"
+                    },
+                    {
+                        "key": "restore",
+                        "title": "恢复"
+                    }
+                ],
+                "scopes": [
+                    "all"
+                ]
+            }
+        ],
+        "entry_permission": "assets.view"
     },
     {
         "resource_key": "site",
@@ -241,57 +626,147 @@
         "status": true,
         "sort": 30,
         "icon": "globe",
-        "children": [
+        "permissions": []
+    },
+    {
+        "resource_key": "schema.resources",
+        "title": "模型管理",
+        "type": "page",
+        "path": "/schema/resources",
+        "is_menu": true,
+        "status": true,
+        "sort": 20,
+        "icon": "blocks",
+        "parent_key": "site",
+        "permissions": [
             {
                 "resource_key": "schema.resources",
                 "title": "模型管理",
-                "type": "page",
-                "path": "/schema/resources",
-                "is_menu": true,
-                "status": true,
-                "sort": 20,
-                "icon": "blocks",
-                "abilities": ["view", "create", "update", "delete", "publish"]
-            },
+                "operations": [
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    },
+                    {
+                        "key": "create",
+                        "title": "新增"
+                    },
+                    {
+                        "key": "update",
+                        "title": "编辑"
+                    },
+                    {
+                        "key": "delete",
+                        "title": "删除"
+                    },
+                    {
+                        "key": "publish",
+                        "title": "publish"
+                    }
+                ],
+                "scopes": [
+                    "all"
+                ]
+            }
+        ],
+        "entry_permission": "schema.resources.view"
+    },
+    {
+        "resource_key": "themes",
+        "title": "主题管理",
+        "type": "page",
+        "path": "/themes",
+        "is_menu": true,
+        "status": true,
+        "sort": 10,
+        "icon": "palette",
+        "parent_key": "site",
+        "permissions": [
             {
                 "resource_key": "themes",
                 "title": "主题管理",
-                "type": "page",
-                "path": "/themes",
-                "is_menu": true,
-                "status": true,
-                "sort": 10,
-                "icon": "palette",
-                "abilities": ["view"],
-                "children": [
+                "operations": [
                     {
-                        "resource_key": "site.theme",
-                        "title": "主题操作",
-                        "type": "action",
-                        "is_menu": false,
-                        "status": true,
-                        "abilities": ["read", "install", "activate", "publish", "remove"]
-                    },
-                    {
-                        "resource_key": "site.theme.install",
-                        "title": "主题安装任务",
-                        "type": "action",
-                        "is_menu": false,
-                        "status": true,
-                        "sort": 114,
-                        "abilities": ["view", "create", "update"]
-                    },
-                    {
-                        "resource_key": "site.theme.remove",
-                        "title": "主题移除任务",
-                        "type": "action",
-                        "is_menu": false,
-                        "status": true,
-                        "sort": 115,
-                        "abilities": ["view", "create", "update"]
+                        "key": "view",
+                        "title": "查看详情"
                     }
+                ],
+                "scopes": [
+                    "all"
+                ]
+            },
+            {
+                "resource_key": "site.theme",
+                "title": "主题操作",
+                "operations": [
+                    {
+                        "key": "read",
+                        "title": "读取"
+                    },
+                    {
+                        "key": "install",
+                        "title": "install"
+                    },
+                    {
+                        "key": "activate",
+                        "title": "activate"
+                    },
+                    {
+                        "key": "publish",
+                        "title": "publish"
+                    },
+                    {
+                        "key": "remove",
+                        "title": "remove"
+                    }
+                ],
+                "scopes": [
+                    "all"
+                ]
+            },
+            {
+                "resource_key": "site.theme.install",
+                "title": "主题安装任务",
+                "operations": [
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    },
+                    {
+                        "key": "create",
+                        "title": "新增"
+                    },
+                    {
+                        "key": "update",
+                        "title": "编辑"
+                    }
+                ],
+                "scopes": [
+                    "all"
+                ]
+            },
+            {
+                "resource_key": "site.theme.remove",
+                "title": "主题移除任务",
+                "operations": [
+                    {
+                        "key": "view",
+                        "title": "查看详情"
+                    },
+                    {
+                        "key": "create",
+                        "title": "新增"
+                    },
+                    {
+                        "key": "update",
+                        "title": "编辑"
+                    }
+                ],
+                "scopes": [
+                    "all"
                 ]
             }
-        ]
+        ],
+        "entry_permission": "themes.view"
     }
 ]

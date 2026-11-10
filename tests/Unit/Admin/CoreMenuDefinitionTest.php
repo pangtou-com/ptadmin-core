@@ -18,6 +18,10 @@ final class CoreMenuDefinitionTest extends TestCase
 
         self::assertArrayHasKey($resourceKey, $menus);
         foreach ($expected as $field => $value) {
+            if ($field === 'abilities') {
+                self::assertSame($value, array_column($menus[$resourceKey]['permissions'][0]['operations'], 'key'));
+                continue;
+            }
             self::assertArrayHasKey($field, $menus[$resourceKey]);
             self::assertSame($value, $menus[$resourceKey][$field], $resourceKey.'.'.$field);
         }
@@ -61,7 +65,7 @@ final class CoreMenuDefinitionTest extends TestCase
 
         self::assertCount(count($definitions), $resources);
         foreach ($resources as $resource) {
-            self::assertContains($resource['type'], ['group', 'schema', 'page', 'external', 'action']);
+            self::assertContains($resource['type'], ['group', 'schema', 'page', 'external']);
             self::assertArrayNotHasKey('page_key', $resource);
             self::assertArrayNotHasKey('addon_code', $resource);
             if ($resource['type'] === 'page') {
@@ -76,9 +80,9 @@ final class CoreMenuDefinitionTest extends TestCase
     {
         $definitions = $this->definitions();
         $resources = array_column($definitions, null, 'resource_key');
-        self::assertSame('action', $resources['core.tasks']['type']);
-        self::assertFalse($resources['core.tasks']['is_menu']);
-        self::assertSame(['view', 'remove'], $resources['core.tasks']['abilities']);
+        self::assertArrayNotHasKey('core.tasks', $resources);
+        $permissions = array_column($resources['admin']['permissions'], null, 'resource_key');
+        self::assertSame(['view', 'remove'], array_column($permissions['core.tasks']['operations'], 'key'));
     }
 
     public function testSchemaMenuPermissionsAreExplicitlyDeclared(): void
@@ -88,19 +92,19 @@ final class CoreMenuDefinitionTest extends TestCase
 
         self::assertSame(
             ['list', 'view', 'create', 'update', 'delete', 'restore', 'purge', 'sync_roles', 'sync_permissions', 'reset_password', 'revoke_sessions'],
-            $resources['admin.users']['abilities'],
+            array_column($resources['admin.users']['permissions'][0]['operations'], 'key'),
         );
         self::assertSame(
             ['list', 'view', 'create', 'update', 'delete', 'restore', 'purge', 'sync_permissions'],
-            $resources['admin.roles']['abilities'],
+            array_column($resources['admin.roles']['permissions'][0]['operations'], 'key'),
         );
         self::assertSame(
             ['list', 'view', 'create', 'update', 'delete', 'restore', 'purge', 'move_resource', 'move_menu'],
-            $resources['admin.menus']['abilities'],
+            array_column($resources['admin.menus']['permissions'][0]['operations'], 'key'),
         );
         self::assertSame(
             ['list', 'view', 'create', 'update', 'delete'],
-            $resources['admin.notification_templates']['abilities'],
+            array_column($resources['admin.notification_templates']['permissions'][0]['operations'], 'key'),
         );
     }
 

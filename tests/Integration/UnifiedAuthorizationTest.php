@@ -124,30 +124,25 @@ final class UnifiedAuthorizationTest extends TestCase
         self::assertFalse($auth->allows($this->admin, 'list', 'admin.admin_users'));
     }
 
-    public function testAccessOnlyDoesNotAllowBusinessOperations(): void
+    public function testRemovedAccessDoesNotExposeMenusOrBusinessOperations(): void
     {
         $this->grant('admin', ['access'], 'allow', 0);
         $auth = app(AuthorizationService::class);
-        self::assertTrue($auth->allows($this->admin, 'access', 'admin.users'));
+        self::assertFalse($auth->allows($this->admin, 'access', 'admin.users'));
         self::assertFalse($auth->allows($this->admin, 'list', 'admin.admin_users'));
-        self::assertFalse($auth->allows($this->admin, 'sync_permissions', 'admin.admin_users'));
-        self::assertNotEmpty($auth->menus($this->admin));
+        self::assertSame([], $auth->menus($this->admin));
+        self::assertNotContains('admin.users.access', $auth->permissions($this->admin));
     }
 
-    public function testViewDenialDoesNotImplicitlyDenyAccessAndAccessDenialBeatsLegacyViewAllow(): void
+    public function testEntryDenialHidesMenuWithoutDenyingOtherOperations(): void
     {
         $auth = app(AuthorizationService::class);
-        $this->grant('admin', ['view'], 'allow', 0);
-        $deny = $this->grant('admin', ['view'], 'deny', 0);
-        self::assertFalse($auth->allows($this->admin, 'view', 'admin.users'));
-        self::assertTrue($auth->allows($this->admin, 'access', 'admin.users'));
-        self::assertContains('admin.users.access', $auth->permissions($this->admin));
+        $this->grant('admin', ['list', 'view'], 'allow', 0);
         self::assertNotEmpty($auth->menus($this->admin));
-        DB::table('admin_grants')->where('id', $deny)->update(['abilities_json' => json_encode(['access'])]);
-        self::assertFalse($auth->allows($this->admin, 'access', 'admin.users'));
-        self::assertTrue($auth->allows($this->admin, 'view', 'admin.users'));
-        self::assertNotContains('admin.users.access', $auth->permissions($this->admin));
+        $this->grant('admin', ['list'], 'deny', 0);
         self::assertSame([], $auth->menus($this->admin));
+        self::assertTrue($auth->allows($this->admin, 'view', 'admin.users'));
+        self::assertFalse($auth->allows($this->admin, 'list', 'admin.users'));
     }
 
     public function testPersonalAndRoleScopesAreCombinedWithinMandatoryBoundary(): void
@@ -219,7 +214,7 @@ final class UnifiedAuthorizationTest extends TestCase
         ]);
         $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
         $this->withToken($token);
-        $allow = ['resource_key' => 'admin.users', 'effect' => 'allow', 'abilities' => ['access', 'list', 'update'], 'priority' => 0, 'scope_type' => 'all'];
+        $allow = ['resource_key' => 'admin.users', 'effect' => 'allow', 'abilities' => ['list', 'update'], 'priority' => 0, 'scope_type' => 'all'];
         $deny = ['resource_key' => 'admin.users', 'effect' => 'deny', 'abilities' => ['update'], 'priority' => 0, 'scope_type' => 'all'];
         $save = function (string $resource, int $id, array $permissions): void {
             $this->postJson('/ptadmin/schema/action', ['operation' => 'executeAction', 'context' => [
@@ -232,7 +227,7 @@ final class UnifiedAuthorizationTest extends TestCase
         $save('admin.admin_users', $other->id, [$deny]);
         self::assertFalse($auth->allows($other, 'update', 'admin.admin_users'));
         self::assertTrue($auth->allows($other, 'list', 'admin.admin_users'));
-        self::assertTrue($auth->allows($other, 'access', 'admin.users'));
+        self::assertTrue($auth->allows($other, 'list', 'admin.users'));
         $save('admin.admin_users', $other->id, []);
         self::assertTrue($auth->allows($other, 'update', 'admin.admin_users'));
         $save('admin.admin_users', $other->id, [$allow]);
@@ -306,7 +301,7 @@ final class UnifiedAuthorizationTest extends TestCase
         $permissions = $this->getJson('/ptadmin/schema/action/admin.admin_users/records/'.$this->admin->id)->assertOk()->json('data.item.permissions');
         self::assertNotContains('cloud.market', array_column($permissions, 'resource_key'));
         $this->postJson('/ptadmin/schema/action/admin.admin_resources/records', ['data' => [
-            'resource_key' => 'cloud.market', 'title' => '云市场', 'type' => 'action', 'is_menu' => false, 'status' => true,
+            'resource_key' => 'cloud.market', 'title' => '云市场', 'type' => 'group', 'is_menu' => false, 'status' => true,
         ]])->assertStatus(422)->assertJsonPath('data.code', 'reserved_resource_key');
     }
 
@@ -396,7 +391,7 @@ final class UnifiedAuthorizationTest extends TestCase
             $id = $retired->firstWhere('resource_key', $key)->id;
             $this->postJson('/ptadmin/schema/action/admin.admin_resources/records/'.$id.'/restore')->assertStatus(422)->assertJsonPath('data.code', 'action_not_available');
             $this->postJson('/ptadmin/schema/action/admin.admin_resources/records', ['data' => [
-                'resource_key' => $key, 'title' => $key, 'type' => 'action', 'is_menu' => false, 'status' => true,
+                'resource_key' => $key, 'title' => $key, 'type' => 'group', 'is_menu' => false, 'status' => true,
             ]])->assertStatus(422)->assertJsonPath('data.code', 'reserved_resource_key');
         }
     }

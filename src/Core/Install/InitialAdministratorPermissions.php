@@ -20,7 +20,7 @@ final class InitialAdministratorPermissions
         $grants = [];
         foreach ($resources as $resource) {
             $meta = json_decode((string) $resource->meta_json, true, 512, JSON_THROW_ON_ERROR);
-            $abilities = array_values(array_unique(array_merge(['access'], $meta['abilities'] ?? [])));
+            $abilities = array_values(array_unique(($meta['abilities'] ?? [])));
             $abilities = array_values(array_filter($abilities, static fn (string $ability): bool => $ability !== '*'));
             $grants[] = [
                 'subject_type' => 'admin', 'subject_id' => (string) $admin->getKey(),

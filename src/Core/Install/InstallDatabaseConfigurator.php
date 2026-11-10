@@ -28,6 +28,7 @@ final class InstallDatabaseConfigurator
         'admins',
         'admin_roles',
         'admin_resources',
+        'admin_menus',
         'admin_user_roles',
         'admin_grants',
         'admin_dashboard_widgets',

@@ -12,7 +12,7 @@ final class MenuSyncCommand extends Command
 {
     protected $signature = 'ptadmin:menu:sync';
 
-    protected $description = '同步 Core 和插件 resources/menu.json 到 admin_resources';
+    protected $description = '同步 Core 和插件 resources/menu.json 到独立导航和权限模型';
 
     public function __construct(private MenuSynchronizer $menus)
     {

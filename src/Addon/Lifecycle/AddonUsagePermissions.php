@@ -78,7 +78,7 @@ final class AddonUsagePermissions
             $key = $subject['type'].':'.$subject['id'];
             foreach ($resources as $resource) {
                 $meta = json_decode($resource->meta_json, true, 512, JSON_THROW_ON_ERROR);
-                $abilities = array_values(array_diff(array_unique(array_merge(['access'], $meta['abilities'] ?? [])), ['*']));
+                $abilities = array_values(array_diff(array_unique(($meta['abilities'] ?? [])), ['*']));
                 $seen = $history[$key][$resource->resource_key] ?? [];
                 $configuredAbilities = $configured[$key][$resource->id] ?? [];
                 $missing = in_array('*', $configuredAbilities, true) ? [] : array_values(array_diff($abilities, $seen, $configuredAbilities));

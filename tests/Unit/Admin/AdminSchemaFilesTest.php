@@ -13,7 +13,7 @@ final class AdminSchemaFilesTest extends TestCase
     private const RESOURCES = [
         'admin.dashboard_widgets' => ['table' => 'admin_dashboard_widgets', 'name' => 'dashboard_widgets'],
         'admin.login_logs' => ['table' => 'admin_login_logs', 'name' => 'login_logs'],
-        'admin.admin_resources' => ['table' => 'admin_resources', 'name' => 'admin_resources'],
+        'admin.admin_resources' => ['table' => 'admin_menus', 'name' => 'admin_resources'],
         'admin.admin_roles' => ['table' => 'admin_roles', 'name' => 'admin_roles'],
         'admin.admin_users' => ['table' => 'admins', 'name' => 'admin_users'],
         'admin.notification_deliveries' => ['table' => 'notice_deliveries', 'name' => 'notice_deliveries'],

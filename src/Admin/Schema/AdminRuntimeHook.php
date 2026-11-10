@@ -6,10 +6,9 @@ namespace PTAdmin\Admin\Schema;
 
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Facades\Hash;
-use PTAdmin\Admin\Auth\AuthorizationResourceCatalog;
 use PTAdmin\Admin\Models\Admin;
 use PTAdmin\Admin\Models\AdminRole;
-use PTAdmin\Admin\Models\AdminResource;
+use PTAdmin\Admin\Models\AdminMenu;
 use PTAdmin\Core\Auth\DataScopeRegistry;
 use PTAdmin\Core\Auth\Session\SessionManager;
 use PTAdmin\Notice\NoticeTemplateException;
@@ -30,7 +29,6 @@ final class AdminRuntimeHook
         private ConnectionInterface $database,
         private SessionManager $sessions,
         private DataScopeRegistry $scopes,
-        private AuthorizationResourceCatalog $authorizationResources,
         private NoticeTemplateValidator $noticeTemplates,
     ) {
     }
@@ -65,7 +63,7 @@ final class AdminRuntimeHook
             $prepared['is_system'] = false;
         }
         if ($resourceKey === 'admin.admin_resources') {
-            if (AdminResource::query()->where('resource_key', (string) ($prepared['resource_key'] ?? ''))->exists()) {
+            if (AdminMenu::query()->where('resource_key', (string) ($prepared['resource_key'] ?? ''))->exists()) {
                 throw $this->error('resource_key_conflict', '权限资源编码已经存在。', ['field' => 'resource_key']);
             }
             $prepared = $this->prepareAdminResource($input, $prepared);
@@ -148,7 +146,7 @@ final class AdminRuntimeHook
                 throw $this->error('system_role_protected', '系统角色标记和状态不能修改。', ['id' => $id]);
             }
         } elseif ($resourceKey === 'admin.admin_resources') {
-            $resource = AdminResource::query()->findOrFail($id);
+            $resource = AdminMenu::query()->findOrFail($id);
             if (array_key_exists('resource_key', $input) && (string) $input['resource_key'] !== (string) $resource->resource_key) {
                 throw $this->error('resource_key_immutable', '权限资源编码创建后不能修改。', ['id' => $id]);
             }
@@ -191,8 +189,8 @@ final class AdminRuntimeHook
             }
         } elseif ($resourceKey === 'admin.admin_resources') {
             $resource = $context->stage === 'purge.before'
-                ? AdminResource::withTrashed()->findOrFail($id)
-                : AdminResource::query()->findOrFail($id);
+                ? AdminMenu::withTrashed()->findOrFail($id)
+                : AdminMenu::query()->findOrFail($id);
             $this->assertResourceCanBeRemoved($resource);
         }
     }
@@ -227,7 +225,6 @@ final class AdminRuntimeHook
             $row['permissions'] = $this->permissionPayload('role', (string) ($row['id'] ?? 0));
         } elseif ($resourceKey === 'admin.admin_resources') {
             $meta = $this->decodeMeta($row['meta_json'] ?? null);
-            $capabilities = $this->authorizationResources->capabilities($row);
             unset($row['meta_json']);
             $row['target_resource_key'] = (string) ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '');
             $row['icon'] = (string) ($row['icon'] ?? $meta['icon'] ?? '');
@@ -235,8 +232,6 @@ final class AdminRuntimeHook
             $row['owner_type'] = $this->resourceOwnerType($meta);
             $row['owner_code'] = (string) ($meta['owner_code'] ?? '');
             $row['is_core'] = $this->isCoreResource((string) ($row['resource_key'] ?? ''));
-            $row['abilities'] = $capabilities['abilities'];
-            $row['scopes'] = $capabilities['scopes'];
         } elseif (in_array($resourceKey, ['admin.login_logs', 'admin.operation_records'], true)) {
             $row['admin_name'] = $this->adminName((int) ($row['admin_id'] ?? 0), (string) ($row['username'] ?? ''));
         }
@@ -364,7 +359,7 @@ final class AdminRuntimeHook
     private function replacePermissions(string $subjectType, string $subjectId, array $permissions): void
     {
         $resources = $this->database->table('admin_resources')->whereNull('deleted_at')
-            ->whereIn('resource_key', array_column($permissions, 'resource_key'))->get(['id', 'type', 'resource_key'])->keyBy('resource_key');
+            ->whereIn('resource_key', array_column($permissions, 'resource_key'))->get(['id', 'type', 'resource_key', 'meta_json'])->keyBy('resource_key');
         $normalized = [];
         foreach ($permissions as $permission) {
             if (!is_array($permission)) {
@@ -379,15 +374,18 @@ final class AdminRuntimeHook
             if ($abilities === [] || collect($abilities)->contains(static fn (string $ability): bool => $ability !== '*' && preg_match('/^[a-z][a-z0-9_.-]{0,99}$/', $ability) !== 1)) {
                 throw $this->error('invalid_permission', '权限动作列表不合法。', ['resource_key' => $resourceKey]);
             }
+            $declared = $this->decodeMeta($resource->meta_json)['abilities'] ?? [];
+            if (array_diff($abilities, $declared) !== []) {
+                throw $this->error('invalid_permission', '权限动作未显式声明。', ['resource_key' => $resourceKey]);
+            }
             $effect = (string) ($permission['effect'] ?? 'allow');
             if (!in_array($effect, ['allow', 'deny'], true)) {
                 throw $this->error('invalid_permission', '权限效果只支持 allow 或 deny。', ['resource_key' => $resourceKey]);
             }
             $scopeType = $this->nullableString($permission['scope_type'] ?? null);
-            if ((string) $resource->type === 'schema' && $scopeType === null) {
+            if ($scopeType === null) {
                 throw $this->error('invalid_permission', 'Schema 资源授权必须明确数据范围。', ['resource_key' => $resourceKey]);
             }
-            $scopeType ??= 'all';
             $scopeValue = $permission['scope_value'] ?? null;
             if ($scopeValue !== null && !is_array($scopeValue)) {
                 throw $this->error('invalid_permission', '权限数据范围参数必须是对象或数组。', ['resource_key' => $resourceKey]);
@@ -516,7 +514,7 @@ final class AdminRuntimeHook
      * @param array<string, mixed> $prepared
      * @return array<string, mixed>
      */
-    private function prepareAdminResource(array $input, array $prepared, ?AdminResource $current = null): array
+    private function prepareAdminResource(array $input, array $prepared, ?AdminMenu $current = null): array
     {
         $currentAttributes = $current?->getAttributes() ?? [];
         $meta = $this->decodeMeta($currentAttributes['meta_json'] ?? null);
@@ -548,17 +546,11 @@ final class AdminRuntimeHook
         if ($current === null && $type === 'group' && !array_key_exists('is_menu', $input)) {
             $prepared['is_menu'] = true;
         }
-        if ($type === 'action' && ($current === null || $current->type !== 'action')) {
-            $prepared['is_menu'] = false;
-        }
-        if ($current !== null && $current->type !== $type && $type === 'action') {
-            $prepared['path'] = '';
-        }
         if ($type === 'group' && $this->resourceOwnerType($meta) === 'custom') {
             $prepared['path'] = '';
         }
 
-        if ($current && in_array($this->resourceOwnerType($meta), ['core', 'addon'], true)) {
+        if ($current && in_array($this->resourceOwnerType($meta), ['core', 'app', 'addon'], true)) {
             $currentMeta = $this->decodeMeta($currentAttributes['meta_json'] ?? null);
             if ((string) ($prepared['type'] ?? $current->type) !== (string) $current->type
                 || (bool) ($prepared['is_menu'] ?? $current->is_menu) !== (bool) $current->is_menu
@@ -570,6 +562,10 @@ final class AdminRuntimeHook
             }
         }
 
+        $entry = (string) ($prepared['entry_permission'] ?? $current->entry_permission ?? '');
+        if ($entry !== '' && ($position = strrpos($entry, '.')) !== false) {
+            $meta['permission_keys'] = array_values(array_unique([...($meta['permission_keys'] ?? []), substr($entry, 0, $position)]));
+        }
         $prepared['meta_json'] = json_encode($meta, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $next = array_merge($currentAttributes, $prepared);
         $next['meta_json'] = $meta;
@@ -592,17 +588,27 @@ final class AdminRuntimeHook
         $status = (bool) ($resource['status'] ?? false);
         $meta = $this->decodeMeta($resource['meta_json'] ?? null);
 
-        if (!in_array($type, ['group', 'schema', 'page', 'external', 'action'], true)) {
-            throw $this->error('invalid_menu_resource', '资源类型只能是分组、Schema、页面、外链或操作权限。', ['field' => 'type']);
+        if (!in_array($type, ['group', 'schema', 'page', 'external'], true)) {
+            throw $this->error('invalid_menu_resource', '导航类型只能是分组、Schema、页面或外链。', ['field' => 'type']);
         }
         $this->assertParentResource($resourceKey, $parentKey);
-
-        if ($type === 'action') {
-            if ($isMenu || $path !== '' || ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '') !== '' || ($meta['external_url'] ?? '') !== '') {
-                throw $this->error('invalid_resource_page_fields', '操作权限不能配置导航页面字段。', ['field' => 'type']);
-            }
-            return;
+        $visibility = (string) ($resource['visibility'] ?? 'permission');
+        $entry = (string) ($resource['entry_permission'] ?? '');
+        if (!in_array($visibility, ['permission', 'authenticated'], true) || ($visibility === 'authenticated' && $entry !== '')) {
+            throw $this->error('invalid_entry_permission', '可见性规则与入口权限冲突。');
         }
+        if ($type !== 'group' && $visibility === 'permission') {
+            $position = strrpos($entry, '.');
+            $entryKey = $position === false ? '' : substr($entry, 0, $position);
+            $ability = $position === false ? '' : substr($entry, $position + 1);
+            $permission = $this->database->table('admin_resources')->where('resource_key', $entryKey)->whereNull('deleted_at')->where('status', true)->first();
+            $abilities = $permission === null ? [] : ($this->decodeMeta($permission->meta_json)['abilities'] ?? []);
+            if (!in_array($ability, $abilities, true)) {
+                throw $this->error('invalid_entry_permission', '入口必须引用已声明且启用的业务权限。', ['entry_permission' => $entry]);
+            }
+        }
+
+
         if ($type === 'group' && (($meta['target_resource_key'] ?? $meta['resource_key'] ?? '') !== '' || ($meta['external_url'] ?? '') !== '')) {
             throw $this->error('invalid_resource_page_fields', '导航分组不能配置页面绑定。', ['field' => 'type']);
         }
@@ -616,7 +622,7 @@ final class AdminRuntimeHook
             if ($type !== 'group' && ($path === '' || !preg_match('!^/(?:[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*)?$!', $path))) {
                 throw $this->error('invalid_resource_path', '菜单路径必须是以 / 开头且不包含查询参数的后台相对路径。', ['field' => 'path']);
             }
-            $pathQuery = AdminResource::query()->where('is_menu', true)->where('path', $path)->where('path', '<>', '');
+            $pathQuery = AdminMenu::query()->where('is_menu', true)->where('path', $path)->where('path', '<>', '');
             if ($currentId > 0) {
                 $pathQuery->whereKeyNot($currentId);
             }
@@ -626,7 +632,7 @@ final class AdminRuntimeHook
         }
 
         if ($isMenu && $parentKey !== '') {
-            $parent = AdminResource::query()->where('resource_key', $parentKey)->first();
+            $parent = AdminMenu::query()->where('resource_key', $parentKey)->first();
             if (!$parent || !$parent->is_menu || !in_array($parent->type, ['group', 'schema', 'page'], true)) {
                 throw $this->error('invalid_parent_resource', '菜单父级必须是未删除的页面菜单。', ['parent_key' => $parentKey]);
             }
@@ -657,7 +663,7 @@ final class AdminRuntimeHook
         }
 
         if (!$status) {
-            $enabledChildren = AdminResource::query()
+            $enabledChildren = AdminMenu::query()
                 ->where('parent_key', $resourceKey)
                 ->where('is_menu', true)
                 ->where('status', true)
@@ -671,7 +677,7 @@ final class AdminRuntimeHook
     /** @param array<string, mixed> $input @return array<string, mixed> */
     private function moveResource(int $id, array $input, Schema $schema): array
     {
-        $resource = AdminResource::query()->findOrFail($id);
+        $resource = AdminMenu::query()->findOrFail($id);
 
         $parentKey = trim((string) ($input['parent_key'] ?? ''));
         $beforeKey = trim((string) ($input['before_key'] ?? ''));
@@ -685,7 +691,7 @@ final class AdminRuntimeHook
         $next['meta_json'] = $this->decodeMeta($next['meta_json'] ?? null);
         $this->assertAdminResourceDefinition($next, $id);
 
-        $siblings = AdminResource::query()
+        $siblings = AdminMenu::query()
             ->where('parent_key', $parentKey)
             ->whereKeyNot($id)
             ->orderBy('sort')
@@ -703,22 +709,22 @@ final class AdminRuntimeHook
         }
         array_splice($orderedKeys, $position, 0, [(string) $resource->resource_key]);
 
-        $this->database->transaction(function () use ($orderedKeys, $parentKey): void {
-            foreach ($orderedKeys as $index => $resourceKey) {
-                $this->database->table('admin_resources')->where('resource_key', $resourceKey)->update([
-                    'parent_key' => $parentKey,
-                    'sort' => ($index + 1) * 10,
-                    'updated_at' => now(),
-                ]);
-            }
-        });
+        $rowsByKey = $siblings->keyBy('resource_key');
+        $rowsByKey->put((string) $resource->resource_key, $resource);
+        $rows = [];
+        foreach ($orderedKeys as $index => $resourceKey) {
+            $rows[] = array_replace($rowsByKey->get($resourceKey)->getAttributes(), [
+                'parent_key' => $parentKey, 'sort' => ($index + 1) * 10, 'updated_at' => now(),
+            ]);
+        }
+        $this->database->transaction(fn () => $this->database->table('admin_menus')->upsert($rows, ['id'], ['parent_key', 'sort', 'updated_at']));
 
-        $moved = AdminResource::query()->findOrFail($id)->getAttributes();
+        $moved = AdminMenu::query()->findOrFail($id)->getAttributes();
 
         return ['id' => $id, 'item' => $this->output(new RuntimeHookContext('admin.admin_resources', 'output.transform', $schema), $moved)];
     }
 
-    private function assertResourceCanBeRemoved(AdminResource $resource): void
+    private function assertResourceCanBeRemoved(AdminMenu $resource): void
     {
         $attributes = $resource->getAttributes();
         $ownerType = $this->resourceOwnerType($this->decodeMeta($attributes['meta_json'] ?? null));
@@ -735,7 +741,7 @@ final class AdminRuntimeHook
                 'owner_type' => $ownerType,
             ]);
         }
-        if (AdminResource::withTrashed()->where('parent_key', $resource->resource_key)->exists()) {
+        if (AdminMenu::withTrashed()->where('parent_key', $resource->resource_key)->exists()) {
             throw $this->error('resource_has_children', '存在子资源时不能删除当前资源。', ['id' => (int) $resource->getKey()]);
         }
     }
@@ -863,7 +869,8 @@ final class AdminRuntimeHook
         if ($parentKey === $resourceKey) {
             throw $this->error('resource_parent_cycle', '权限资源不能将自身设为父级。', ['resource_key' => $resourceKey]);
         }
-        if (!AdminResource::query()->where('resource_key', $parentKey)->exists()) {
+        $parents = AdminMenu::query()->pluck('parent_key', 'resource_key')->all();
+        if (!array_key_exists($parentKey, $parents)) {
             throw $this->error('invalid_parent_resource', '父权限资源不存在。', ['parent_key' => $parentKey]);
         }
         $seen = [$resourceKey => true];
@@ -872,7 +879,7 @@ final class AdminRuntimeHook
                 throw $this->error('resource_parent_cycle', '权限资源父级关系形成循环。', ['resource_key' => $resourceKey]);
             }
             $seen[$parentKey] = true;
-            $parentKey = (string) AdminResource::query()->where('resource_key', $parentKey)->value('parent_key');
+            $parentKey = (string) ($parents[$parentKey] ?? '');
         }
     }
 }
