@@ -88,6 +88,8 @@ final class BootstrapFrontendTest extends TestCase
 
         $this->getJson('/ptadmin/bootstrap')->assertOk()
             ->assertJsonPath('data.brand.name', '企业运营后台')
+            ->assertJsonPath('data.brand.login_intro', '基于 Laravel 的后台管理与应用扩展平台。')
+            ->assertJsonPath('data.brand.login_slogan', '让应用开发更简单。')
             ->assertJsonPath('data.brand.logo_url', asset('/branding/admin-logo.svg'))
             ->assertJsonPath('data.brand.logos.sidebar', ['url' => asset('/branding/admin-logo.svg'), 'width' => 40, 'height' => 40])
             ->assertJsonPath('data.brand.logos.login_panel', ['url' => asset('/branding/admin-logo.svg'), 'width' => 110, 'height' => 64])
@@ -142,6 +144,37 @@ final class BootstrapFrontendTest extends TestCase
             ->assertJsonPath('data.brand.logos.sidebar.height', 40);
     }
 
+    public function testLoginCopyDefaultsArePublishedWithoutDatabaseAccess(): void
+    {
+        config(['database.default' => 'unavailable-brand-database']);
+
+        $this->getJson('/ptadmin/bootstrap')->assertOk()
+            ->assertJsonPath('data.brand.login_intro', '基于 Laravel 的后台管理与应用扩展平台。')
+            ->assertJsonPath('data.brand.login_slogan', '让应用开发更简单。');
+    }
+
+    public function testLoginCopyCanBeConfiguredAndHiddenIndependently(): void
+    {
+        config([
+            'database.default' => 'unavailable-brand-database',
+            'ptadmin.brand.login_intro' => '统一管理产品、订单与客户。',
+            'ptadmin.brand.login_slogan' => '让协作更简单。',
+        ]);
+        $this->getJson('/ptadmin/bootstrap')->assertOk()
+            ->assertJsonPath('data.brand.login_intro', '统一管理产品、订单与客户。')
+            ->assertJsonPath('data.brand.login_slogan', '让协作更简单。');
+
+        config(['ptadmin.brand.login_intro' => '']);
+        $this->getJson('/ptadmin/bootstrap')->assertOk()
+            ->assertJsonPath('data.brand.login_intro', '')
+            ->assertJsonPath('data.brand.login_slogan', '让协作更简单。');
+
+        config(['ptadmin.brand.login_intro' => '统一管理产品、订单与客户。', 'ptadmin.brand.login_slogan' => '']);
+        $this->getJson('/ptadmin/bootstrap')->assertOk()
+            ->assertJsonPath('data.brand.login_intro', '统一管理产品、订单与客户。')
+            ->assertJsonPath('data.brand.login_slogan', '');
+    }
+
     public function testMissingManifestDoesNotBlockManualDeployment(): void
     {
         mkdir(public_path('manual_admin'), 0700, true);
@@ -179,7 +212,7 @@ final class BootstrapFrontendTest extends TestCase
         file_put_contents($directory.'/index.html', '<html>Manually updated</html>');
 
         $this->getJson('/ptadmin/bootstrap')->assertOk()
-            ->assertJsonPath('data.runtime.frontend_version', '0.5.1');
+            ->assertJsonPath('data.runtime.frontend_version', '0.6.0');
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('The PTAdmin frontend file failed verification: index.html');

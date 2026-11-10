@@ -7,7 +7,7 @@ return [
     'api_url' => env('PTADMIN_API_URL', ''),
     'route_prefix' => env('PTADMIN_ROUTE_PREFIX', 'ptadmin'),
     'web_prefix' => env('PTADMIN_WEB_PREFIX', 'admin'),
-    'backend_version' => env('PTADMIN_CORE_VERSION', '0.6.1'),
+    'backend_version' => env('PTADMIN_CORE_VERSION', '0.7.0'),
     'api_protocol' => (int) env('PTADMIN_API_PROTOCOL', 1),
     'schema_protocol' => (int) env('PTADMIN_SCHEMA_PROTOCOL', 1),
     // 后台部署品牌通过 Bootstrap 公开，与前台站点设置独立。
@@ -15,6 +15,9 @@ return [
         'name' => env('PTADMIN_BRAND_NAME', 'PTAdmin'),
         'logo_url' => env('PTADMIN_BRAND_LOGO_URL', ''),
         'login_title' => env('PTADMIN_LOGIN_TITLE', '登录管理后台'),
+        // 产品介绍和左侧标语留空时隐藏对应段落。
+        'login_intro' => env('PTADMIN_LOGIN_INTRO', '基于 Laravel 的后台管理与应用扩展平台。'),
+        'login_slogan' => env('PTADMIN_LOGIN_SLOGAN', '让应用开发更简单。'),
         // 专用 URL 留空时使用共用 Logo；width 为目标宽度、height 为最大高度（px），保留图片原色与比例。
         'logos' => [
             // 侧栏小图标，建议使用方形图案。

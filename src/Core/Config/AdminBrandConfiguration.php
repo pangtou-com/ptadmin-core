@@ -7,7 +7,7 @@ namespace PTAdmin\Core\Config;
 /** 后台部署品牌的公开投影；不读取站点设置，也不公开任意配置键。 */
 final class AdminBrandConfiguration
 {
-    /** @return array{name: string, logo_url: string, login_title: string, logos: array<string, array{url: string, width: int, height: int}>} */
+    /** @return array{name: string, logo_url: string, login_title: string, login_intro: string, login_slogan: string, logos: array<string, array{url: string, width: int, height: int}>} */
     public function publicValues(): array
     {
         $name = trim((string) config('ptadmin.brand.name', 'PTAdmin'));
@@ -29,6 +29,8 @@ final class AdminBrandConfiguration
             'name' => $name !== '' ? $name : 'PTAdmin',
             'logo_url' => $sharedLogo !== '' ? asset($sharedLogo) : '',
             'login_title' => $title !== '' ? $title : '登录管理后台',
+            'login_intro' => (string) config('ptadmin.brand.login_intro', '基于 Laravel 的后台管理与应用扩展平台。'),
+            'login_slogan' => (string) config('ptadmin.brand.login_slogan', '让应用开发更简单。'),
             'logos' => $logos,
         ];
     }
