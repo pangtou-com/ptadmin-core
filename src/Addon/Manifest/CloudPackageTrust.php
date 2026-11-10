@@ -33,8 +33,9 @@ final readonly class CloudPackageTrust
         if (($manifest['code'] ?? null) !== $this->code || ($manifest['version'] ?? null) !== $this->version) {
             throw new AddonException('插件编码或版本与云市场交付不一致。', 'cloud_package_identity_mismatch');
         }
-        if (!is_string($manifest['publisher'] ?? null) || $manifest['publisher'] === ''
-            || !is_string($manifest['signature']['key_id'] ?? null) || $manifest['signature']['key_id'] === '') {
+        if (($manifest['sandbox'] ?? 'iframe') === 'trusted'
+            && (!is_string($manifest['publisher'] ?? null) || $manifest['publisher'] === ''
+                || !is_string($manifest['signature']['key_id'] ?? null) || $manifest['signature']['key_id'] === '')) {
             throw new AddonException('云市场插件必须声明发布者和签名密钥标识。', 'trusted_metadata_missing');
         }
     }

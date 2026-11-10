@@ -79,6 +79,26 @@ final class CloudPackageTrustTest extends TestCase
         self::assertDirectoryDoesNotExist($this->root.'/addons/demo-addon');
     }
 
+    public function testSignedIframeCloudPackageDoesNotRequireTrustedPublisherMetadata(): void
+    {
+        $manifest = ['code' => 'demo-addon', 'version' => '1.0.0', 'sandbox' => 'iframe',
+            'signature' => ['algorithm' => 'RSA-SHA256', 'public_key' => openssl_pkey_get_details($this->key)['key']]];
+        $body = 'iframe package';
+        $files = [['path' => 'readme.txt', 'size' => strlen($body), 'sha256' => hash('sha256', $body)]];
+        openssl_sign($this->verifier->signingPayload($manifest, $files), $signature, $this->key, OPENSSL_ALGO_SHA256);
+        $manifest['signature']['value'] = base64_encode($signature);
+        $package = $this->root.'/iframe.zip';
+        $zip = new ZipArchive();
+        $zip->open($package, ZipArchive::CREATE);
+        $zip->addFromString('manifest.json', json_encode($manifest));
+        $zip->addFromString('readme.txt', $body);
+        $zip->close();
+
+        $result = $this->installer()->install($package, 'console', cloudTrust: $this->delivery($package));
+        self::assertSame('demo-addon', $result['code']);
+        self::assertSame('active', $this->state->read('demo-addon')['state']);
+    }
+
     #[DataProvider('invalidDeliveries')]
     public function testCloudDeliveryRejectsInvalidPackages(string $case, string $expected): void
     {
