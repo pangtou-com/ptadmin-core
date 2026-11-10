@@ -42,6 +42,7 @@ final class Installer
         private ?Migrator $migrator = null,
         private ?AddonAutoloader $autoloader = null,
         private ?AddonCatalog $catalog = null,
+        private ?AddonUsagePermissions $usagePermissions = null,
     ) {
         $this->addonsPath = rtrim($addonsPath, '/');
         $this->stagingPath = rtrim($stagingPath, '/');
@@ -58,6 +59,7 @@ final class Installer
      * @param string|null $expectedCode 任务请求指定的插件编码，用于阻止包身份与操作目标不一致
      * @param string|null $expectedSha256 下载阶段记录的 artifact 摘要，用于安装前再次确认包未被替换
      * @param callable(string, int, string): void|null $onProgress 阶段变化回调，由任务执行器写入过程日志
+     * @param array{founder:bool,role_ids:list<int>}|null $usagePermissions null 沿用已保存选择，首次默认创始人
      * @return array<string, mixed>
      * @throws \JsonException
      * @throws \Throwable
@@ -69,6 +71,7 @@ final class Installer
         ?string $expectedCode = null,
         ?string $expectedSha256 = null,
         ?callable $onProgress = null,
+        ?array $usagePermissions = null,
     ): array {
         if ($onProgress !== null) {
             $onProgress('verify', 10, '正在校验安装包摘要。');
@@ -104,6 +107,7 @@ final class Installer
             $mappingCaptured = true;
             $previousLifecycle = $this->lifecycle->read($code);
             $lifecycleCaptured = true;
+            $permissionSelection = $this->usagePermissions?->selection($code, $usagePermissions);
             if (!$update && is_dir($target)) {
                 throw new AddonException('The addon is already installed.', 'addon_already_installed');
             }
@@ -143,14 +147,18 @@ final class Installer
             }
             $resourcesStarted = true;
             $synced = $this->resourceSynchronizer?->sync($target, $code) ?? ['schemas' => 0, 'configs' => 0, 'dicts' => 0, 'notices' => 0, 'admin_resources' => 0];
-            $activate = function () use ($target, $code, $manifest, $frontendSource, $webPrefix, $update, $onProgress, $previousLifecycle): void {
+            $activate = function () use ($target, $code, $manifest, $frontendSource, $webPrefix, $update, $onProgress, $previousLifecycle, $permissionSelection): void {
                 if ($onProgress !== null) {
                     $onProgress('install_hooks', 75, '正在执行插件安装流程。');
                 }
                 $this->lifecycleRegistrar?->invoke('install', $target, $code, $manifest);
                 $this->lifecycle->transition($code, 'ready', ['version' => $manifest['version'], 'manifest' => $manifest]);
                 $disabled = $update && ($previousLifecycle['disabled_by_user'] ?? false) === true;
-                $this->lifecycle->transition($code, $disabled ? 'inactive' : 'active', ['disabled_by_user' => $disabled]);
+                $metadata = ['disabled_by_user' => $disabled];
+                if ($permissionSelection !== null && $this->usagePermissions !== null) {
+                    $metadata['usage_permissions'] = $this->usagePermissions->apply($code, $permissionSelection, $previousLifecycle['usage_permissions'] ?? []);
+                }
+                $this->lifecycle->transition($code, $disabled ? 'inactive' : 'active', $metadata);
                 if ($onProgress !== null) {
                     $onProgress('publishing', 90, '正在发布插件前端资源。');
                 }
@@ -159,9 +167,9 @@ final class Installer
                 } elseif ($update) {
                     $this->frontend->remove($webPrefix, $code);
                 }
+                $this->catalog->publish($code);
             };
             null !== $this->database ? $this->database->transaction($activate) : $activate();
-            $this->catalog->publish($code);
             if (is_dir($backup)) {
                 $this->deleteDirectory($backup);
             }

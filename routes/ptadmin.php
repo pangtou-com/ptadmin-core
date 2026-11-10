@@ -247,6 +247,9 @@ Route::middleware([...$authenticatedMiddleware, 'ptadmin.founder'])
     ->prefix($apiPrefix.'/addons')
     ->as('ptadmin.addons.')
     ->group(static function (): void {
+        Route::get('{code}/usage-permissions', [AddonTaskController::class, 'usagePermissions'])
+            ->where('code', '[A-Za-z][A-Za-z0-9._-]{1,63}')
+            ->name('usage-permissions');
         Route::get('{code}/configuration', [ConfigController::class, 'addonDefinitions'])
             ->where('code', '[A-Za-z][A-Za-z0-9._-]{1,63}')
             ->name('configuration.index');

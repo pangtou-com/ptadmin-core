@@ -44,8 +44,19 @@ final class TaskController extends Controller
             if (!is_array($data)) {
                 return AdminResponse::error(42200, 'Task payload must be an object.', null, 422);
             }
+            if (in_array($type, [TaskManager::ADDON_INSTALL, TaskManager::ADDON_UPDATE], true)) {
+                $request->validate(['payload.code' => ['sometimes', 'string', 'regex:/^[a-z][a-z0-9._-]{1,63}$/']]);
+                // 未指定编码的本地包在解包后解析默认选择，更新不能提前覆盖已保存的对象。
+                if (isset($data['code']) || isset($data['usage_permissions'])) {
+                    $data['usage_permissions'] = app(\PTAdmin\Addon\Lifecycle\AddonUsagePermissions::class)
+                        ->selection($data['code'] ?? '', $data['usage_permissions'] ?? null);
+                }
+            }
             $idempotencyKey = $payload['idempotency_key'] ?? $request->header('Idempotency-Key');
             $result = $tasks->create($type, $data, $this->requestId($request), (int) ($payload['max_attempts'] ?? 1), is_string($idempotencyKey) ? $idempotencyKey : null);
+            if (isset($data['usage_permissions']) && ($result['payload']['usage_permissions'] ?? null) !== $data['usage_permissions']) {
+                throw new TaskException('授权对象已变化，请重新确认安装任务。', 'idempotency_key_conflict');
+            }
             $this->dispatcher->dispatch($result);
             return AdminResponse::success('', $result, 201);
         } catch (TaskException $exception) {

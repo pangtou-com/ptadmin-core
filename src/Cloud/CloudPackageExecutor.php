@@ -62,6 +62,6 @@ final class CloudPackageExecutor implements TaskExecutorInterface
             $payload['operation'] === 'update', $payload['code'], $artifact['sha256'],
             static function (string $stage, int $progress, string $message) use ($tasks, $id): void {
                 $tasks->heartbeat($id, $stage, 30 + (int) round($progress * 0.7), $message);
-            });
+            }, $payload['usage_permissions'] ?? null);
     }
 }

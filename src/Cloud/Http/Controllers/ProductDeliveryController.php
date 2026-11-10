@@ -7,6 +7,7 @@ namespace PTAdmin\Cloud\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Validation\ValidationException;
+use PTAdmin\Addon\Lifecycle\AddonUsagePermissions;
 use PTAdmin\Cloud\CloudException;
 use PTAdmin\Cloud\CloudPackageExecutor;
 use PTAdmin\Cloud\CloudSessionManager;
@@ -96,6 +97,9 @@ final class ProductDeliveryController
             unset($release);
         }
         unset($license);
+        if ($options['product']['product_type'] === 'addon') {
+            $options['usage_permissions'] = app(AddonUsagePermissions::class)->options($options['product']['code']);
+        }
         return $options;
     }
 
@@ -117,6 +121,10 @@ final class ProductDeliveryController
         $preview = isset($values['code_credential_id'])
             ? $this->codes->request((int) $values['code_credential_id'], 'prepare', $values)
             : $this->delivery->prepareDelivery((string) $memberToken, $values);
+        // 安装授权属于本地管理域，不能随商品交付请求上传到云平台。
+        if ($values['operation'] !== 'download' && $preview['product_type'] === 'addon') {
+            $values['usage_permissions'] = app(AddonUsagePermissions::class)->selection($preview['code'], $request->input('usage_permissions'));
+        }
         $result = $this->tasks->create(CloudPackageExecutor::TYPE, $values + $preview,
             $request->attributes->get('ptadmin.request_id'), 3, $request->header('Idempotency-Key'));
         foreach ($values + $preview as $key => $value) {

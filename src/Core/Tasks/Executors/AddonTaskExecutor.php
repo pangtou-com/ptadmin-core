@@ -58,6 +58,7 @@ final class AddonTaskExecutor implements TaskExecutorInterface
                 isset($payload['code']) ? (string) $payload['code'] : null,
                 isset($payload['sha256']) ? (string) $payload['sha256'] : null,
                 $onProgress,
+                $payload['usage_permissions'] ?? null,
             );
         } else {
             $result = $this->installer->install(
@@ -67,6 +68,7 @@ final class AddonTaskExecutor implements TaskExecutorInterface
                 isset($payload['code']) ? (string) $payload['code'] : null,
                 isset($payload['sha256']) ? (string) $payload['sha256'] : null,
                 $onProgress,
+                $payload['usage_permissions'] ?? null,
             );
         }
         $tasks->heartbeat($taskId, 'activated', 100, 'Addon operation completed.', $result);

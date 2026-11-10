@@ -519,6 +519,7 @@ final class PTAdminServiceProvider extends ServiceProvider
                 $app->make(LifecycleRegistrar::class),
                 $app->make('migrator'),
                 $app->make(AddonAutoloader::class),
+                usagePermissions: $app->make(\PTAdmin\Addon\Lifecycle\AddonUsagePermissions::class),
             );
         });
     }

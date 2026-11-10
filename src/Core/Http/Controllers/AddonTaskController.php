@@ -7,6 +7,7 @@ namespace PTAdmin\Core\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use PTAdmin\Addon\Lifecycle\AddonUsagePermissions;
 use PTAdmin\Core\Http\Responses\AdminResponse;
 use PTAdmin\Core\Tasks\TaskException;
 use PTAdmin\Core\Tasks\TaskManager;
@@ -36,6 +37,11 @@ final class AddonTaskController extends Controller
             $payload['sha256'] = strtolower($sha256);
         }
         return $this->create($tasks, TaskManager::ADDON_DOWNLOAD, $payload, $request);
+    }
+
+    public function usagePermissions(string $code, AddonUsagePermissions $permissions): JsonResponse
+    {
+        return AdminResponse::success('', $permissions->options($code));
     }
 
     public function install(string $code, Request $request, TaskManager $tasks): JsonResponse
@@ -90,6 +96,7 @@ final class AddonTaskController extends Controller
             'source' => trim($source),
             'web_prefix' => $this->webPrefix($request),
         ];
+        $payload['usage_permissions'] = app(AddonUsagePermissions::class)->selection($code, $request->input('usage_permissions'));
         if ($request->filled('sha256')) {
             $sha256 = (string) $request->input('sha256');
             if (preg_match('/^[a-f0-9]{64}$/i', $sha256) !== 1) {
@@ -111,6 +118,9 @@ final class AddonTaskController extends Controller
                 max(1, min(20, (int) $request->input('max_attempts', 1))),
                 $request->header('Idempotency-Key')
             );
+            if (isset($payload['usage_permissions']) && ($result['payload']['usage_permissions'] ?? null) !== $payload['usage_permissions']) {
+                throw new TaskException('授权对象已变化，请重新确认安装任务。', 'idempotency_key_conflict');
+            }
             $this->dispatcher->dispatch($result);
             return AdminResponse::success('', $result, 202);
         } catch (TaskException $exception) {
