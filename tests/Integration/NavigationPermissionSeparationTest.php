@@ -94,6 +94,55 @@ final class NavigationPermissionSeparationTest extends TestCase
         self::assertFalse($auth->allows($admin, 'access', 'orders'));
     }
 
+    #[DataProvider('removedOperationGrants')]
+    public function testRemovedOperationRejectsExistingGrantsWithoutDeletingHistory(string $subjectType, array $abilities): void
+    {
+        config(['app.key' => 'base64:'.base64_encode(str_repeat('e', 32))]);
+        $page = $this->page();
+        $this->write([$page]);
+        $this->menus->syncApp($this->root);
+        $admin = \PTAdmin\Admin\Models\Admin::query()->forceCreate(['username' => 'operation-review', 'password' => 'unused', 'status' => true]);
+        $subjectId = $admin->id;
+        if ($subjectType === 'role') {
+            $subjectId = DB::table('admin_roles')->insertGetId(['code' => 'operator', 'name' => '订单角色', 'status' => true, 'created_at' => now(), 'updated_at' => now()]);
+            DB::table('admin_user_roles')->insert(['admin_id' => $admin->id, 'role_id' => $subjectId, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        DB::table('admin_grants')->insert([
+            'subject_type' => $subjectType, 'subject_id' => (string) $subjectId,
+            'resource_id' => DB::table('admin_resources')->where('resource_key', 'orders')->value('id'),
+            'effect' => 'allow', 'abilities_json' => json_encode($abilities, JSON_THROW_ON_ERROR), 'scope_type' => 'all',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->app['router']->get('/permission-probe/delete', static fn () => response()->json(['executed' => true]))
+            ->middleware(['ptadmin.session', 'ptadmin.permission:orders,delete']);
+        $this->withToken(app(\PTAdmin\Core\Auth\Session\SessionManager::class)->issue('admin', $admin->id, 'admin')->toArray()['access_token']);
+        $this->getJson('/permission-probe/delete')->assertOk();
+        $auth = app(\PTAdmin\Admin\Auth\AuthorizationService::class);
+        self::assertContains('orders.delete', $auth->permissions($admin));
+        $before = DB::table('admin_grants')->get()->toJson();
+
+        $page['permissions'][0]['operations'] = [['key' => 'list']];
+        $this->write([$page]);
+        $this->menus->syncApp($this->root);
+
+        self::assertSame($before, DB::table('admin_grants')->get()->toJson());
+        self::assertNotContains('orders.delete', $auth->permissions($admin));
+        $this->getJson('/permission-probe/delete')->assertForbidden();
+        self::assertFalse($auth->allows($admin, 'delete', 'orders'));
+        self::assertFalse($auth->allows($admin, 'future_action', 'orders'));
+        self::assertFalse($auth->allows($admin, '*', 'orders'));
+        self::assertTrue($auth->allows($admin, 'list', 'orders'));
+        self::assertSame('order.page', $auth->menus($admin)[0]['key']);
+    }
+
+    public static function removedOperationGrants(): iterable
+    {
+        yield '个人具体授权' => ['admin', ['list', 'delete']];
+        yield '角色具体授权' => ['role', ['list', 'delete']];
+        yield '个人历史通配符' => ['admin', ['*']];
+        yield '角色历史通配符' => ['role', ['*']];
+    }
+
     public function testSharedAndStandalonePermissionsDoNotCreateDuplicateResources(): void
     {
         $first = $this->page();

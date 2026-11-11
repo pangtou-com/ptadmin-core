@@ -41,6 +41,7 @@ final class DashboardFrontendVersionTest extends TestCase
 
     public function testMissingManifestDoesNotBreakSummaryOrShowFrontendVersionNotice(): void
     {
+        config(['ptadmin.backend_version' => '0.8.2']);
         $service = $this->app->make(DashboardService::class);
 
         self::assertNull($service->summary()['frontend_version']);

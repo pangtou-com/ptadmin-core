@@ -45,7 +45,7 @@ final class AuthorizationService
     /** @param list<object> $resources @param list<object> $rows */
     private function evaluate(Admin $admin, string $ability, string $resourceKey, array $resources, array $rows, ?AuthorizationContext $context = null): AuthorizationDecision
     {
-        if ($ability === 'access') {
+        if ($ability === 'access' || $ability === '*') {
             return new AuthorizationDecision(false, 'ability_unavailable');
         }
         $resourceKeys = [$resourceKey];
@@ -59,17 +59,24 @@ final class AuthorizationService
             }
         }
         $resourceIds = [];
+        $declaredResourceIds = [];
         foreach ($resources as $resource) {
             $meta = $this->decode((string) ($resource->meta_json ?? ''));
             if (in_array((string) $resource->resource_key, $resourceKeys, true)
                 || in_array((string) ($meta['target_resource_key'] ?? $meta['resource_key'] ?? ''), $resourceKeys, true)) {
                 $resourceIds[] = (int) $resource->id;
+                if (in_array($ability, $this->resourceAbilities($resource), true)) {
+                    $declaredResourceIds[] = (int) $resource->id;
+                }
             }
         }
         if ($resourceIds === []) {
             return new AuthorizationDecision(false, 'resource_unavailable');
         }
-        $grants = $this->matchingGrants($rows, $resourceIds, $ability, $admin, $context);
+        if ($declaredResourceIds === []) {
+            return new AuthorizationDecision(false, 'ability_unavailable');
+        }
+        $grants = $this->matchingGrants($rows, $resourceIds, $declaredResourceIds, $ability, $admin, $context);
         return $grants === []
             ? new AuthorizationDecision(false, 'grant_not_found')
             : $this->resolveGrants($grants);
@@ -197,8 +204,8 @@ final class AuthorizationService
             ->whereNull('deleted_at')->where('status', 1)->orderBy('sort')->orderBy('id')->get()->all();
     }
 
-    /** @param list<object> $rows @param list<int> $resourceIds @return list<AuthorizationGrant> */
-    private function matchingGrants(array $rows, array $resourceIds, string $ability, Admin $admin, ?AuthorizationContext $context): array
+    /** @param list<object> $rows @param list<int> $resourceIds @param list<int> $declaredResourceIds @return list<AuthorizationGrant> */
+    private function matchingGrants(array $rows, array $resourceIds, array $declaredResourceIds, string $ability, Admin $admin, ?AuthorizationContext $context): array
     {
         $grants = [];
         foreach ($rows as $row) {
@@ -207,6 +214,10 @@ final class AuthorizationService
             }
             $abilities = $this->decodeList((string) $row->abilities_json);
             $effect = (string) $row->effect === 'allow' ? 'allow' : 'deny';
+            // 移除声明使旧允许失效；同一目标上的明确拒绝仍须保留，避免别名绕过。
+            if ($effect === 'allow' && !in_array((int) $row->resource_id, $declaredResourceIds, true)) {
+                continue;
+            }
             if (!$this->grantMatchesAbility($abilities, $ability)) {
                 continue;
             }

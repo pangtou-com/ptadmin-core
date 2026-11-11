@@ -410,6 +410,44 @@ final class UnifiedAuthorizationTest extends TestCase
         self::assertNotContains('admin.users.list', app(AuthorizationService::class)->permissions($this->admin));
     }
 
+    public function testRemovedAliasAbilityCannotBorrowAnotherDeclarationOrWidenItsScope(): void
+    {
+        $this->bindRole();
+        $this->grant('admin', ['*'], 'allow', 10000, 'all');
+        $meta = json_decode(DB::table('admin_resources')->where('id', $this->resource)->value('meta_json'), true, 512, JSON_THROW_ON_ERROR);
+        $meta['abilities'] = array_values(array_diff($meta['abilities'], ['list']));
+        DB::table('admin_resources')->where('id', $this->resource)->update(['meta_json' => json_encode($meta, JSON_THROW_ON_ERROR)]);
+        $aliasId = DB::table('admin_resources')->insertGetId([
+            'resource_key' => 'staff.reader', 'title' => '人员读取', 'type' => 'permission', 'status' => true,
+            'meta_json' => json_encode(['target_resource_key' => 'admin.admin_users', 'abilities' => ['list']], JSON_THROW_ON_ERROR),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $auth = app(AuthorizationService::class);
+        self::assertFalse($auth->allows($this->admin, 'list', 'admin.admin_users'));
+        self::assertFalse($auth->allows($this->admin, 'list', 'staff.reader'));
+
+        $allow = $this->grant('role', ['list'], 'allow', 0, 'self');
+        DB::table('admin_grants')->where('id', $allow)->update(['resource_id' => $aliasId]);
+        $decision = $auth->decision($this->admin, 'list', 'admin.admin_users');
+        self::assertTrue($decision->allowed);
+        self::assertCount(1, $decision->grants);
+        self::assertSame('self', $decision->grants[0]->scopeType);
+        self::assertContains('staff.reader.list', $auth->permissions($this->admin));
+        self::assertNotContains('admin.users.list', $auth->permissions($this->admin));
+
+        // 旧声明上的明确拒绝仍约束同一目标，不能借能力移除解除拒绝。
+        $deny = $this->grant('admin', ['list'], 'deny', 0);
+        $before = DB::table('admin_grants')->orderBy('id')->get()->toJson();
+        foreach (['admin.admin_users', 'admin.users', 'staff.reader'] as $resourceKey) {
+            $denied = $auth->decision($this->admin, 'list', $resourceKey);
+            self::assertFalse($denied->allowed);
+            self::assertSame('explicit_deny', $denied->reason);
+            self::assertSame($deny, $denied->grants[0]->id);
+        }
+        self::assertNotContains('staff.reader.list', $auth->permissions($this->admin));
+        self::assertSame($before, DB::table('admin_grants')->orderBy('id')->get()->toJson());
+    }
+
     public function testSessionPermissionEnumerationLoadsGrantsInBatches(): void
     {
         app(InitialAdministratorPermissions::class)->grant($this->admin);
