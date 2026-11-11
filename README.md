@@ -2,7 +2,7 @@
 
 `ptadmin/core` 是 PTAdmin 重构后的后端核心包，正式源码目录为当前仓库的 `src/`。核心包统一维护 `Admin`、`Addon`、`Schema`、`User` 和 `Core`，并提供 `Notice`、`Template` 和 `Cloud` 等能力；Schema Runtime 是标准资源和 CRUD 的唯一运行时基础设施。
 
-开发源码新增 `User` 通用会员能力：默认 `PTAdmin\User\Models\User`、`UserIdentityInterface`、Eloquent 身份适配器及 `UserUnavailable` 事件均由 Core 提供，插件直接依赖 Core 会员接口。默认模型使用 `users` 表，迁移保留宿主已有会员表与数据；基础壳不再重复定义模型或会员迁移。宿主在 `config/auth.php` 的 `web` guard 对应 provider 中配置用户模型；Core 不注入认证配置。特殊账户体系通过绑定统一接口接入。此能力尚未发布，Core `0.9.0` 不包含新接口。
+0.10.0 新增 `User` 通用会员能力：默认 `PTAdmin\User\Models\User`、`UserIdentityInterface`、Eloquent 身份适配器及 `UserUnavailable` 事件均由 Core 提供，插件直接依赖 Core 会员接口。默认模型使用 `users` 表，迁移保留宿主已有会员表与数据；基础壳不再重复定义模型或会员迁移。宿主在 `config/auth.php` 的 `web` guard 对应 provider 中配置用户模型；Core 不注入认证配置。特殊账户体系通过绑定统一接口接入。此能力从 Core `0.10.0` 提供，Core `0.9.0` 不包含新接口。
 
 当前阶段已完成：
 
