@@ -63,6 +63,33 @@ final class UnifiedAuthorizationTest extends TestCase
         (new Filesystem())->deleteDirectory($this->storage);
     }
 
+    public function testSessionSubjectIsClearedAfterSuccessFailureAndRejectedSession(): void
+    {
+        $context = app(\PTAdmin\Schema\Contracts\SchemaSubjectContextInterface::class);
+        $middleware = app(\PTAdmin\Core\Http\Middleware\AuthenticateSessionMiddleware::class);
+        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        foreach ([false, true] as $fail) {
+            $request = \Illuminate\Http\Request::create('/');
+            $request->headers->set('Authorization', 'Bearer '.$token);
+            try {
+                $middleware->handle($request, function () use ($context, $fail) {
+                    self::assertSame($this->admin->id, $context->get()->id);
+                    if ($fail) {
+                        throw new \RuntimeException('request failed');
+                    }
+                    return response('ok');
+                });
+            } catch (\RuntimeException $exception) {
+                self::assertTrue($fail);
+                self::assertSame('request failed', $exception->getMessage());
+            }
+            self::assertNull($context->get());
+        }
+        $context->set($this->admin);
+        self::assertSame(401, $middleware->handle(\Illuminate\Http\Request::create('/'), static fn () => response('unexpected'))->getStatusCode());
+        self::assertNull($context->get());
+    }
+
     public function testFounderIdentityHasNoPermissionsAndSnapshotDoesNotFollowFutureResources(): void
     {
         $auth = app(AuthorizationService::class);

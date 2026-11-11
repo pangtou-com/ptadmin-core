@@ -33,9 +33,6 @@ use PTAdmin\Schema\Support\FieldProtection;
  */
 final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInterface
 {
-    private ?RuntimeRegistrySnapshot $runtimeSnapshot = null;
-    private bool $runtimeSnapshotLoaded = false;
-
     public function __construct(
         ?SchemaAuthorizationInterface $authorization = null,
         ?SchemaScopeResolverInterface $scopeResolver = null,
@@ -1217,18 +1214,12 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
 
     private function runtimeSnapshot(): ?RuntimeRegistrySnapshot
     {
-        if ($this->runtimeSnapshotLoaded) {
-            return $this->runtimeSnapshot;
-        }
-        $this->runtimeSnapshotLoaded = true;
         if ($this->runtimeRegistry === null || $this->runtimeCache === null || $this->runtimeExecutor === null) {
             return null;
         }
 
         $registry = $this->runtimeRegistry;
-        $this->runtimeSnapshot = $this->runtimeCache->load(static fn (): RuntimeRegistrySnapshot => $registry->build());
-
-        return $this->runtimeSnapshot;
+        return $this->runtimeCache->load(static fn (): RuntimeRegistrySnapshot => $registry->build());
     }
 
     private function hasHookBinding(RuntimeRegistrySnapshot $snapshot, RuntimeHookContext $context): bool

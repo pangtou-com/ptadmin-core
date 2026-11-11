@@ -8,8 +8,6 @@ use RuntimeException;
 
 final class RuntimeCacheStore
 {
-    private ?RuntimeRegistrySnapshot $loaded = null;
-
     public function __construct(private string $path)
     {
     }
@@ -49,11 +47,8 @@ final class RuntimeCacheStore
     /** @param callable(): RuntimeRegistrySnapshot $fallback */
     public function load(callable $fallback): RuntimeRegistrySnapshot
     {
-        if ($this->loaded !== null) {
-            return $this->loaded;
-        }
-
-        return $this->loaded = $this->read() ?? $fallback();
+        // 文件是跨请求的唯一缓存；避免常驻进程继续使用已经清理的内存快照。
+        return $this->read() ?? $fallback();
     }
 
     public function write(RuntimeRegistrySnapshot $snapshot): void
@@ -72,12 +67,16 @@ final class RuntimeCacheStore
             @unlink($temporary);
             throw new RuntimeException('Runtime cache cannot be atomically replaced: '.$this->path);
         }
-        $this->loaded = $snapshot;
+        if (function_exists('opcache_invalidate')) {
+            opcache_invalidate($this->path, true);
+        }
     }
 
     public function clear(): void
     {
-        $this->loaded = null;
+        if (function_exists('opcache_invalidate')) {
+            opcache_invalidate($this->path, true);
+        }
         if (is_file($this->path) && !unlink($this->path)) {
             throw new RuntimeException('Runtime cache cannot be removed: '.$this->path);
         }

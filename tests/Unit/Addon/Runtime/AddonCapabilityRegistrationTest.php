@@ -162,9 +162,7 @@ PHP;
     {
         $this->providers(true);
         $this->activate('provider-plugin');
-        $result = $this->registrar->register();
-        self::assertSame([], $result['loaded']);
-        self::assertCount(1, $result['errors']);
+        $this->assertBootFails('addon_runtime_registration_failed');
         self::assertSame('active', $this->lifecycle->read('provider-plugin')['state']);
         self::assertSame([], $this->payments->definitions());
         self::assertSame([], $this->auth->definitions());
@@ -191,8 +189,7 @@ PHP;
         $this->providers();
         $this->activate('provider-plugin');
         $this->app->instance('fixture.duplicate', true);
-        $result = $this->registrar->register();
-        self::assertSame('capability_registration_conflict', $result['errors'][0]['error_code']);
+        $exception = $this->assertBootFails('capability_registration_conflict');
         self::assertSame([], $this->payments->definitions());
         self::assertSame([], $this->auth->definitions());
     }
@@ -202,8 +199,8 @@ PHP;
         $this->providers();
         $this->activate('provider-plugin');
         $this->app->instance('fixture.commit.fail', true);
-        $result = $this->registrar->register();
-        self::assertSame('驱动提交失败', $result['errors'][0]['message']);
+        $exception = $this->assertBootFails('addon_runtime_registration_failed');
+        self::assertStringContainsString('驱动提交失败', $exception->getMessage());
         self::assertSame([], $this->payments->definitions());
         self::assertSame([], $this->auth->definitions());
         self::assertFalse($this->app->bound('fixture.storage'));
@@ -240,8 +237,8 @@ PHP;
         ];
         file_put_contents($directory.'/manifest.json', json_encode($manifest, JSON_THROW_ON_ERROR));
         $this->activate('provider-plugin');
-        $result = $this->registrar->register();
-        self::assertSame('第二个 Provider 注册失败', $result['errors'][0]['message']);
+        $exception = $this->assertBootFails('addon_runtime_registration_failed');
+        self::assertStringContainsString('第二个 Provider 注册失败', $exception->getMessage());
         self::assertSame([], $this->payments->definitions());
         self::assertSame([], $this->auth->definitions());
         self::assertFalse($this->app->bound('fixture.storage'));
@@ -253,9 +250,8 @@ PHP;
         $this->activate('provider-plugin');
         $this->app->instance('fixture.commit.fail', true);
         $this->app->instance('fixture.rollback.fail', true);
-        $result = $this->registrar->register();
-        self::assertSame('capability_rollback_failed', $result['errors'][0]['error_code']);
-        self::assertStringContainsString('驱动提交失败', $result['errors'][0]['message']);
+        $exception = $this->assertBootFails('capability_rollback_failed');
+        self::assertStringContainsString('驱动提交失败', $exception->getMessage());
         self::assertSame([], $this->payments->definitions());
         self::assertSame([], $this->auth->definitions());
         self::assertFalse($this->app->bound('fixture.storage'));
@@ -289,8 +285,7 @@ PHP;
         mkdir($directory.'/config');
         file_put_contents($directory.'/config/config.php', '<?php return false;');
         $this->activate('provider-plugin');
-        $result = $this->registrar->register();
-        self::assertSame('invalid_config', $result['errors'][0]['error_code']);
+        $exception = $this->assertBootFails('invalid_config');
         self::assertSame([], $this->payments->definitions());
         self::assertSame([], $this->auth->definitions());
     }
@@ -327,4 +322,16 @@ PHP;
         self::assertSame([], $this->payments->definitions());
         self::assertSame([], $this->auth->definitions());
     }
+    private function assertBootFails(string $cause): AddonException
+    {
+        try {
+            $this->registrar->register();
+            self::fail('插件注册失败必须终止启动。');
+        } catch (AddonException $exception) {
+            self::assertSame('addon_runtime_boot_failed', $exception->errorCode);
+            self::assertSame($cause, $exception->details['cause']);
+            return $exception;
+        }
+    }
+
 }

@@ -10,6 +10,7 @@ use PTAdmin\Addon\Exception\AddonException;
 use PTAdmin\Addon\Catalog\AddonCatalog;
 use PTAdmin\Addon\Frontend\FrontendPublisher;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
+use PTAdmin\Addon\Manifest\AddonNamespace;
 use PTAdmin\Addon\Manifest\CloudPackageTrust;
 use PTAdmin\Addon\Package\PackageExtractor;
 use PTAdmin\Addon\Resource\ResourceSynchronizerInterface;
@@ -104,6 +105,7 @@ final class Installer
             if ($expectedCode !== null && strcasecmp($expectedCode, $code) !== 0) {
                 throw new AddonException('The addon code does not match the requested operation.', 'addon_code_mismatch');
             }
+            $this->assertCodeNotLoaded($manifest);
             $lockHandle = $this->locks?->acquire($code);
             $catalogLock = $this->catalog->beginOperation();
             $this->runtimeCache?->clear();
@@ -164,10 +166,16 @@ final class Installer
                     $metadata['usage_permissions'] = $this->usagePermissions->apply($code, $permissionSelection, $previousLifecycle['usage_permissions'] ?? []);
                 }
                 $this->lifecycle->transition($code, $disabled ? 'inactive' : 'active', $metadata);
+                if ($disabled) {
+                    $this->resourceSynchronizer?->deactivate($code);
+                    $this->runtimeValidator?->assertDeactivated($code);
+                } else {
+                    $this->runtimeValidator?->assertActivated($target, $code, $manifest);
+                }
                 if ($onProgress !== null) {
                     $onProgress('publishing', 90, '正在发布插件前端资源。');
                 }
-                if (is_dir($frontendSource)) {
+                if (!$disabled && is_dir($frontendSource)) {
                     $this->frontend->publish($webPrefix, $code, $frontendSource);
                 } elseif ($update) {
                     $this->frontend->remove($webPrefix, $code);
@@ -178,7 +186,7 @@ final class Installer
             if (is_dir($backup)) {
                 $this->deleteDirectory($backup);
             }
-            return ['code' => $code, 'version' => $manifest['version'], 'path' => $target, 'frontend' => is_dir($frontendSource), 'resources' => $synced];
+            return ['code' => $code, 'version' => $manifest['version'], 'path' => $target, 'frontend' => !($update && ($previousLifecycle['disabled_by_user'] ?? false)) && is_dir($frontendSource), 'resources' => $synced];
         } catch (\Throwable $exception) {
             if (isset($target, $backup) && is_dir($backup)) {
                 if (is_dir($target)) {
@@ -206,7 +214,7 @@ final class Installer
             if (isset($code) && ($lifecycleCaptured ?? false)) {
                 $this->lifecycle->restore($code, $previousLifecycle ?? null);
                 $restoredFrontend = isset($target) ? $target.'/frontend/dist' : '';
-                if (is_dir($restoredFrontend)) {
+                if (($previousLifecycle['state'] ?? null) === 'active' && is_dir($restoredFrontend)) {
                     $this->frontend->publish($webPrefix, $code, $restoredFrontend);
                 } else {
                     $this->frontend->remove($webPrefix, $code);
@@ -438,6 +446,25 @@ final class Installer
             }
             if (isset($lockHandle) && is_resource($lockHandle)) {
                 $this->locks?->release($lockHandle);
+            }
+        }
+    }
+
+    /** PHP 无法卸载旧类，必须在替换文件之前拒绝已经加载目标代码的进程。 */
+    private function assertCodeNotLoaded(array $manifest): void
+    {
+        $installed = realpath($this->addonsPath.'/'.$manifest['code']);
+        if ($installed !== false) {
+            foreach (get_included_files() as $file) {
+                if (str_starts_with($file, $installed.DIRECTORY_SEPARATOR)) {
+                    throw new AddonException('插件 '.$manifest['code'].' 的 PHP 文件已加载，请通过独立插件任务执行更新。', 'addon_code_already_loaded');
+                }
+            }
+        }
+        $prefix = strtolower(AddonNamespace::fromManifest($manifest).'\\');
+        foreach ([...get_declared_classes(), ...get_declared_interfaces(), ...get_declared_traits()] as $class) {
+            if (str_starts_with(strtolower($class), $prefix)) {
+                throw new AddonException('插件 '.$manifest['code'].' 的 PHP 类已加载，请通过独立插件任务执行安装或更新。', 'addon_code_already_loaded');
             }
         }
     }

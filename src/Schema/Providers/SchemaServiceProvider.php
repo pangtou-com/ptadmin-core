@@ -28,7 +28,7 @@ use PTAdmin\Schema\Support\SchemaSubjectContext;
 final class SchemaServiceProvider extends ServiceProvider
 {
     /**
-     * 以单例方式绑定服务，保证宿主注入的执行器和发布服务在一次请求内保持一致。
+     * 注册共享基础服务；持有主体或事件去重状态的执行器按请求及任务作用域隔离。
      */
     public function register(): void
     {
@@ -43,7 +43,7 @@ final class SchemaServiceProvider extends ServiceProvider
         $this->app->singleton(\PTAdmin\Schema\Extension\ExtensionRegistry::class);
         $this->app->singleton(RuntimeRegistry::class);
         $this->app->singleton(RuntimeBindingExecutor::class);
-        $this->app->singleton(RuntimeEventDispatcher::class);
+        $this->app->scoped(RuntimeEventDispatcher::class);
         $this->app->singleton(RuntimeApplicationRegistrar::class);
         $this->app->singleton(RuntimeRegistryValidator::class);
         $this->app->singleton(RuntimeCacheStore::class, static function ($app): RuntimeCacheStore {
@@ -54,8 +54,8 @@ final class SchemaServiceProvider extends ServiceProvider
 
             return new RuntimeCacheStore($path);
         });
-        $this->app->singleton(RuntimeEngine::class);
-        $this->app->singleton(TreeService::class);
+        $this->app->scoped(RuntimeEngine::class);
+        $this->app->scoped(TreeService::class);
         $this->app->singleton(RecordTransferService::class);
         $this->app->singleton(AuditWriter::class);
         $this->app->singleton(DefinitionService::class);

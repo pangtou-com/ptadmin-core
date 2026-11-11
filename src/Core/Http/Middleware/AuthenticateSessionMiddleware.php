@@ -24,6 +24,7 @@ final class AuthenticateSessionMiddleware
 
     public function handle(Request $request, Closure $next): Response
     {
+        $this->schemaSubject->set(null);
         try {
             $session = $this->sessions->resolve((string) $request->bearerToken());
         } catch (InvalidSessionException $exception) {
@@ -39,6 +40,11 @@ final class AuthenticateSessionMiddleware
             $this->schemaSubject->set($admin);
         }
 
-        return $next($request);
+        try {
+            return $next($request);
+        } finally {
+            // 同进程后续任务不能继承当前 HTTP 管理员身份。
+            $this->schemaSubject->set(null);
+        }
     }
 }

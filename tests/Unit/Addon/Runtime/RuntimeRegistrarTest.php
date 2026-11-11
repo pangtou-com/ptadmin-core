@@ -439,7 +439,7 @@ PHP);
     }
 
     #[RunInSeparateProcess]
-    public function testRuntimeRegistrationFailureReturnsDiagnosticWithoutChangingLifecycle(): void
+    public function testRuntimeRegistrationFailureAbortsBootWithoutChangingLifecycle(): void
     {
         mkdir($this->root.'/runtime-addon/src/Runtime', 0700, true);
         file_put_contents($this->root.'/runtime-addon/src/Runtime/Registrar.php', <<<'PHP'
@@ -466,11 +466,13 @@ PHP);
             new RuntimeRegistry(),
         );
 
-        $result = $registrar->register();
-        self::assertSame([], $result['loaded']);
-        self::assertSame('addon_runtime_registration_failed', $result['errors'][0]['error_code']);
+        mkdir($this->root.'/zzz-later/routes', 0700, true);
+        file_put_contents($this->root.'/zzz-later/manifest.json', json_encode(['code' => 'zzz-later', 'version' => '1.0.0']));
+        file_put_contents($this->root.'/zzz-later/routes/web.php', '<?php return function ($app) { $app->instance("later-loaded", true); };');
+        $exception = $this->assertBootFails($registrar, 'addon_runtime_registration_failed');
+        self::assertFalse($app->bound('later-loaded'));
         self::assertNull($lifecycle->read('runtime-addon'));
-        self::assertSame('runtime registration failed', $result['errors'][0]['message']);
+        self::assertStringContainsString('runtime registration failed', $exception->getMessage());
     }
 
     #[RunInSeparateProcess]
@@ -495,10 +497,7 @@ PHP);
             $this->root,
         );
 
-        $result = $registrar->register();
-
-        self::assertSame([], $result['loaded']);
-        self::assertSame('runtime_registry_unavailable', $result['errors'][0]['error_code']);
+        $this->assertBootFails($registrar, 'runtime_registry_unavailable');
         self::assertNull($lifecycle->read('runtime-addon'));
     }
 
@@ -510,16 +509,13 @@ PHP);
         ], JSON_THROW_ON_ERROR));
         $app = new Application($this->root);
         $registrar = new RuntimeRegistrar($app, new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle)), $this->root);
-        $result = $registrar->register();
-
-        self::assertSame([], $result['loaded']);
-        self::assertSame('bootstrap_class_unavailable', $result['errors'][0]['error_code']);
+        $this->assertBootFails($registrar, 'bootstrap_class_unavailable');
         $state = (new LifecycleStore($this->lifecycle))->read('runtime-addon');
         self::assertNull($state);
         $diagnostic = (new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle)))->scan();
         self::assertSame('active', $diagnostic['addons'][0]['state']);
         self::assertNull($diagnostic['addons'][0]['diagnostic_code']);
-        self::assertSame($result, $registrar->register());
+        $this->assertBootFails($registrar, 'bootstrap_class_unavailable');
     }
 
     #[RunInSeparateProcess]
@@ -620,9 +616,7 @@ PHP);
             $this->root,
         );
 
-        $result = $registrar->register();
-        self::assertSame([], $result['loaded']);
-        self::assertSame('invalid_provider', $result['errors'][0]['error_code']);
+        $this->assertBootFails($registrar, 'invalid_provider');
     }
 
     #[RunInSeparateProcess]
@@ -671,9 +665,7 @@ PHP);
             $this->root,
         );
 
-        $result = $registrar->register();
-        self::assertSame([], $result['loaded']);
-        self::assertSame('invalid_directives', $result['errors'][0]['error_code']);
+        $this->assertBootFails($registrar, 'invalid_directives');
     }
 
     #[RunInSeparateProcess]
@@ -768,4 +760,28 @@ PHP);
         unset($manifest['runtime'], $manifest['files']);
         file_put_contents($this->root.'/runtime-addon/manifest.json', json_encode($manifest, JSON_THROW_ON_ERROR));
     }
+    #[RunInSeparateProcess]
+    public function testTaskWorkerSkipsTargetBootstrapAndAutoload(): void
+    {
+        $app = new Application($this->root);
+        $app->instance(\PTAdmin\Core\Tasks\AddonTaskProcess::class, new \PTAdmin\Core\Tasks\AddonTaskProcess('task', 'runtime-addon'));
+        $registrar = new RuntimeRegistrar($app,
+            new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecycle)), $this->root);
+        $registrar->registerMigrations();
+        self::assertSame([], $registrar->register()['loaded']);
+        self::assertFalse(class_exists('RuntimeAddon\\Bootstrap'));
+    }
+
+    private function assertBootFails(RuntimeRegistrar $registrar, string $cause): \PTAdmin\Addon\Exception\AddonException
+    {
+        try {
+            $registrar->register();
+            self::fail('部分注册失败后必须中止应用启动。');
+        } catch (\PTAdmin\Addon\Exception\AddonException $exception) {
+            self::assertSame('addon_runtime_boot_failed', $exception->errorCode);
+            self::assertSame($cause, $exception->details['cause']);
+            return $exception;
+        }
+    }
+
 }

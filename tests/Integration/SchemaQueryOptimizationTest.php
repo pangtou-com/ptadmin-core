@@ -217,6 +217,65 @@ final class SchemaQueryOptimizationTest extends TestCase
         self::assertSame('分类一', $result['results'][1]['category_name']);
     }
 
+    public function testRuntimeAndTreesUseTheCurrentSubjectAfterScopeChanges(): void
+    {
+        $authorization = new class implements SchemaAuthorizationInterface {
+            public array $subjects = [];
+            public function allows(mixed $subject, string $resourceKey, string $action): bool
+            {
+                $this->subjects[] = $subject;
+                return true;
+            }
+        };
+        $scopes = new class implements \PTAdmin\Schema\Contracts\SchemaScopeResolverInterface {
+            public array $subjects = [];
+            public function resolve(mixed $subject, string $resourceKey, string $action): ?\PTAdmin\Schema\Contract\ServerConstraint
+            {
+                $this->subjects[] = $subject;
+                return null;
+            }
+        };
+        $this->app->instance(SchemaAuthorizationInterface::class, $authorization);
+        $this->app->instance(\PTAdmin\Schema\Contracts\SchemaScopeResolverInterface::class, $scopes);
+        foreach (['first-admin', 'second-admin'] as $subject) {
+            $this->app->forgetScopedInstances();
+            app(SchemaSubjectContextInterface::class)->set($subject);
+            app(RuntimeEngine::class)->list(['resource' => 'test.tree']);
+            app(TreeService::class)->getTree(['resource' => 'test.tree']);
+        }
+        self::assertSame(['first-admin', 'second-admin'], $authorization->subjects);
+        self::assertSame(['first-admin', 'first-admin', 'first-admin', 'second-admin', 'second-admin', 'second-admin'], $scopes->subjects);
+    }
+
+    public function testSameRuntimeEngineReadsReplacedAndClearedCache(): void
+    {
+        $path = sys_get_temp_dir().'/ptadmin-runtime-refresh-'.bin2hex(random_bytes(6)).'.php';
+        $cache = new \PTAdmin\Schema\Runtime\RuntimeCacheStore($path);
+        $fallback = new \PTAdmin\Schema\Runtime\RuntimeRegistry();
+        $runtime = new RuntimeEngine(
+            new class implements SchemaAuthorizationInterface {
+                public function allows(mixed $subject, string $resourceKey, string $action): bool { return true; }
+            },
+            subjectContext: app(SchemaSubjectContextInterface::class),
+            runtimeRegistry: $fallback,
+            runtimeCache: $cache,
+            runtimeExecutor: app(\PTAdmin\Schema\Runtime\RuntimeBindingExecutor::class),
+        );
+        try {
+            foreach (['first', 'second'] as $method) {
+                $registry = new \PTAdmin\Schema\Runtime\RuntimeRegistry();
+                $registry->forOwner('app', 'host')->resource('test.tree')->hook('list.transform', CacheRefreshHandler::class, $method);
+                // 模拟另一个进程更新同一路径的缓存。
+                (new \PTAdmin\Schema\Runtime\RuntimeCacheStore($path))->write($registry->build());
+                self::assertSame([['revision' => $method]], $runtime->list(['resource' => 'test.tree'])['results']);
+            }
+            $cache->clear();
+            self::assertSame([], $runtime->list(['resource' => 'test.tree'])['results']);
+        } finally {
+            $cache->clear();
+        }
+    }
+
     private function runtime(): RuntimeEngine
     {
         $authorization = new class implements SchemaAuthorizationInterface {
@@ -357,4 +416,10 @@ final class SchemaQueryOptimizationTest extends TestCase
             DB::table('schema_tree_nodes')->insert($chunk);
         }
     }
+}
+
+final class CacheRefreshHandler
+{
+    public function first(\PTAdmin\Schema\Runtime\RuntimeHookContext $context, array $rows): array { return [['revision' => 'first']]; }
+    public function second(\PTAdmin\Schema\Runtime\RuntimeHookContext $context, array $rows): array { return [['revision' => 'second']]; }
 }

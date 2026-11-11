@@ -18,13 +18,14 @@ use PTAdmin\Addon\Runtime\Contracts\RuntimeRegistrarInterface;
 use PTAdmin\Schema\Runtime\RuntimeRegistry;
 use PTAdmin\Template\Directive\DirectiveRegistry;
 use PTAdmin\Core\Tasks\TaskManager;
+use PTAdmin\Core\Tasks\AddonTaskProcess;
 
 /**
  * 将 active 插件接入当前 Laravel 应用生命周期。
  *
  * 入口按固定顺序注册 migration、函数、Bootstrap、路由、Provider、配置、视图语言、模板指令、Hook 和
- * Schema Runtime 贡献，最后调用 Provider 的能力注册入口。单个插件失败时返回本次启动诊断，不改写全局生命周期状态，
- * 本次能力注册不生效，但不会阻断核心或其他插件启动。
+ * Schema Runtime 贡献，最后调用 Provider 的能力注册入口。执行失败时中止当前启动，不改写全局生命周期状态。
+ * 任意 PHP 回调的容器、路由和外部副作用无法完整撤销，禁止带着部分注册状态继续响应请求。
  */
 final class RuntimeRegistrar
 {
@@ -44,7 +45,7 @@ final class RuntimeRegistrar
     }
 
     /**
-     * 扫描并注册所有可运行插件，返回成功列表和逐插件错误。
+     * 扫描并注册所有可运行插件；发现阶段错误返回诊断，执行阶段错误中止启动。
      *
      * @return array{loaded:array<int,string>,errors:array<int,array<string,mixed>>}
      */
@@ -60,7 +61,7 @@ final class RuntimeRegistrar
         $errors = $scan['errors'];
         foreach ($scan['addons'] as $addon) {
             $code = strtolower((string) ($addon['code'] ?? ''));
-            if (($addon['state'] ?? 'active') !== 'active') {
+            if (($addon['state'] ?? 'active') !== 'active' || $this->excludedFromStartup((string) $addon['code'])) {
                 continue;
             }
             $directory = $this->addonsPath.'/'.$code;
@@ -100,11 +101,10 @@ final class RuntimeRegistrar
                 $errorCode = $exception instanceof AddonException
                     ? $exception->errorCode
                     : 'addon_runtime_registration_failed';
-                $errors[] = [
+                throw new AddonException('插件 '.$code.' 启动失败：'.$exception->getMessage(), 'addon_runtime_boot_failed', [
                     'code' => $code,
-                    'error_code' => $errorCode,
-                    'message' => $exception->getMessage(),
-                ];
+                    'cause' => $errorCode,
+                ]);
             }
         }
         return ['loaded' => $loaded, 'errors' => $errors];
@@ -115,7 +115,7 @@ final class RuntimeRegistrar
     {
         $scan = $this->startupScan = $this->prepareAutoload($this->discovery->scan());
         foreach ($scan['addons'] as $addon) {
-            if (($addon['state'] ?? 'active') !== 'active') {
+            if (($addon['state'] ?? 'active') !== 'active' || $this->excludedFromStartup((string) $addon['code'])) {
                 continue;
             }
             $code = strtolower((string) ($addon['code'] ?? ''));
@@ -199,7 +199,7 @@ final class RuntimeRegistrar
             $code = (string) $addon['code'];
             try {
                 $this->autoloader->reserve($addon['manifest']);
-                if (($addon['state'] ?? 'active') === 'active') {
+                if (($addon['state'] ?? 'active') === 'active' && !$this->excludedFromStartup($code)) {
                     $this->autoloader->register($this->addonsPath.'/'.$code, $addon['manifest']);
                 }
                 $addons[] = $addon;
@@ -211,6 +211,13 @@ final class RuntimeRegistrar
         $scan['addons'] = $addons;
 
         return $scan;
+    }
+
+    /** 独立任务进程保留插件身份占用，但不提前加载待替换的 PHP 代码。 */
+    private function excludedFromStartup(string $code): bool
+    {
+        return $this->app->bound(AddonTaskProcess::class)
+            && $this->app->make(AddonTaskProcess::class)->addonCode === $code;
     }
 
     private function registerMigrationPath(string $directory): void

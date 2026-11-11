@@ -210,7 +210,7 @@ final class ConfigService
         $valuePayload = $this->rememberOutsideTransaction(
             $this->valueCacheKey($ownerType, $ownerCode, $configKey, $scopeType, $scopeId),
             3600,
-            static function () use ($ownerType, $ownerCode, $configKey, $scopeType, $scopeId): ?array {
+            static function () use ($ownerType, $ownerCode, $configKey, $scopeType, $scopeId): array {
                 $value = ConfigValue::query()->where([
                     'owner_type' => $ownerType,
                     'owner_code' => $ownerCode,
@@ -218,7 +218,8 @@ final class ConfigService
                     'scope_type' => $scopeType,
                     'scope_id' => $scopeId,
                 ])->first();
-                return $value?->toArray();
+                // Laravel 把 null 当作缓存未命中；尚未保存的配置也要缓存其缺省状态。
+                return $value?->toArray() ?? [];
             },
         );
         $stored = is_array($valuePayload) ? (array) ($valuePayload['value_json'] ?? []) : [];
