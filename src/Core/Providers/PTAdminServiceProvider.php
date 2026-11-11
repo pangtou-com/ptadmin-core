@@ -136,6 +136,7 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../../../config/ptadmin-updates.php', 'ptadmin-updates');
         $this->app->register(SchemaServiceProvider::class);
         $this->app->register(ServiceProtocolServiceProvider::class);
+        $this->app->register(\PTAdmin\User\UserServiceProvider::class);
 
         $this->app->singleton(ApplicationIdentity::class, static function (): ApplicationIdentity {
             return new ApplicationIdentity(storage_path('ptadmin.json'));
