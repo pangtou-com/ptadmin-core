@@ -4,6 +4,8 @@
 
 0.10.0 新增 `User` 通用会员能力：默认 `PTAdmin\User\Models\User`、`UserIdentityInterface`、Eloquent 身份适配器及 `UserUnavailable` 事件均由 Core 提供，插件直接依赖 Core 会员接口。默认模型使用 `users` 表，迁移保留宿主已有会员表与数据；基础壳不再重复定义模型或会员迁移。宿主在 `config/auth.php` 的 `web` guard 对应 provider 中配置用户模型；Core 不注入认证配置。特殊账户体系通过绑定统一接口接入。此能力从 Core `0.10.0` 提供，Core `0.9.0` 不包含新接口。
 
+0.11.0 新增通知批量发送、投递查询和认证回执协议，内置正式 Shell 0.11.0。升级时执行新增的通知投递字段迁移；短信插件必须使用支持本版协议的版本。公开回执入口仅接受 HTTPS JSON 和渠道专用 URL 令牌，按供应商消息编号及目标匹配，重复或迟到回执不会回退投递状态。供应商接口错误不改变已有投递结果。
+
 当前阶段已完成：
 
 - Composer 包骨架和 PHP/Laravel 运行约束。

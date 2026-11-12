@@ -15,18 +15,18 @@ final class AdminFrontendManifestTest extends TestCase
             self::markTestSkipped('composer/semver is not installed.');
         }
 
-        $manifest = (new AdminFrontendManifest('0.10.0', 1, 1))->verify(
+        $manifest = (new AdminFrontendManifest('0.11.0', 1, 1))->verify(
             dirname(__DIR__, 4).'/resources/admin-frontend'
         );
 
-        self::assertSame('0.10.0', $manifest['frontend_version']);
+        self::assertSame('0.11.0', $manifest['frontend_version']);
         self::assertSame('./index.html', $manifest['entry']);
     }
 
     public function testBundledShellProvidesVerifiedSharedImportsForApplicationModules(): void
     {
         $directory = dirname(__DIR__, 4).'/resources/admin-frontend';
-        $manifest = (new AdminFrontendManifest('0.10.0', 1, 1))->verify($directory);
+        $manifest = (new AdminFrontendManifest('0.11.0', 1, 1))->verify($directory);
         $document = new \DOMDocument();
         $document->loadHTML((string) file_get_contents($directory.'/index.html'), LIBXML_NOERROR | LIBXML_NOWARNING);
         $imports = [];
