@@ -256,6 +256,49 @@ final class NoticeManagerTest extends TestCase
         self::assertSame(['accepted', 'failed'], $this->database->table('notice_deliveries')->orderBy('id')->pluck('status')->all());
     }
 
+    public function testReceiptsRequireMessageIdAndUniqueMatchingDestination(): void
+    {
+        Notice::sendSMSBatch('security.login_warning', ['13800138000', '13800138001'], ['name' => '管理员'], 'demo.sms');
+        $this->database->table('notice_deliveries')->update(['provider_message_id' => 'shared']);
+        $service = new NoticeDeliveryService($this->database, $this->adapters);
+        $this->sms->receipts = [new NoticeReceipt(null, '13800138000', 'delivered'), new NoticeReceipt('shared', null, 'delivered')];
+        self::assertSame(0, $service->applyReceipt('demo.sms', '[]'));
+        $this->sms->receipts = [new NoticeReceipt('shared', '13900139000', 'delivered')];
+        self::assertSame(0, $service->applyReceipt('demo.sms', '[]'));
+        $this->sms->receipts = [new NoticeReceipt('shared', '13800138000', 'delivered', 1000)];
+        self::assertSame(1, $service->applyReceipt('demo.sms', '[]'));
+        self::assertSame(['delivered', 'accepted'], $this->database->table('notice_deliveries')->orderBy('id')->pluck('status')->all());
+        $before = (array) $this->database->table('notice_deliveries')->where('id', 1)->first();
+        $this->sms->receipts = [new NoticeReceipt('shared', '13800138000', 'delivered', 2000), new NoticeReceipt('shared', '13800138000', 'failed')];
+        $service->applyReceipt('demo.sms', '[]');
+        self::assertSame($before, (array) $this->database->table('notice_deliveries')->where('id', 1)->first());
+    }
+
+    public function testQueryCannotOverwriteReceiptCommittedWhileProviderIsResponding(): void
+    {
+        Notice::sendSMSBatch('security.login_warning', ['13800138000'], ['name' => '管理员'], 'demo.sms');
+        $service = new NoticeDeliveryService($this->database, $this->adapters);
+        $this->sms->queryCallback = static function () use ($service): NoticeChannelResponse {
+            $service->applyReceipt('demo.sms', '[]');
+            return NoticeChannelResponse::failed('late_failure', '迟到的查询结果');
+        };
+        self::assertSame('delivered', $service->query(1)->status);
+        self::assertNull($this->database->table('notice_deliveries')->where('id', 1)->value('error_code'));
+    }
+
+    public function testUnknownQueryPreservesFailureDetails(): void
+    {
+        Notice::sendSMSBatch('security.login_warning', ['13800138000'], ['name' => '管理员'], 'demo.sms');
+        $service = new NoticeDeliveryService($this->database, $this->adapters);
+        $this->sms->receipts = [new NoticeReceipt('batch-1', '13800138000', 'failed', errorCode: 'provider_failure', errorMessage: '真实失败原因')];
+        $service->applyReceipt('demo.sms', '[]');
+        $before = (array) $this->database->table('notice_deliveries')->where('id', 1)->first();
+        $this->sms->queryCallback = static fn (): NoticeChannelResponse => NoticeChannelResponse::unknown();
+        $result = $service->query(1);
+        self::assertSame('provider_failure', $result->errorCode);
+        self::assertSame($before, (array) $this->database->table('notice_deliveries')->where('id', 1)->first());
+    }
+
     private function createTables(): void
     {
         $schema = $this->database->getSchemaBuilder();
@@ -373,6 +416,11 @@ final class FakeNoticeChannelAdapter implements NoticeChannelAdapterInterface, N
     /** @var list<NoticeChannelMessage> */
     public array $messages = [];
 
+    /** @var list<NoticeReceipt>|null */
+    public ?array $receipts = null;
+
+    public ?\Closure $queryCallback = null;
+
     public function __construct(public NoticeChannelResponse $response)
     {
     }
@@ -397,13 +445,13 @@ final class FakeNoticeChannelAdapter implements NoticeChannelAdapterInterface, N
 
     public function query(NoticeDeliveryQuery $query): NoticeChannelResponse
     {
-        return NoticeChannelResponse::delivered($query->providerMessageId);
+        return $this->queryCallback !== null ? ($this->queryCallback)() : NoticeChannelResponse::delivered($query->providerMessageId);
     }
 
     /** @param array<string, string|list<string>> $headers @return list<NoticeReceipt> */
     public function parseReceipt(string $body, array $headers = []): array
     {
-        return [new NoticeReceipt(null, '13800138000', 'delivered')];
+        return $this->receipts ?? [new NoticeReceipt('batch-1', '13800138000', 'delivered')];
     }
 }
 

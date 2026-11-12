@@ -21,6 +21,7 @@ use PTAdmin\Core\Http\Controllers\SessionController;
 use PTAdmin\Core\Http\Controllers\TaskController;
 use PTAdmin\Core\Http\Controllers\ThemeController;
 use PTAdmin\Core\Http\Controllers\ThemeDevelopmentAssetController;
+use PTAdmin\Core\Http\Controllers\NoticeReceiptController;
 use PTAdmin\Cloud\Http\Controllers\CloudController;
 use PTAdmin\Schema\Http\Controllers\PublishController;
 use PTAdmin\Schema\Http\Controllers\ResourceController;
@@ -42,6 +43,14 @@ Route::middleware('ptadmin.request-id')
     ->get($apiPrefix.'/public/site/themes/{code}/{version}/cover', [ThemeController::class, 'cover'])
     ->where(['code' => '[A-Za-z][A-Za-z0-9._-]{1,63}', 'version' => '\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?'])
     ->name('ptadmin.public.site.themes.cover');
+
+Route::middleware(['ptadmin.request-id', 'throttle:60,1'])
+    ->post($apiPrefix.'/public/notice-receipts/{channel}/{token}', NoticeReceiptController::class)
+    ->where([
+        'channel' => '[A-Za-z][A-Za-z0-9._-]{1,63}',
+        'token' => '[A-Za-z0-9_-]{32,128}',
+    ])
+    ->name('ptadmin.public.notice-receipts');
 
 if ((bool) config('ptadmin.site_theme.development_assets.enabled', false)) {
     $developmentPrefix = trim((string) config('ptadmin.site_theme.development_assets.prefix', '__dev_theme__'), '/');

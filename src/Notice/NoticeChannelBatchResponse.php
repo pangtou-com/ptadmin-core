@@ -17,6 +17,6 @@ final class NoticeChannelBatchResponse
     /** @param list<NoticeChannelResponse> $responses @param array<string, mixed> $meta */
     public static function completed(array $responses, ?string $providerBatchId = null, array $meta = []): self
     {
-        return new self(array_values($responses), $providerBatchId, $meta);
+        return new self($responses, $providerBatchId, $meta);
     }
 }
