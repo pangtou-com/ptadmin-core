@@ -29,6 +29,12 @@ final class NoticeChannelResponse
     }
 
     /** @param array<string, mixed> $meta */
+    public static function unknown(?string $providerMessageId = null, array $meta = []): self
+    {
+        return new self('unknown', $providerMessageId, null, null, $meta);
+    }
+
+    /** @param array<string, mixed> $meta */
     public static function failed(string $errorCode, string $errorMessage, array $meta = []): self
     {
         return new self('failed', null, trim($errorCode), trim($errorMessage), $meta);

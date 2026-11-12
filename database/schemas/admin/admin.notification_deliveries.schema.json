@@ -50,6 +50,24 @@
                 "searchable": true
             },
             {
+                "name": "destination",
+                "type": "string",
+                "label": "投递目标",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
+                "name": "batch_key",
+                "type": "string",
+                "label": "批次标识",
+                "persisted": true,
+                "readonly": true,
+                "listable": true,
+                "searchable": true
+            },
+            {
                 "name": "receiver_type",
                 "type": "string",
                 "label": "接收主体类型",

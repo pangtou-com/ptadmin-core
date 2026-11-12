@@ -53,6 +53,27 @@ final class Notice
     }
 
     /**
+     * @param array<mixed> $destinations
+     * @param array<mixed> $parameters
+     * @param array<mixed>|null $action
+     */
+    public static function sendSMSBatch(
+        string $scene,
+        array $destinations,
+        array $parameters = [],
+        ?string $channel = null,
+        string $locale = 'zh-CN',
+        ?array $action = null,
+        ?NoticeReceiver $receiver = null,
+    ): NoticeSendResult {
+        if ($channel === null || trim($channel) === '') {
+            throw new NoticeSendingException('批量短信发送必须指定渠道。', 'notice_batch_channel_required');
+        }
+
+        return app(NoticeManager::class)->sendBatch($scene, $channel, $destinations, $parameters, $locale, $action, $receiver);
+    }
+
+    /**
      * @param array<mixed> $parameters
      * @param array<mixed>|null $action
      */

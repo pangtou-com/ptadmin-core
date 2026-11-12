@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PTAdmin\Notice;
 
 use Illuminate\Database\ConnectionInterface;
+use PTAdmin\Notice\Contracts\NoticeChannelBatchAdapterInterface;
 use PTAdmin\Notice\Contracts\NoticeChannelAdapterInterface;
 use Throwable;
 
@@ -80,6 +81,128 @@ final class NoticeManager
         ksort($results);
 
         return new NoticeSendResult($sceneCode, $locale, array_values($results));
+    }
+
+    /**
+     * 批量发送同一场景和渠道的外部通知；每个目标仍对应一条独立投递记录。
+     *
+     * @param array<mixed> $destinations
+     * @param array<mixed> $parameters
+     * @param array<mixed>|null $action
+     */
+    public function sendBatch(
+        string $sceneCode,
+        string $channel,
+        array $destinations,
+        array $parameters = [],
+        string $locale = 'zh-CN',
+        ?array $action = null,
+        ?NoticeReceiver $receiver = null,
+    ): NoticeSendResult {
+        $sceneCode = strtolower(trim($sceneCode));
+        $channel = strtolower(trim($channel));
+        $locale = trim($locale);
+        if ($sceneCode === '' || $channel === '' || $locale === '') {
+            throw new NoticeSendingException('通知场景、渠道和语言区域不能为空。', 'notice_send_invalid');
+        }
+        $scene = $this->database->table('notice_scenes')->where('code', $sceneCode)->first();
+        if ($scene === null) {
+            throw new NoticeSendingException('通知场景不存在。', 'notice_scene_not_found', ['scene' => $sceneCode]);
+        }
+        if (!(bool) $scene->enabled) {
+            throw new NoticeSendingException('通知场景已停用。', 'notice_scene_disabled', ['scene' => $sceneCode]);
+        }
+        $normalized = [];
+        foreach ($destinations as $destination) {
+            if (!is_string($destination) || trim($destination) === '') {
+                throw new NoticeSendingException('批量通知目标必须是非空字符串。', 'notice_destination_required');
+            }
+            $normalized[] = trim($destination);
+        }
+        $normalized = array_values(array_unique($normalized));
+        if ($normalized === []) {
+            throw new NoticeSendingException('批量通知目标不能为空。', 'notice_targets_required');
+        }
+        $template = $this->templates->resolve($sceneCode, $channel, $locale, $parameters, $action);
+        if ($template->channelType === 'in_app') {
+            throw new NoticeSendingException('批量通知不支持站内信渠道。', 'notice_batch_channel_invalid');
+        }
+        $adapter = $this->adapters->resolve($channel);
+        $batchKey = bin2hex(random_bytes(16));
+        $now = time();
+        $messages = [];
+        foreach ($normalized as $destination) {
+            $deliveryId = (int) $this->database->table('notice_deliveries')->insertGetId([
+                'notice_message_id' => null,
+                'scene_code' => $template->scene,
+                'channel' => $template->channel,
+                'destination' => $destination,
+                'batch_key' => $batchKey,
+                'receiver_type' => $receiver?->type,
+                'receiver_id' => $receiver?->id,
+                'status' => 'pending',
+                'provider_message_id' => null,
+                'error_code' => null,
+                'error_message' => null,
+                'accepted_at' => null,
+                'delivered_at' => null,
+                'meta' => null,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+            $messages[] = new NoticeChannelMessage($deliveryId, $destination, $template, $receiver, $batchKey);
+        }
+
+        try {
+            if ($adapter instanceof NoticeChannelBatchAdapterInterface) {
+                $batchResponse = $adapter->sendBatch($messages);
+                if (count($batchResponse->responses) !== count($messages)) {
+                    throw new NoticeSendingException('批量发送结果数量与目标数量不一致。', 'notice_batch_result_invalid');
+                }
+                $responses = $batchResponse->responses;
+                foreach ($responses as $index => $response) {
+                    $meta = $response->meta;
+                    if ($batchResponse->providerBatchId !== null) {
+                        $meta['provider_batch_id'] = $batchResponse->providerBatchId;
+                    }
+                    if ($batchResponse->meta !== []) {
+                        $meta['batch'] = $batchResponse->meta;
+                    }
+                    $responses[$index] = $response->status === 'failed'
+                        ? NoticeChannelResponse::failed($response->errorCode ?? 'notice_channel_send_failed', $response->errorMessage ?? '发送渠道返回失败。', $meta)
+                        : ($response->status === 'delivered'
+                            ? NoticeChannelResponse::delivered($response->providerMessageId, $meta)
+                            : ($response->status === 'unknown'
+                                ? NoticeChannelResponse::unknown($response->providerMessageId, $meta)
+                                : NoticeChannelResponse::accepted($response->providerMessageId, $meta)));
+                }
+            } else {
+                $responses = [];
+                foreach ($messages as $message) {
+                    try {
+                        $responses[] = $adapter->send($message);
+                    } catch (Throwable $exception) {
+                        $responses[] = NoticeChannelResponse::failed(
+                            $exception instanceof NoticeSendingException ? $exception->errorCode : 'notice_channel_send_failed',
+                            $exception->getMessage(),
+                        );
+                    }
+                }
+            }
+        } catch (Throwable $exception) {
+            $responses = array_fill(0, count($messages), NoticeChannelResponse::failed(
+                $exception instanceof NoticeSendingException ? $exception->errorCode : 'notice_channel_send_failed',
+                $exception->getMessage(),
+            ));
+        }
+
+        $results = [];
+        foreach ($messages as $index => $message) {
+            $response = $responses[$index] ?? NoticeChannelResponse::failed('notice_batch_result_invalid', '批量发送未返回当前目标结果。');
+            $results[] = $this->persistExternalResponse($message, $response, null);
+        }
+
+        return new NoticeSendResult($sceneCode, $locale, $results);
     }
 
     /** @param array<mixed> $targets @return list<NoticeTarget> */
@@ -272,6 +395,8 @@ final class NoticeManager
             'notice_message_id' => $noticeMessageId,
             'scene_code' => $template->scene,
             'channel' => $template->channel,
+            'destination' => $target->destination,
+            'batch_key' => null,
             'receiver_type' => $receiver?->type,
             'receiver_id' => $receiver?->id,
             'status' => 'pending',
@@ -287,30 +412,7 @@ final class NoticeManager
 
         try {
             $response = $adapter->send(new NoticeChannelMessage($deliveryId, $target->destination, $template, $receiver));
-            $errorCode = $response->status === 'failed' ? ($response->errorCode ?: 'notice_channel_send_failed') : null;
-            $errorMessage = $response->status === 'failed' ? ($response->errorMessage ?: '发送渠道返回失败。') : null;
-            $completedAt = time();
-            $this->database->table('notice_deliveries')->where('id', $deliveryId)->update([
-                'status' => $response->status,
-                'provider_message_id' => $response->providerMessageId,
-                'error_code' => $errorCode,
-                'error_message' => $errorMessage,
-                'accepted_at' => in_array($response->status, ['accepted', 'delivered'], true) ? $completedAt : null,
-                'delivered_at' => $response->status === 'delivered' ? $completedAt : null,
-                'meta' => $response->meta !== [] ? json_encode($response->meta, JSON_THROW_ON_ERROR) : null,
-                'updated_at' => $completedAt,
-            ]);
-
-            return new NoticeTargetResult(
-                channelType: $template->channelType,
-                channel: $template->channel,
-                status: $response->status,
-                noticeMessageId: $noticeMessageId,
-                deliveryId: $deliveryId,
-                providerMessageId: $response->providerMessageId,
-                errorCode: $errorCode,
-                errorMessage: $errorMessage,
-            );
+            return $this->persistExternalResponse(new NoticeChannelMessage($deliveryId, $target->destination, $template, $receiver), $response, $noticeMessageId);
         } catch (Throwable $exception) {
             $errorCode = $exception instanceof NoticeSendingException ? $exception->errorCode : 'notice_channel_send_failed';
             $this->database->table('notice_deliveries')->where('id', $deliveryId)->update([
@@ -330,6 +432,34 @@ final class NoticeManager
                 errorMessage: $exception->getMessage(),
             );
         }
+    }
+
+    private function persistExternalResponse(NoticeChannelMessage $message, NoticeChannelResponse $response, ?int $noticeMessageId): NoticeTargetResult
+    {
+        $errorCode = $response->status === 'failed' ? ($response->errorCode ?: 'notice_channel_send_failed') : null;
+        $errorMessage = $response->status === 'failed' ? ($response->errorMessage ?: '发送渠道返回失败。') : null;
+        $completedAt = time();
+        $this->database->table('notice_deliveries')->where('id', $message->deliveryId)->update([
+            'status' => $response->status,
+            'provider_message_id' => $response->providerMessageId,
+            'error_code' => $errorCode,
+            'error_message' => $errorMessage,
+            'accepted_at' => in_array($response->status, ['accepted', 'delivered'], true) ? $completedAt : null,
+            'delivered_at' => $response->status === 'delivered' ? $completedAt : null,
+            'meta' => $response->meta !== [] ? json_encode($response->meta, JSON_THROW_ON_ERROR) : null,
+            'updated_at' => $completedAt,
+        ]);
+
+        return new NoticeTargetResult(
+            channelType: $message->template->channelType,
+            channel: $message->template->channel,
+            status: $response->status,
+            noticeMessageId: $noticeMessageId,
+            deliveryId: $message->deliveryId,
+            providerMessageId: $response->providerMessageId,
+            errorCode: $errorCode,
+            errorMessage: $errorMessage,
+        );
     }
 
     /** @return array<mixed> */

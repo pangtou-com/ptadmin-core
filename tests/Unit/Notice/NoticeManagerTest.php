@@ -10,6 +10,10 @@ use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Schema\Blueprint;
 use PHPUnit\Framework\TestCase;
 use PTAdmin\Notice\Contracts\NoticeChannelAdapterInterface;
+use PTAdmin\Notice\Contracts\NoticeChannelBatchAdapterInterface;
+use PTAdmin\Notice\Contracts\NoticeChannelQueryAdapterInterface;
+use PTAdmin\Notice\Contracts\NoticeChannelReceiptAdapterInterface;
+use PTAdmin\Notice\NoticeChannelBatchResponse;
 use PTAdmin\Notice\Contracts\NoticeChannelRoutingHookInterface;
 use PTAdmin\Notice\Notice;
 use PTAdmin\Notice\NoticeChannelAdapterRegistry;
@@ -17,9 +21,12 @@ use PTAdmin\Notice\NoticeChannelMessage;
 use PTAdmin\Notice\NoticeChannelResponse;
 use PTAdmin\Notice\NoticeChannelRouter;
 use PTAdmin\Notice\NoticeManager;
+use PTAdmin\Notice\NoticeDeliveryQuery;
+use PTAdmin\Notice\NoticeDeliveryService;
 use PTAdmin\Notice\NoticeReceiver;
 use PTAdmin\Notice\NoticeRoutingContext;
 use PTAdmin\Notice\NoticeSendingException;
+use PTAdmin\Notice\NoticeReceipt;
 use PTAdmin\Notice\NoticeTarget;
 use PTAdmin\Notice\NoticeTemplateResolver;
 
@@ -198,6 +205,57 @@ final class NoticeManagerTest extends TestCase
         self::assertSame('服务商拒绝发送', $this->database->table('notice_deliveries')->value('error_message'));
     }
 
+    public function testBatchSendCreatesIndependentDeliveriesAndQueryAndReceiptUpdateThem(): void
+    {
+        $result = Notice::sendSMSBatch('security.login_warning', ['13800138000', '13800138001'], ['name' => '管理员'], 'demo.sms');
+
+        self::assertTrue($result->successful());
+        self::assertCount(2, $result->targets);
+        self::assertSame(2, $this->database->table('notice_deliveries')->count());
+        self::assertSame(1, $this->database->table('notice_deliveries')->distinct('batch_key')->count('batch_key'));
+        self::assertSame(['13800138000', '13800138001'], $this->database->table('notice_deliveries')->orderBy('id')->pluck('destination')->all());
+
+        $delivery = $this->database->table('notice_deliveries')->orderBy('id')->first();
+        $deliveryService = new NoticeDeliveryService($this->database, $this->adapters);
+        $queried = $deliveryService->query((int) $delivery->id);
+        self::assertSame('delivered', $queried->status);
+
+        self::assertSame(1, $deliveryService->applyReceipt('demo.sms', '{}'));
+        self::assertSame('delivered', $this->database->table('notice_deliveries')->where('id', $delivery->id)->value('status'));
+    }
+
+    public function testBatchFallbackKeepsEarlierSuccessWhenLaterSingleSendFails(): void
+    {
+        $sceneId = (int) $this->database->table('notice_scenes')->value('id');
+        $adapter = new SingleOnlyNoticeChannelAdapter();
+        $this->adapters->register('single.sms', $adapter);
+        $this->database->table('notice_channels')->insert([
+            'code' => 'single.sms',
+            'type' => 'sms',
+            'editor' => 'content',
+            'enabled' => true,
+        ]);
+        $this->database->table('notice_templates')->insert([
+            'scene_id' => $sceneId,
+            'channel' => 'single.sms',
+            'locale' => 'zh-CN',
+            'mode' => 'content',
+            'config' => json_encode(['content' => '{{name}}，短信提醒。'], JSON_THROW_ON_ERROR),
+            'enabled' => true,
+        ]);
+
+        $result = Notice::sendSMSBatch(
+            'security.login_warning',
+            ['13800138000', '13800138001'],
+            ['name' => '管理员'],
+            'single.sms',
+        );
+
+        self::assertFalse($result->successful());
+        self::assertSame(['accepted', 'failed'], array_map(static fn ($target): string => $target->status, $result->targets));
+        self::assertSame(['accepted', 'failed'], $this->database->table('notice_deliveries')->orderBy('id')->pluck('status')->all());
+    }
+
     private function createTables(): void
     {
         $schema = $this->database->getSchemaBuilder();
@@ -257,6 +315,8 @@ final class NoticeManagerTest extends TestCase
             $table->unsignedBigInteger('notice_message_id')->nullable();
             $table->string('scene_code');
             $table->string('channel');
+            $table->string('destination')->nullable();
+            $table->string('batch_key')->nullable();
             $table->string('receiver_type')->nullable();
             $table->unsignedBigInteger('receiver_id')->nullable();
             $table->string('status');
@@ -308,7 +368,7 @@ final class NoticeManagerTest extends TestCase
     }
 }
 
-final class FakeNoticeChannelAdapter implements NoticeChannelAdapterInterface
+final class FakeNoticeChannelAdapter implements NoticeChannelAdapterInterface, NoticeChannelBatchAdapterInterface, NoticeChannelQueryAdapterInterface, NoticeChannelReceiptAdapterInterface
 {
     /** @var list<NoticeChannelMessage> */
     public array $messages = [];
@@ -322,6 +382,43 @@ final class FakeNoticeChannelAdapter implements NoticeChannelAdapterInterface
         $this->messages[] = $message;
 
         return $this->response;
+    }
+
+    /** @param list<NoticeChannelMessage> $messages */
+    public function sendBatch(array $messages): NoticeChannelBatchResponse
+    {
+        $responses = array_map(
+            static fn (NoticeChannelMessage $message): NoticeChannelResponse => NoticeChannelResponse::accepted('batch-'.$message->deliveryId),
+            $messages,
+        );
+
+        return NoticeChannelBatchResponse::completed($responses, 'batch-group');
+    }
+
+    public function query(NoticeDeliveryQuery $query): NoticeChannelResponse
+    {
+        return NoticeChannelResponse::delivered($query->providerMessageId);
+    }
+
+    /** @param array<string, string|list<string>> $headers @return list<NoticeReceipt> */
+    public function parseReceipt(string $body, array $headers = []): array
+    {
+        return [new NoticeReceipt(null, '13800138000', 'delivered')];
+    }
+}
+
+final class SingleOnlyNoticeChannelAdapter implements NoticeChannelAdapterInterface
+{
+    private int $calls = 0;
+
+    public function send(NoticeChannelMessage $message): NoticeChannelResponse
+    {
+        $this->calls++;
+        if ($this->calls === 2) {
+            throw new \RuntimeException('第二个目标发送失败');
+        }
+
+        return NoticeChannelResponse::accepted('single-'.$message->deliveryId);
     }
 }
 

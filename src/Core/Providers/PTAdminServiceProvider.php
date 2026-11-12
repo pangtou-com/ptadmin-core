@@ -48,6 +48,7 @@ use PTAdmin\Notice\NoticeChannelAdapterRegistry;
 use PTAdmin\Notice\NoticeChannelRouter;
 use PTAdmin\Notice\NoticeInboxService;
 use PTAdmin\Notice\NoticeManager;
+use PTAdmin\Notice\NoticeDeliveryService;
 use PTAdmin\Notice\NoticeTemplateResolver;
 use PTAdmin\Notice\NoticeTemplateValidator;
 use PTAdmin\Notice\Adapters\LaravelMailNoticeChannelAdapter;
@@ -203,6 +204,7 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app->singleton(NoticeChannelRouter::class);
         $this->app->singleton(NoticeInboxService::class);
         $this->app->singleton(NoticeManager::class);
+        $this->app->singleton(NoticeDeliveryService::class);
         $this->app->singleton(NoticeTemplateResolver::class);
         $this->app->singleton(NoticeTemplateValidator::class);
         $this->app->singleton(DictionaryResolver::class);

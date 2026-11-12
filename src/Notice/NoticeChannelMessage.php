@@ -11,6 +11,7 @@ final class NoticeChannelMessage
         public readonly string $destination,
         public readonly ResolvedNoticeTemplate $template,
         public readonly ?NoticeReceiver $receiver = null,
+        public readonly ?string $batchKey = null,
     ) {
     }
 }
