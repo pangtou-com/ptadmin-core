@@ -88,7 +88,7 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
             $this->keyField($resolved['schema']),
             $visited,
         );
-        return ['items' => $items];
+        return ['items' => $this->outputBatch($items, $query)];
     }
     /** 以嵌套 children 返回整棵树，max_depth 控制递归边界。 */
     public function getTree(array|object $query): array
@@ -122,7 +122,7 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         foreach ($roots as $root) {
             $branches[] = $this->buildTreeBranch($root, $query, $children, 0, $this->keyField($resolved['schema']));
         }
-        return ['items' => $branches];
+        return ['items' => $this->outputBatch($branches, $query)];
     }
     /** 沿 parent_field 向上读取祖先链，可通过 include_self 控制是否包含当前节点。 */
     public function getAncestors(array|object $query): array
@@ -171,7 +171,7 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         if (empty($query['include_self'])) {
             array_shift($payloads);
         }
-        return ['items' => array_reverse($payloads)];
+        return ['items' => $this->outputBatch(array_reverse($payloads), $query)];
     }
     /** 移动节点前阻止自环和移动到自身后代，避免破坏树图。 */
     public function moveNode(array|object $input): array
@@ -246,7 +246,8 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
             );
         }
         $node = DB::table($resolved['resource']->table_name)->where('id', $id)->first();
-        return ['node' => $this->nodePayload($node, 0, [], $input)];
+        $context = $this->treeContext($input, $resolved);
+        return ['node' => $this->outputBatch([$this->nodePayload($node, 0, [], $context)], $context)[0]];
     }
     /** 扫描父引用图，发现孤儿引用或环路时拒绝重建。 */
     public function rebuildTree(string $resourceKey): array
@@ -327,7 +328,7 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         }
         $rows = $builder->orderBy('id')->get();
 
-        return ['items' => $this->nodePayloads($rows->all(), $context)];
+        return ['items' => $this->outputBatch($this->nodePayloads($rows->all(), $context), $context)];
     }
 
     /** @param mixed $builder @param list<mixed> $parents */
@@ -670,6 +671,41 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         }
         return $node;
     }
+    /** 树形结构只在内存中展开、回填，关联展示字段由一个批次处理。 */
+    private function outputBatch(array $nodes, array $context): array
+    {
+        $snapshot = $context['runtime_snapshot'] ?? null;
+        if ($nodes === [] || $snapshot === null || $this->runtimeExecutor === null) {
+            return $nodes;
+        }
+        $resource = $snapshot->toArray()['resources'][$context['resource']] ?? [];
+        if (empty($resource['hooks']['output.batch.transform'])) {
+            return $nodes;
+        }
+        $rows = [];
+        $collect = function (array $items) use (&$collect, &$rows): void {
+            foreach ($items as $node) {
+                $rows[] = $node['item'];
+                $collect($node['children'] ?? []);
+            }
+        };
+        $collect($nodes);
+        $rows = $this->runtimeExecutor->outputBatch($snapshot,
+            new RuntimeHookContext($context['resource'], 'output.batch.transform', $context['schema_object']), $rows);
+        $index = 0;
+        $fill = function (array $items) use (&$fill, &$index, $rows): array {
+            foreach ($items as &$node) {
+                $node['item'] = $rows[$index++];
+                if (isset($node['children'])) {
+                    $node['children'] = $fill($node['children']);
+                }
+            }
+            unset($node);
+            return $items;
+        };
+        return $fill($nodes);
+    }
+
     /** @param array<string, mixed> $context @param array<string, int>|null $parentIds */
     private function nodePayload(object $node, int $depth, array $ancestors, array $context = [], ?array $parentIds = null): array
     {

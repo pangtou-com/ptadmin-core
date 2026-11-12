@@ -115,6 +115,7 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         $referenceLabels = $this->referenceOutputLabels($rawRows, $schema);
         $mirrorValues = $this->mirrorOutputValues($rawRows, $schema);
         $rows = array_map(fn (array $row): array => $this->output($row, $schema, $resource->resource_key, $referenceLabels, $mirrorValues), $rawRows);
+        $rows = $this->outputBatch($rows, $schema, $resource->resource_key);
         $context = new RuntimeHookContext($resource->resource_key, 'list.transform', $schema, input: $query);
         if ($snapshot !== null && $this->hasHookBinding($snapshot, $context)) {
             $rows = $this->runtimeExecutor?->transform($snapshot, $context, $rows) ?? $rows;
@@ -155,7 +156,8 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         if (!$row) {
             throw $this->error('record_not_found', 'record not found', ['resource_key' => $query['resource'] ?? '', 'id' => $query['id'] ?? 0]);
         }
-        return ['item' => $this->output((array) $row, $resolved['schema'], $resolved['resource']->resource_key)];
+        $item = $this->output((array) $row, $resolved['schema'], $resolved['resource']->resource_key);
+        return ['item' => $this->outputBatch([$item], $resolved['schema'], $resolved['resource']->resource_key)[0]];
     }
 
     public function find(string $resourceKey, int $id): array
@@ -1210,6 +1212,14 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         }
 
         return $row;
+    }
+
+    private function outputBatch(array $rows, Schema $schema, string $resourceKey): array
+    {
+        $snapshot = $this->runtimeSnapshot();
+        $context = new RuntimeHookContext($resourceKey, 'output.batch.transform', $schema);
+        return $snapshot !== null && $this->runtimeExecutor !== null
+            ? $this->runtimeExecutor->outputBatch($snapshot, $context, $rows) : $rows;
     }
 
     private function runtimeSnapshot(): ?RuntimeRegistrySnapshot

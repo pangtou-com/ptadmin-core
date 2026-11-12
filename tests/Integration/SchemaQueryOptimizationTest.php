@@ -276,6 +276,65 @@ final class SchemaQueryOptimizationTest extends TestCase
         }
     }
 
+    public function testBatchOutputEnrichesListsDetailsAndEveryTreeResponseOnce(): void
+    {
+        $this->insertTreeNodes(3);
+        $registry = new \PTAdmin\Schema\Runtime\RuntimeRegistry();
+        $registry->forOwner('app', 'host')->resource('test.tree')
+            ->hook('output.transform', BatchOutputHandler::class, 'row')
+            ->hook('output.batch.transform', BatchOutputHandler::class, 'batch')
+            ->hook('list.transform', BatchOutputHandler::class, 'page');
+        $cache = new \PTAdmin\Schema\Runtime\RuntimeCacheStore(sys_get_temp_dir().'/batch-output-'.bin2hex(random_bytes(6)).'.php');
+        $executor = app(\PTAdmin\Schema\Runtime\RuntimeBindingExecutor::class);
+        $runtime = new RuntimeEngine(
+            new class implements SchemaAuthorizationInterface {
+                public function allows(mixed $subject, string $resourceKey, string $action): bool
+                {
+                    return true;
+                }
+            },
+            subjectContext: app(SchemaSubjectContextInterface::class),
+            runtimeRegistry: $registry, runtimeCache: $cache, runtimeExecutor: $executor,
+        );
+        $trees = new TreeService(runtimeRegistry: $registry, runtimeCache: $cache, runtimeExecutor: $executor);
+        BatchOutputHandler::$batches = [];
+        $page = $runtime->list(['resource' => 'test.tree', 'page' => 2, 'limit' => 2, 'sorts' => [['field' => 'id', 'order' => 'asc']]]);
+        self::assertSame(3, $page['total']);
+        self::assertSame([[3]], BatchOutputHandler::$batches);
+        self::assertSame('row,batch,page', $page['results'][0]['stages']);
+        $detail = $runtime->detail(['resource' => 'test.tree', 'id' => 2]);
+        self::assertSame('row,batch', $detail['item']['stages']);
+        self::assertSame([[3], [2]], BatchOutputHandler::$batches);
+        foreach ([
+            ['listRoots', [], [1]],
+            ['listChildren', ['parent_id' => 1], [2, 3]],
+            ['getTree', [], [1, 2, 3]],
+            ['getSubtree', ['root_id' => 1, 'include_root' => true], [1, 2, 3]],
+            ['getAncestors', ['id' => 2, 'include_self' => true], [1, 2]],
+            ['moveNode', ['id' => 3, 'parent_id' => 2], [3]],
+        ] as [$method, $input, $ids]) {
+            BatchOutputHandler::$batches = [];
+            $response = $trees->{$method}(['resource' => 'test.tree'] + $input);
+            self::assertSame([$ids], BatchOutputHandler::$batches, $method);
+            $nodes = isset($response['node']) ? [$response['node']] : $response['items'];
+            $check = function (array $nodes) use (&$check): void {
+                foreach ($nodes as $node) {
+                    self::assertSame('row,batch', $node['item']['stages']);
+                    $check($node['children'] ?? []);
+                }
+            };
+            $check($nodes);
+            if ($method === 'getTree') {
+                self::assertCount(1, $nodes);
+                self::assertSame([2, 3], array_column(array_column($nodes[0]['children'], 'item'), 'id'));
+            }
+        }
+        BatchOutputHandler::$batches = [];
+        $empty = $runtime->list(['resource' => 'test.tree', 'page' => 10, 'limit' => 2]);
+        self::assertSame([], $empty['results']);
+        self::assertSame([], BatchOutputHandler::$batches);
+    }
+
     private function runtime(): RuntimeEngine
     {
         $authorization = new class implements SchemaAuthorizationInterface {
@@ -422,4 +481,33 @@ final class CacheRefreshHandler
 {
     public function first(\PTAdmin\Schema\Runtime\RuntimeHookContext $context, array $rows): array { return [['revision' => 'first']]; }
     public function second(\PTAdmin\Schema\Runtime\RuntimeHookContext $context, array $rows): array { return [['revision' => 'second']]; }
+}
+
+
+final class BatchOutputHandler
+{
+    public static array $batches = [];
+
+    public function row(\PTAdmin\Schema\Runtime\RuntimeHookContext $context, array $row): array
+    {
+        $row['stages'] = 'row';
+        return $row;
+    }
+
+    public function batch(\PTAdmin\Schema\Runtime\RuntimeHookContext $context, array $rows): array
+    {
+        self::$batches[] = array_column($rows, 'id');
+        return array_map(static function (array $row): array {
+            $row['stages'] .= ',batch';
+            return $row;
+        }, $rows);
+    }
+
+    public function page(\PTAdmin\Schema\Runtime\RuntimeHookContext $context, array $rows): array
+    {
+        return array_map(static function (array $row): array {
+            $row['stages'] .= ',page';
+            return $row;
+        }, $rows);
+    }
 }

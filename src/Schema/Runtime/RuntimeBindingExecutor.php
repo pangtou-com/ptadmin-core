@@ -33,6 +33,24 @@ final class RuntimeBindingExecutor
         return $this->pipeline($snapshot, $context, $data);
     }
 
+    /** 批量补充已授权记录的展示字段，不允许改变记录集合或顺序。 */
+    public function outputBatch(RuntimeRegistrySnapshot $snapshot, RuntimeHookContext $context, array $rows): array
+    {
+        if ($rows === [] || $this->bindings($snapshot, $context) === []) {
+            return $rows;
+        }
+        $result = $this->pipeline($snapshot, $context, $rows);
+        if (array_keys($result) !== array_keys($rows)) {
+            throw new RuntimeDiagnostic('runtime_output_batch_invalid', '批量输出 Hook 不能改变记录数量或索引。');
+        }
+        foreach ($rows as $index => $row) {
+            if (!is_array($result[$index]) || ($result[$index]['id'] ?? null) !== ($row['id'] ?? null)) {
+                throw new RuntimeDiagnostic('runtime_output_batch_invalid', '批量输出 Hook 不能改变记录 ID 或顺序。');
+            }
+        }
+        return $result;
+    }
+
     public function run(RuntimeRegistrySnapshot $snapshot, RuntimeHookContext $context): void
     {
         foreach ($this->bindings($snapshot, $context) as $binding) {

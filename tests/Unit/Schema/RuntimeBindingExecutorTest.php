@@ -6,6 +6,7 @@ namespace PTAdmin\Core\Tests\Unit\Schema;
 
 use Illuminate\Container\Container;
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PTAdmin\Schema\Runtime\RuntimeBindingExecutor;
 use PTAdmin\Schema\Runtime\RuntimeDiagnostic;
 use PTAdmin\Schema\Runtime\RuntimeHookContext;
@@ -50,6 +51,60 @@ final class RuntimeBindingExecutorTest extends TestCase
         ));
     }
 
+    public function testBatchOutputPreservesAuthorizedRecordIdentity(): void
+    {
+        $registry = new RuntimeRegistry();
+        $registry->forOwner('app', 'host')->resource('site.developers')
+            ->hook('output.batch.transform', RuntimeBindingHandler::class, 'summarize');
+        $executor = new RuntimeBindingExecutor(new Container());
+        $context = new RuntimeHookContext('site.developers', 'output.batch.transform');
+        self::assertSame([['id' => 7, 'page_size' => 2], ['id' => 9, 'page_size' => 2]],
+            $executor->outputBatch($registry->build(), $context, [['id' => 7], ['id' => 9]]));
+        self::assertSame([], $executor->outputBatch($registry->build(), $context, []));
+
+        $invalid = new RuntimeRegistry();
+        $invalid->forOwner('app', 'host')->resource('site.developers')
+            ->hook('output.batch.transform', RuntimeBindingHandler::class, 'reverseRows');
+        $this->expectException(RuntimeDiagnostic::class);
+        $executor->outputBatch($invalid->build(), $context, [['id' => 7], ['id' => 9]]);
+    }
+
+    #[DataProvider('invalidBatchOutputs')]
+    public function testBatchOutputRejectsChangedRecordSets(array $result): void
+    {
+        $handler = new class($result) {
+            public function __construct(private array $result) {}
+
+            public function output(RuntimeHookContext $context, array $rows): array
+            {
+                return $this->result;
+            }
+        };
+        $container = new Container();
+        $container->instance($handler::class, $handler);
+        $registry = new RuntimeRegistry();
+        $registry->forOwner('app', 'host')->resource('site.developers')
+            ->hook('output.batch.transform', $handler::class, 'output');
+        $this->expectException(RuntimeDiagnostic::class);
+        (new RuntimeBindingExecutor($container))->outputBatch(
+            $registry->build(), new RuntimeHookContext('site.developers', 'output.batch.transform'),
+            [['id' => 7], ['id' => 9]],
+        );
+    }
+
+    public static function invalidBatchOutputs(): array
+    {
+        return [
+            'removed record' => [[['id' => 7]]],
+            'added record' => [[['id' => 7], ['id' => 9], ['id' => 11]]],
+            'changed index' => [[1 => ['id' => 7], 2 => ['id' => 9]]],
+            'changed identity' => [[['id' => 8], ['id' => 9]]],
+            'changed identity type' => [[['id' => '7'], ['id' => 9]]],
+            'missing identity' => [[[], ['id' => 9]]],
+            'invalid row' => [[null, ['id' => 9]]],
+        ];
+    }
+
     public function testActionRequiresAndReturnsAnArray(): void
     {
         $container = new Container();
@@ -85,6 +140,11 @@ final class RuntimeBindingExecutorTest extends TestCase
 
 final class RuntimeBindingHandler
 {
+    public function reverseRows(RuntimeHookContext $context, array $rows): array
+    {
+        return array_reverse($rows);
+    }
+
     public function summarize(RuntimeHookContext $context, array $rows): array
     {
         return array_map(static fn (array $row): array => $row + ['page_size' => count($rows)], $rows);

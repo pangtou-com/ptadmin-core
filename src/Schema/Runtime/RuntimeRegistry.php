@@ -22,6 +22,7 @@ final class RuntimeRegistry
         'restore.before', 'restore.after',
         'purge.before', 'purge.after',
         'output.transform',
+        'output.batch.transform',
     ];
 
     private const CRUD_ACTIONS = ['list', 'view', 'create', 'update', 'delete', 'restore', 'purge'];
