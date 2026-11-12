@@ -33,7 +33,7 @@ final class AdminFrontendPublisherTest extends TestCase
         $publisher = new AdminFrontendPublisher(
             $source,
             $this->directory.'/public',
-            new AdminFrontendManifest('0.11.0', 1, 1)
+            new AdminFrontendManifest('0.12.0', 1, 1)
         );
         $prefix = (new WebPrefixGenerator())->generate();
         $publisher->publishForInstall($prefix);
@@ -54,11 +54,11 @@ final class AdminFrontendPublisherTest extends TestCase
         $result = $publisher->publishForUpdate($prefix);
 
         self::assertTrue($result['published']);
-        self::assertSame('0.11.0', $result['frontend_version']);
+        self::assertSame('0.12.0', $result['frontend_version']);
         self::assertFileExists($module.'/manifest.json');
         self::assertSame('{}', file_get_contents($module.'/manifest.json'));
         self::assertSame('export default "installed-plugin";', file_get_contents($plugin.'/plugin.mjs'));
-        self::assertSame('0.11.0', json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR)['frontend_version']);
+        self::assertSame('0.12.0', json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR)['frontend_version']);
         self::assertFileExists($this->directory.'/public/'.$prefix.'/index.html');
     }
 
@@ -71,7 +71,7 @@ final class AdminFrontendPublisherTest extends TestCase
         $publisher = new AdminFrontendPublisher(
             $source,
             $this->directory.'/public',
-            new AdminFrontendManifest('0.11.0', 1, 1)
+            new AdminFrontendManifest('0.12.0', 1, 1)
         );
 
         $result = $publisher->publishForInstall('manage/console');

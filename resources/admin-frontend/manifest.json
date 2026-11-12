@@ -1,7 +1,7 @@
 {
   "manifest_version": 1,
-  "frontend_version": "0.11.0",
-  "backend_constraint": ">=0.11.0 <0.12.0",
+  "frontend_version": "0.12.0",
+  "backend_constraint": ">=0.12.0 <0.13.0",
   "api_protocol": 1,
   "schema_protocol": 1,
   "entry": "./index.html",
@@ -163,6 +163,6 @@
     }
   ],
   "artifact_sha256": "20527e1d51764bdff4b950288d9630a8a7c6228bf980ca299f3c0cc33f4be2f1",
-  "git_commit": "44b3522af07814e9866885464499ddf5db1c1c40",
-  "source_sha256": "7e8a3ce8022427663b5c52d19553f8bad82e11ab8c7d51183c455c827233cabd"
+  "git_commit": "7a17e3956d3a1e71e34f91904d41fc14f4198e20",
+  "source_sha256": "6ba5e26420657237333eb73b63498f17484c9bde9daa93f10e2604286100f276"
 }
