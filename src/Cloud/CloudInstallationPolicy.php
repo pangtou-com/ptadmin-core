@@ -28,7 +28,8 @@ final class CloudInstallationPolicy
             $path = rtrim((string) config('ptadmin.addon.path'), '/').'/'.$code;
             if (file_exists($path)) {
                 try {
-                    $localVersion = $this->manifests->verifyRuntime($path)['version'];
+                    // Core 升级可能使旧版插件失效，读取旧版本不能阻断替换为兼容的新版本。
+                    $localVersion = $this->manifests->verifyRuntime($path, checkBackendCompatibility: false)['version'];
                     $operation = 'update';
                     if (Comparator::lessThan($version, $localVersion)) {
                         $reason = '该版本低于本地版本，可下载包但不能在线降级。';

@@ -7,7 +7,7 @@ return [
     'api_url' => env('PTADMIN_API_URL', ''),
     'route_prefix' => env('PTADMIN_ROUTE_PREFIX', 'ptadmin'),
     'web_prefix' => env('PTADMIN_WEB_PREFIX', 'admin'),
-    'backend_version' => env('PTADMIN_CORE_VERSION', '0.12.0'),
+    'backend_version' => env('PTADMIN_CORE_VERSION', '0.12.1'),
     'api_protocol' => (int) env('PTADMIN_API_PROTOCOL', 1),
     'schema_protocol' => (int) env('PTADMIN_SCHEMA_PROTOCOL', 1),
     // 后台部署品牌通过 Bootstrap 公开，与前台站点设置独立。

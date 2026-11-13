@@ -61,14 +61,15 @@ final class ManifestVerifier
      *
      * 运行时加载允许本地插件二次开发，因此这里只校验 manifest 结构和兼容性，不处理签名、文件清单或文件摘要。
      * 正式包签名由 artifact 安装流程负责。
+     * 仅更新预检读取旧版本时可关闭当前 Core 匹配；清单结构、约束语法和 Composer 映射仍须有效。
      *
      * @return array<string, mixed>
      */
-    public function verifyRuntime(string $directory): array
+    public function verifyRuntime(string $directory, bool $checkBackendCompatibility = true): array
     {
         $loaded = $this->loadManifest($directory);
         $manifest = $loaded['manifest'];
-        $this->assertHeader($manifest);
+        $this->assertHeader($manifest, $checkBackendCompatibility);
         $this->assertComposerMapping($loaded['root'], $manifest);
 
         return $manifest;
