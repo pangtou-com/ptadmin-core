@@ -114,6 +114,25 @@ final class ThemeRuntimeTest extends TestCase
         self::assertSame('theme_identity_mismatch', $result['errors'][0]['error_code']);
     }
 
+    public function testManagementInspectionDoesNotRelaxRuntimeOrStructuralValidation(): void
+    {
+        $this->theme('legacy@1.0.0', ['code' => 'legacy', 'version' => '1.0.0', 'name' => 'Legacy', 'compatibility' => '>=0.9.0 <0.10.0']);
+        $this->theme('broken@1.0.0', ['code' => 'different', 'version' => '1.0.0', 'name' => 'Broken']);
+        $this->theme('unsafe@1.0.0', ['code' => 'unsafe', 'version' => '1.0.0', 'name' => 'Unsafe']);
+        symlink($this->root.'/legacy@1.0.0/theme.json', $this->root.'/unsafe@1.0.0/linked.json');
+        $catalog = new ThemeCatalog($this->root, new ThemeManifestValidator('0.12.1'));
+
+        self::assertSame([], $catalog->scan()['themes']);
+        self::assertNull($catalog->find('legacy', '1.0.0'));
+        self::assertSame('legacy@1.0.0', $catalog->inspect('legacy', '1.0.0')?->identifier());
+        $scan = $catalog->scan(checkBackendCompatibility: false);
+        self::assertCount(1, $scan['themes']);
+        self::assertSame(['theme_identity_mismatch', 'unsafe_theme_path'], array_column($scan['errors'], 'error_code'));
+        self::assertNull($catalog->inspect('broken', '1.0.0'));
+        self::assertNull($catalog->inspect('unsafe', '1.0.0'));
+        self::assertNull($catalog->inspect('../legacy', '1.0.0'));
+    }
+
     public function testThemeAssetUrlIncludesTheActiveThemeVersion(): void
     {
         $this->theme('classic@1.0.0', ['code' => 'classic', 'version' => '1.0.0', 'name' => 'Classic']);

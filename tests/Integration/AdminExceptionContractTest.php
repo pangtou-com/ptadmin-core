@@ -63,6 +63,33 @@ final class AdminExceptionContractTest extends TestCase
             ->assertNotFound()->assertHeader('X-Request-ID');
     }
 
+    public function testLaravelDebugRendererShowsOriginalViewErrorWithThemeEngineRegistered(): void
+    {
+        $directory = $this->storage.'/host-views';
+        mkdir($directory, 0700, true);
+        file_put_contents($directory.'/index.blade.php', '@include("missing-public-view")');
+        $this->app['view']->addNamespace('exception-probe', $directory);
+        try {
+            $this->app['view']->make('exception-probe::index')->render();
+            self::fail('缺失视图应抛出原始异常。');
+        } catch (\Illuminate\View\ViewException $exception) {
+            // Testbench 在 Foundation Provider 注册之后才设置 debug，显式装配真实 Laravel 异常页面。
+            $factory = $this->app['view'];
+            $foundation = dirname((new \ReflectionClass(\Illuminate\Foundation\Application::class))->getFileName());
+            $factory->addNamespace('laravel-exceptions-renderer', $foundation.'/resources/exceptions/renderer');
+            $renderer = new \Illuminate\Foundation\Exceptions\Renderer\Renderer(
+                $factory,
+                $this->app->make(\Illuminate\Foundation\Exceptions\Renderer\Listener::class),
+                new \Symfony\Component\ErrorHandler\ErrorRenderer\HtmlErrorRenderer(true),
+                $this->app->make(\Illuminate\Foundation\Exceptions\Renderer\Mappers\BladeMapper::class),
+                $this->app->basePath(),
+            );
+            $html = $renderer->render(Request::create('/exception-probe'), $exception);
+            self::assertStringContainsString('View [missing-public-view] not found.', $html);
+            self::assertStringNotContainsString('ReflectionException', $html);
+        }
+    }
+
     public function testMethodAndThrottleExceptionsPreserveHttpHeaders(): void
     {
         $this->app['router']->post('/ptadmin/probe', static fn () => 'ok');

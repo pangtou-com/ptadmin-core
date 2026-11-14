@@ -19,17 +19,18 @@ use PTAdmin\Core\Theme\ThemeDataPackValidator;
 use PTAdmin\Core\Theme\ThemeDataPackDescriptor;
 use PTAdmin\Core\Theme\ThemeException;
 use PTAdmin\Core\Theme\ThemeLifecycle;
+use PTAdmin\Core\Theme\ThemeManifestValidator;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 final class ThemeController extends Controller
 {
-    public function __construct(private readonly PendingTaskDispatcher $dispatcher)
+    public function __construct(private readonly PendingTaskDispatcher $dispatcher, private readonly ThemeManifestValidator $validator)
     {
     }
 
     public function index(ThemeCatalog $catalog, ActiveThemeResolver $active, ThemeDataPackValidator $dataPacks, ThemeDataPackImporter $importer): JsonResponse
     {
-        $scan = $catalog->scan();
+        $scan = $catalog->scan(checkBackendCompatibility: false);
         $current = $active->active();
 
         return AdminResponse::success('', [
@@ -41,7 +42,7 @@ final class ThemeController extends Controller
 
     public function show(string $code, string $version, ThemeCatalog $catalog, ActiveThemeResolver $active, ThemeDataPackValidator $dataPacks, ThemeDataPackImporter $importer): JsonResponse
     {
-        $theme = $catalog->find($code, $version);
+        $theme = $catalog->inspect($code, $version);
         if ($theme === null) {
             return AdminResponse::error(40400, 'Theme not found.', ['error_code' => 'theme_not_found'], 404);
         }
@@ -51,7 +52,7 @@ final class ThemeController extends Controller
 
     public function cover(string $code, string $version, ThemeCatalog $catalog): BinaryFileResponse
     {
-        $theme = $catalog->find($code, $version);
+        $theme = $catalog->inspect($code, $version);
         if ($theme === null) {
             abort(404);
         }
@@ -141,13 +142,20 @@ final class ThemeController extends Controller
     private function summary(ThemeDescriptor $theme, ?ThemeDescriptor $active, bool $details, ThemeDataPackValidator $dataPackValidator, ThemeDataPackImporter $importer): array
     {
         $manifest = $theme->manifest;
+        $constraint = is_string($manifest['compatibility'] ?? null) ? $manifest['compatibility'] : '';
+        $compatibility = $this->validator->compatibilityStatus($constraint);
         $cover = $this->coverPath($theme);
         $result = [
             'code' => $theme->code,
             'version' => $theme->version,
             'name' => (string) ($manifest['name'] ?? ''),
             'author' => (string) ($manifest['author'] ?? ''),
-            'state' => 'installed',
+            'state' => $compatibility['compatible'] ? 'installed' : 'incompatible',
+            'description' => (string) ($manifest['description'] ?? ''),
+            'compatibility' => $constraint,
+            'backend_version' => $compatibility['backend_version'],
+            'incompatibility_reason' => $compatibility['reason'],
+            'modules' => is_array($manifest['modules'] ?? null) ? $manifest['modules'] : [],
             'cover_url' => $cover === null ? null : $this->coverUrl($theme),
             'template_count' => $this->templateCount($theme),
             'data_packs' => array_map(
@@ -159,7 +167,6 @@ final class ThemeController extends Controller
         ];
         if ($details) {
             $result['manifest'] = $manifest;
-            $result['modules'] = is_array($manifest['modules'] ?? null) ? $manifest['modules'] : [];
             $result['directory'] = $theme->directory;
         }
 

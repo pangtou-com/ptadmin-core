@@ -12,6 +12,7 @@ use PTAdmin\Admin\Navigation\MenuSynchronizer;
 use PTAdmin\Core\Auth\Session\SessionManager;
 use PTAdmin\Core\Providers\PTAdminServiceProvider;
 use PTAdmin\Core\Theme\ThemeLifecycle;
+use PTAdmin\Core\Theme\ActiveThemeResolver;
 
 final class ThemeResourceHttpTest extends TestCase
 {
@@ -36,6 +37,7 @@ final class ThemeResourceHttpTest extends TestCase
             'ptadmin.site_theme.public_directory' => $this->storage.'/public/themes',
             'ptadmin.site_theme.state_file' => $this->storage.'/theme.json',
             'ptadmin.api_prefix' => 'manage',
+            'ptadmin.backend_version' => '0.12.1',
         ]);
         $directory = $this->storage.'/app/ptadmin/install';
         mkdir($directory, 0700, true);
@@ -88,6 +90,63 @@ final class ThemeResourceHttpTest extends TestCase
         self::assertSame('ptadmin.site.themes.publish', $audit->action);
         $this->grant([]);
         $this->postJson($url, [], $this->headers)->assertForbidden();
+    }
+
+    public function testIncompatibleThemeRemainsInspectableButCannotBeUsed(): void
+    {
+        $directory = $this->storage.'/templates/pangtou@1.0.0';
+        mkdir($directory, 0700, true);
+        $manifest = json_encode([
+            'code' => 'pangtou', 'version' => '1.0.0', 'name' => '胖头主题',
+            'description' => '线上主题', 'compatibility' => '>=0.9.0 <0.10.0', 'modules' => ['cms' => []],
+        ], JSON_THROW_ON_ERROR);
+        file_put_contents($directory.'/theme.json', $manifest);
+        file_put_contents($directory.'/cover.png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jAusAAAAASUVORK5CYII='));
+        $state = json_encode(['code' => 'pangtou', 'version' => '1.0.0'], JSON_THROW_ON_ERROR);
+        file_put_contents($this->storage.'/theme.json', $state);
+        app(ActiveThemeResolver::class)->reset();
+
+        $this->getJson('/manage/site/themes')->assertUnauthorized();
+        $this->getJson('/manage/site/themes', $this->headers)->assertForbidden();
+        $this->grant(['read', 'activate', 'publish']);
+        $response = $this->getJson('/manage/site/themes', $this->headers)->assertOk()
+            ->assertJsonPath('data.total', 2)->assertJsonPath('data.errors', [])
+            ->assertJsonPath('data.results.0.state', 'installed')
+            ->assertJsonPath('data.results.0.incompatibility_reason', null)
+            ->assertJsonPath('data.results.1.code', 'pangtou')
+            ->assertJsonPath('data.results.1.state', 'incompatible')
+            ->assertJsonPath('data.results.1.active', false)
+            ->assertJsonPath('data.results.1.description', '线上主题')
+            ->assertJsonPath('data.results.1.compatibility', '>=0.9.0 <0.10.0')
+            ->assertJsonPath('data.results.1.backend_version', '0.12.1');
+        self::assertStringContainsString('当前 Core 0.12.1 不满足主题要求 >=0.9.0 <0.10.0', $response->json('data.results.1.incompatibility_reason'));
+        $this->getJson('/manage/site/themes/pangtou/1.0.0', $this->headers)->assertOk()
+            ->assertJsonPath('data.state', 'incompatible')->assertJsonPath('data.manifest.name', '胖头主题');
+        $this->get($response->json('data.results.1.cover_url'))->assertOk()->assertHeader('Content-Type', 'image/png');
+
+        $this->postJson('/manage/site/themes/pangtou/1.0.0/activate', [], $this->headers)->assertNotFound();
+        $this->postJson('/manage/site/themes/pangtou/1.0.0/publish', [], $this->headers)->assertNotFound();
+        self::assertNull(app(ActiveThemeResolver::class)->active());
+        self::assertSame($state, file_get_contents($this->storage.'/theme.json'));
+        self::assertSame($manifest, file_get_contents($directory.'/theme.json'));
+        self::assertDirectoryDoesNotExist($this->storage.'/public/themes/pangtou@1.0.0');
+    }
+
+    public function testInvalidThemeMetadataRemainsADiagnosticAndCannotBeInspected(): void
+    {
+        $directory = $this->storage.'/templates/broken@1.0.0';
+        mkdir($directory, 0700, true);
+        file_put_contents($directory.'/theme.json', json_encode([
+            'code' => 'broken', 'version' => '1.0.0', 'name' => '损坏主题', 'compatibility' => 'not-a-constraint',
+        ]));
+        $this->grant(['read']);
+        $this->getJson('/manage/site/themes', $this->headers)->assertOk()
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.results.0.active', true)
+            ->assertJsonPath('data.errors.0.identifier', 'broken@1.0.0')
+            ->assertJsonPath('data.errors.0.error_code', 'invalid_theme_constraint');
+        $this->getJson('/manage/site/themes/broken/1.0.0', $this->headers)->assertNotFound();
+        $this->get('/manage/public/site/themes/broken/1.0.0/cover')->assertNotFound();
     }
 
     public function testCurrentThemeChangesAndBusyLockAreExplicitConflicts(): void

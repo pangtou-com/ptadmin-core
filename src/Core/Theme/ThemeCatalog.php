@@ -14,7 +14,7 @@ final class ThemeCatalog
     }
 
     /** @return array{themes:list<ThemeDescriptor>,errors:list<array<string,mixed>>} */
-    public function scan(): array
+    public function scan(bool $checkBackendCompatibility = true): array
     {
         $themes = [];
         $errors = [];
@@ -28,7 +28,7 @@ final class ThemeCatalog
                 continue;
             }
             try {
-                $themes[] = $this->validator->validateDirectory($themeDirectory, $matches[1], $matches[2]);
+                $themes[] = $this->validator->validateDirectory($themeDirectory, $matches[1], $matches[2], checkBackendCompatibility: $checkBackendCompatibility);
             } catch (ThemeException $exception) {
                 $errors[] = $this->error($name, $exception);
             }
@@ -40,12 +40,23 @@ final class ThemeCatalog
 
     public function find(string $code, string $version): ?ThemeDescriptor
     {
+        return $this->findValidated($code, $version, true);
+    }
+
+    /** 仅用于后台元数据和封面查看，不作为运行时或生命周期的主题入口。 */
+    public function inspect(string $code, string $version): ?ThemeDescriptor
+    {
+        return $this->findValidated($code, $version, false);
+    }
+
+    private function findValidated(string $code, string $version, bool $checkBackendCompatibility): ?ThemeDescriptor
+    {
         if (preg_match('/^[A-Za-z][A-Za-z0-9._-]{1,63}$/', $code) !== 1 || preg_match('/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/', $version) !== 1) {
             return null;
         }
         $directory = $this->directory.'/'.$code.'@'.$version;
         try {
-            return $this->validator->validateDirectory($directory, $code, $version);
+            return $this->validator->validateDirectory($directory, $code, $version, checkBackendCompatibility: $checkBackendCompatibility);
         } catch (ThemeException) {
             return null;
         }

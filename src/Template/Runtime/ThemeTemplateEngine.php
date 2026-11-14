@@ -20,9 +20,13 @@ final class ThemeTemplateEngine implements Engine
     private array $directories = [];
     private ?TemplateRenderer $runtime = null;
 
-    public function __construct(private readonly CompilerEngine $blade, private readonly ThemeViewLoader $themes, private readonly TemplateRenderer $renderer)
+    /** Laravel BladeMapper 按 engine 属性读取被包装引擎的真实编译栈，用于异常源码映射。 */
+    private readonly CompilerEngine $engine;
+
+    public function __construct(CompilerEngine $blade, private readonly ThemeViewLoader $themes, private readonly TemplateRenderer $renderer)
     {
-        $compiler = $this->blade->getCompiler();
+        $this->engine = $blade;
+        $compiler = $this->engine->getCompiler();
         if (!$compiler instanceof \Illuminate\View\Compilers\BladeCompiler) {
             throw new InvalidArgumentException('主题引擎需要 Laravel Blade 编译器。');
         }
@@ -57,20 +61,20 @@ final class ThemeTemplateEngine implements Engine
     /** Laravel view:clear 需要清理被包装 Blade 引擎的编译状态，安装收尾也使用该命令。 */
     public function forgetCompiledOrNotExpired(): void
     {
-        $this->blade->forgetCompiledOrNotExpired();
+        $this->engine->forgetCompiledOrNotExpired();
     }
 
     /** Laravel view:cache 通过同一引擎取得宿主 Blade 编译器。 */
     public function getCompiler(): CompilerInterface
     {
-        return $this->blade->getCompiler();
+        return $this->engine->getCompiler();
     }
 
     public function get($path, array $data = [])
     {
         $root = $this->directiveRoot($path);
         if ($root === null) {
-            return $this->blade->get($path, $data);
+            return $this->engine->get($path, $data);
         }
         $real = realpath($path);
         $base = realpath($root);
@@ -103,7 +107,7 @@ final class ThemeTemplateEngine implements Engine
 
     private function renderBlade(string $path, array $data): mixed
     {
-        return $this->blade->get($path, $data);
+        return $this->engine->get($path, $data);
     }
 
     /** Core 单元测试可能只有基础 Container，正式宿主则提供完整 request/config 服务。 */

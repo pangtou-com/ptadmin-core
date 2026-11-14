@@ -15,7 +15,7 @@ final class ThemeManifestValidator
         $this->dataPackValidator ??= new ThemeDataPackValidator();
     }
 
-    /** 市场入库可关闭当前宿主版本匹配；主题身份、约束语法及数据包检查始终保留。 */
+    /** 市场入库和后台查看可关闭当前宿主版本匹配；主题身份、约束语法及数据包检查始终保留。 */
     public function validateDirectory(string $directory, string $expectedCode, string $expectedVersion, bool $isDefault = false, bool $checkBackendCompatibility = true): ThemeDescriptor
     {
         if (is_link($directory)) {
@@ -64,7 +64,7 @@ final class ThemeManifestValidator
         if (is_string($compatibility) && $compatibility !== '') {
             try {
                 (new VersionParser())->parseConstraints($compatibility);
-                $compatible = !$checkBackendCompatibility || Semver::satisfies($this->backendVersion, $compatibility);
+                $compatible = !$checkBackendCompatibility || $this->compatibilityStatus($compatibility)['compatible'];
             } catch (\UnexpectedValueException $exception) {
                 throw new ThemeException('Theme compatibility constraint is invalid: '.$root, 'invalid_theme_constraint', ['constraint' => $compatibility], $exception);
             }
@@ -82,6 +82,18 @@ final class ThemeManifestValidator
         $this->dataPackValidator->validate($manifest['data_packs'] ?? null, $root);
 
         return new ThemeDescriptor($code, $version, $root, $manifest, $isDefault);
+    }
+
+    /** @return array{compatible:bool,backend_version:string,reason:?string} */
+    public function compatibilityStatus(string $constraint): array
+    {
+        $compatible = $constraint === '' || Semver::satisfies($this->backendVersion, $constraint);
+
+        return [
+            'compatible' => $compatible,
+            'backend_version' => $this->backendVersion,
+            'reason' => $compatible ? null : '当前 Core '.$this->backendVersion.' 不满足主题要求 '.$constraint.'，主题不可用。请安装兼容版本，或验证兼容性后调整 theme.json 的声明。',
+        ];
     }
 
     private function containsSymlink(string $root): bool

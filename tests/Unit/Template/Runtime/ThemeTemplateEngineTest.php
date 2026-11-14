@@ -13,6 +13,10 @@ use Illuminate\View\FileViewFinder;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Container\Container;
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
+use Illuminate\Foundation\Exceptions\Renderer\Mappers\BladeMapper;
+use Illuminate\View\ViewException;
+use Symfony\Component\ErrorHandler\Exception\FlattenException;
 use PTAdmin\Core\Theme\ThemeViewLoader;
 use PTAdmin\Core\Theme\ThemeDescriptor;
 use PTAdmin\Template\Directive\DirectiveRegistry;
@@ -59,6 +63,47 @@ final class ThemeTemplateEngineTest extends TestCase
     protected function tearDown(): void
     {
         $this->files->deleteDirectory($this->root);
+    }
+
+    public static function viewScopes(): array
+    {
+        return ['宿主视图' => [false], '当前主题' => [true]];
+    }
+
+    #[DataProvider('viewScopes')]
+    public function testLaravelExceptionMapperRetainsOriginalErrorAndNestedViewPaths(bool $activeTheme): void
+    {
+        if ($activeTheme) {
+            $this->themes->load(new ThemeDescriptor('test', '1.0.0', $this->root, []));
+        }
+        $this->files->put($this->root.'/error-page.blade.php', '@include("error-partial")');
+        $this->files->put($this->root.'/error-partial.blade.php', '@include("missing-view")');
+        try {
+            $this->viewFactory->make('error-page')->render();
+            self::fail('缺失视图应保留原始异常。');
+        } catch (ViewException $exception) {
+            $compiler = $this->engine->getCompiler();
+            self::assertInstanceOf(BladeCompiler::class, $compiler);
+            $mapper = new BladeMapper($this->viewFactory, $compiler);
+            $mapped = $mapper->map(FlattenException::createFromThrowable($exception));
+            self::assertSame('View [missing-view] not found.', $mapped->getMessage());
+            foreach (['error-page', 'error-partial'] as $name) {
+                $path = $this->viewFactory->getFinder()->find($name);
+                $compiled = realpath($compiler->getCompiledPath($path));
+                self::assertIsString($compiled);
+                self::assertSame(realpath($path), $mapper->findCompiledView($compiled));
+                self::assertContains(realpath($path), array_column($mapped->getTrace(), 'file'));
+            }
+        }
+    }
+
+    public function testLaravelExceptionMapperHandlesErrorsBeforeAnyViewWasRendered(): void
+    {
+        $compiler = $this->engine->getCompiler();
+        self::assertInstanceOf(BladeCompiler::class, $compiler);
+        $mapper = new BladeMapper($this->viewFactory, $compiler);
+        $mapped = $mapper->map(FlattenException::createFromThrowable(new \RuntimeException('原始业务异常')));
+        self::assertSame('原始业务异常', $mapped->getMessage());
     }
 
     public function testClearingCompilationStateRecompilesChangedHostViews(): void
