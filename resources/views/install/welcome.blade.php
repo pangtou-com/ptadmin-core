@@ -57,12 +57,12 @@
 
             const form = document.createElement('form');
             form.method = 'POST';
-            form.action = @json(route('ptadmin.install.accept'));
+            form.action = @json(route('ptadmin.install.accept', [], false));
 
             const redirect = document.createElement('input');
             redirect.type = 'hidden';
             redirect.name = 'redirect';
-            redirect.value = @json($redirect ?? route('ptadmin.install.requirements'));
+            redirect.value = @json($redirect ?? route('ptadmin.install.requirements', [], false));
 
             form.appendChild(redirect);
             document.body.appendChild(form);

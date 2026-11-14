@@ -6,6 +6,7 @@ namespace PTAdmin\Core\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Http\RedirectResponse;
 use PTAdmin\Core\Install\InstallStateStore;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -28,7 +29,7 @@ final class InstallStateMiddleware
         }
 
         if (!$installed && !$isInstallRequest) {
-            return redirect('/'.$installPath);
+            return new RedirectResponse($request->getBaseUrl().'/'.$installPath);
         }
 
         return $next($request);

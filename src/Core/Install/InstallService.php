@@ -65,6 +65,8 @@ final class InstallService
 
         return $this->stateMachine->install(function (array $state) use ($username, $password, $nickname, $email, $mobile, $appName, $appUrl, $input, $progress): array {
             $webPrefix = (string) ($state['web_prefix'] ?? '');
+            $this->frontend->assertCanPublishForInstall($webPrefix);
+            $this->ensureStorageLink();
             $this->prepareApplicationKey();
             $database = $this->database->configure($input);
             $this->progress($progress, 'database_migrating');
@@ -163,7 +165,6 @@ final class InstallService
 
             $this->progress($progress, 'runtime_finalizing');
             $this->resetRuntimeCaches();
-            $this->ensureStorageLink();
             $this->progress($progress, 'runtime_ready');
 
             return $result + [
@@ -387,10 +388,10 @@ final class InstallService
         if ($webPrefix !== '' && !WebPrefixGenerator::isValid($webPrefix)) {
             throw new InvalidInstallStateException('The PTAdmin web prefix is invalid or reserved.');
         }
-        if ($appName === '' || mb_strlen($appName) > 100) {
+        if ($appName === '' || mb_strlen($appName) > 100 || !EnvironmentFile::isValidValue($appName)) {
             throw new InvalidInstallStateException('The application name is invalid.');
         }
-        if (filter_var($appUrl, FILTER_VALIDATE_URL) === false || strlen($appUrl) > 2048) {
+        if (filter_var($appUrl, FILTER_VALIDATE_URL) === false || strlen($appUrl) > 2048 || !EnvironmentFile::isValidValue($appUrl)) {
             throw new InvalidInstallStateException('The application URL is invalid.');
         }
     }
@@ -413,6 +414,10 @@ final class InstallService
             throw new RuntimeException('PTAdmin cannot create the public storage link because the target already exists.');
         }
 
+        $publicRoot = public_path();
+        if (!is_dir($publicRoot) && !mkdir($publicRoot, 0755, true) && !is_dir($publicRoot)) {
+            throw new RuntimeException('PTAdmin cannot create the public directory.');
+        }
         $storageRoot = storage_path('app/public');
         if (!is_dir($storageRoot) && !mkdir($storageRoot, 0755, true) && !is_dir($storageRoot)) {
             throw new RuntimeException('PTAdmin cannot create the public storage directory.');

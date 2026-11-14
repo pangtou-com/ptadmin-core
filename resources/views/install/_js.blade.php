@@ -7,8 +7,8 @@
 </div>
 <script>
     (function () {
-        const url = @json(route('ptadmin.install.stream'));
-        const form = document.getElementById('install-form');
+        const url = @json(route('ptadmin.install.stream', [], false));
+        const formContainer = document.getElementById('install-forms');
         const submitButton = document.getElementById('submit');
         const formAlert = document.getElementById('install-form-alert');
         const dialogMask = document.getElementById('install-dialog-mask');
@@ -28,7 +28,7 @@
             sendFailed: @json(__('ptadmin::install.stream.send_failed'))
         };
 
-        if (!form || !submitButton || !dialogMask || !consoleBox || !dialogActions) {
+        if (!formContainer || !submitButton || !dialogMask || !consoleBox || !dialogActions) {
             return;
         }
 
@@ -65,7 +65,13 @@
             append: function (type, message) {
                 const row = document.createElement('div');
                 row.className = 'install-console-item';
-                row.innerHTML = '<span class="install-console-badge ' + (stateMap[type] || 'info') + '">' + type + '</span><div>' + message + '</div>';
+                const badge = document.createElement('span');
+                badge.className = 'install-console-badge ' + (stateMap[type] || 'info');
+                badge.textContent = type;
+                const content = document.createElement('div');
+                content.textContent = message;
+                row.appendChild(badge);
+                row.appendChild(content);
                 consoleBox.appendChild(row);
                 consoleBox.scrollTop = consoleBox.scrollHeight;
                 return row;
@@ -146,11 +152,14 @@
             }
         };
 
-        const formFields = Array.prototype.slice.call(form.querySelectorAll('input, select'));
-        const driverField = form.querySelector('[name="db_connection"]');
-        const databaseField = form.querySelector('[name="db_database"]');
-        const serverDatabaseFields = Array.prototype.slice.call(form.querySelectorAll('[data-server-database-only]'));
-        const portField = form.querySelector('[name="db_port"]');
+        const forms = Array.from(formContainer.querySelectorAll('form'));
+        // 代理终止 TLS 时，以浏览器实际访问地址填写站点 URL。
+        formContainer.querySelector('[name="app_url"]').value = window.location.origin + @json(request()->getBaseUrl());
+        const formFields = Array.prototype.slice.call(formContainer.querySelectorAll('input, select'));
+        const driverField = formContainer.querySelector('[name="db_connection"]');
+        const databaseField = formContainer.querySelector('[name="db_database"]');
+        const serverDatabaseFields = Array.prototype.slice.call(formContainer.querySelectorAll('[data-server-database-only]'));
+        const portField = formContainer.querySelector('[name="db_port"]');
         const driverPorts = {};
         let previousDriver = driverField ? driverField.value : '';
         let automaticDatabaseValue = databaseField ? databaseField.value : '';
@@ -245,7 +254,11 @@
         syncDatabaseFields();
         updateSubmitState();
 
-        submitButton.addEventListener('click', function () {
+        function submitInstallation(event) {
+            event.preventDefault();
+            if (eventAction.state === 1) {
+                return;
+            }
             const emptyFields = getEmptyRequiredFields();
             if (emptyFields.length > 0) {
                 showRequiredAlert(emptyFields);
@@ -253,12 +266,26 @@
                 return;
             }
 
+            if (!forms.every(function (form) { return form.reportValidity(); })) {
+                return;
+            }
+
             eventAction.reset();
             eventAction.open();
             eventAction.state = 1;
-            eventAction.sendData = new FormData(form);
+            eventAction.sendData = new FormData();
+            forms.forEach(function (form) {
+                new FormData(form).forEach(function (value, key) {
+                    eventAction.sendData.append(key, value);
+                });
+            });
             eventAction.process({type: 'info', message: i18n.requestSent});
             eventAction.send(eventAction.sendData);
+        }
+
+        submitButton.addEventListener('click', submitInstallation);
+        forms.forEach(function (form) {
+            form.addEventListener('submit', submitInstallation);
         });
 
         eventAction.send = function (formData) {

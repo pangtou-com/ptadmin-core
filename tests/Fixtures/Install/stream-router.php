@@ -54,6 +54,10 @@ if (!is_dir($state->directory())) {
 file_put_contents($state->directory().'/agreement.lock', (string) time());
 
 $app['events']->listen(MigrationsStarted::class, static function () use ($root): void {
+    file_put_contents($root.'/runtime-during.json', json_encode([
+        'ignore_user_abort' => ignore_user_abort(),
+        'max_execution_time' => (int) ini_get('max_execution_time'),
+    ], JSON_THROW_ON_ERROR));
     file_put_contents($root.'/migration-waiting', '1');
     $deadline = microtime(true) + 8;
     // 客户端收到迁移日志后才放行；避免用安装总耗时猜测是否实时输出。
@@ -72,4 +76,9 @@ $kernel = $app->make(Kernel::class);
 $request = Request::capture();
 $response = $kernel->handle($request);
 $response->send();
+file_put_contents($root.'/runtime-after.json', json_encode([
+    'ignore_user_abort' => ignore_user_abort(),
+    'max_execution_time' => (int) ini_get('max_execution_time'),
+    'connection_aborted' => connection_aborted(),
+], JSON_THROW_ON_ERROR));
 $kernel->terminate($request, $response);

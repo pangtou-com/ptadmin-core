@@ -117,6 +117,52 @@ final class InstallationBootstrapTest extends TestCase
         self::assertFileDoesNotExist($database);
     }
 
+    public function testWizardUsesSameOriginUrlsWithoutOpeningMissingDatabase(): void
+    {
+        $database = $this->storage.'/missing.sqlite';
+        config([
+            'database.default' => 'uninstalled',
+            'database.connections.uninstalled' => [
+                'driver' => 'sqlite', 'database' => $database, 'prefix' => '', 'foreign_key_constraints' => true,
+            ],
+            'ptadmin.install.extensions' => [],
+            'ptadmin.install.folders' => [],
+            'ptadmin.install.files' => [],
+        ]);
+        // 模拟 HTTPS 在代理终止、PHP 只收到 HTTP 的部署方式。
+        $this->withHeader('X-Forwarded-Proto', 'https');
+        $this->get('http://install.example.test/business')
+            ->assertHeader('Location', '/__ptadmin__/install');
+        $this->get('/__ptadmin__/install/account')
+            ->assertHeader('Location', route('ptadmin.install.welcome', [
+                'redirect' => '/__ptadmin__/install/account', 'error' => 'protocol',
+            ], false));
+        $this->get('/__ptadmin__/install')
+            ->assertOk()->assertDontSee('http://install.example.test/__ptadmin__/install', false);
+        $this->post('/__ptadmin__/install/accept')
+            ->assertHeader('Location', '/__ptadmin__/install/requirements');
+        $this->get('/__ptadmin__/install/requirements')
+            ->assertOk()->assertDontSee('http://install.example.test/__ptadmin__/install', false);
+        $response = $this->get('/__ptadmin__/install/account')
+            ->assertOk()->assertDontSee('http://install.example.test/__ptadmin__/install', false);
+
+        $dom = new \DOMDocument();
+        @$dom->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($dom);
+        self::assertSame(3, $xpath->query('//form')->length);
+        self::assertSame(0, $xpath->query('//form//form')->length);
+        foreach ($xpath->query('//form') as $form) {
+            self::assertSame('/__ptadmin__/install/stream', $form->getAttribute('action'));
+            self::assertSame('post', $form->getAttribute('method'));
+        }
+        self::assertSame(0, $xpath->query('//form[.//input[@name="db_password"]]//input[@name="password"]')->length);
+        self::assertStringStartsWith('data:image/svg+xml,', $xpath->query('//link[@rel="icon"]')->item(0)->getAttribute('href'));
+        $invalid = $this->post('/__ptadmin__/install/stream', ['username' => 'bad!'])->assertOk();
+        self::assertStringContainsString('"type":"error"', $invalid->streamedContent());
+        self::assertSame([], $this->app['db']->getConnections());
+        self::assertFileDoesNotExist($database);
+    }
+
     public function testInstalledHostCanRunBusinessQueriesAndCannotReopenInstaller(): void
     {
         $this->app->make(InstallStateStore::class)->markInstalled('0.1.0', 'admin_test');

@@ -66,7 +66,7 @@
         const allPassed = @json($allPassed ?? false);
 
         document.getElementById('pre').addEventListener('click', function () {
-            window.location.href = @json(route('ptadmin.install.welcome'));
+            window.location.href = @json(route('ptadmin.install.welcome', [], false));
         });
 
         document.getElementById('reload').addEventListener('click', function () {
@@ -78,7 +78,7 @@
                 return;
             }
 
-            window.location.href = @json(route('ptadmin.install.account'));
+            window.location.href = @json(route('ptadmin.install.account', [], false));
         });
     })();
 </script>

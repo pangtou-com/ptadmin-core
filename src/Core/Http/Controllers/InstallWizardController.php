@@ -50,8 +50,8 @@ final class InstallWizardController extends Controller
         file_put_contents($this->agreementPath(), (string) time(), LOCK_EX);
         chmod($this->agreementPath(), 0600);
 
-        return redirect()->to(
-            $this->installRedirect((string) $request->input('redirect', '')) ?: route('ptadmin.install.requirements')
+        return new RedirectResponse(
+            $this->installRedirect((string) $request->input('redirect', '')) ?: route('ptadmin.install.requirements', [], false)
         );
     }
 
@@ -59,7 +59,7 @@ final class InstallWizardController extends Controller
     {
         $this->assertNotInstalled();
         if (!$this->agreementAccepted()) {
-            return $this->agreementRedirect(route('ptadmin.install.requirements'));
+            return $this->agreementRedirect(route('ptadmin.install.requirements', [], false));
         }
 
         $requirements = $this->app->make(InstallRequirementService::class);
@@ -77,10 +77,10 @@ final class InstallWizardController extends Controller
     {
         $this->assertNotInstalled();
         if (!$this->agreementAccepted()) {
-            return $this->agreementRedirect(route('ptadmin.install.account'));
+            return $this->agreementRedirect(route('ptadmin.install.account', [], false));
         }
         if ($this->app->make(InstallRequirementService::class)->hasFailures()) {
-            return redirect()->route('ptadmin.install.requirements', ['error' => 'requirements']);
+            return new RedirectResponse(route('ptadmin.install.requirements', ['error' => 'requirements'], false));
         }
 
         return $this->render('ptadmin-install::env', $this->viewData(2, [
@@ -102,7 +102,9 @@ final class InstallWizardController extends Controller
             $input['app_url'] = $request->root();
         }
 
-        return new InstallStreamResponse(function () use ($input): void {
+        $baseUrl = $request->getBaseUrl();
+
+        return new InstallStreamResponse(function () use ($input, $baseUrl): void {
             try {
                 if (!$this->agreementAccepted()) {
                     $this->send('error', __('ptadmin::install.stream.agreement_required'));
@@ -151,7 +153,7 @@ final class InstallWizardController extends Controller
                 );
                 $webPrefix = (string) ($result['marker']['web_prefix'] ?? '');
                 $this->send('success', __('ptadmin::install.logs.install_success'), [
-                    'admin_url' => url('/'.$webPrefix).'/',
+                    'admin_url' => $baseUrl.'/'.$webPrefix.'/',
                 ]);
             } catch (InvalidInstallStateException $exception) {
                 $this->send('error', $exception->getMessage());
@@ -219,10 +221,10 @@ final class InstallWizardController extends Controller
 
     private function agreementRedirect(string $target): RedirectResponse
     {
-        return redirect()->route('ptadmin.install.welcome', [
+        return new RedirectResponse(route('ptadmin.install.welcome', [
             'redirect' => $this->installRedirect($target),
             'error' => 'protocol',
-        ]);
+        ], false));
     }
 
     private function installRedirect(string $target): string

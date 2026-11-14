@@ -38,6 +38,7 @@ final class InstallApplicationKeyTest extends TestCase
     protected function defineEnvironment($app): void
     {
         $app->useStoragePath($this->root.'/storage');
+        $app->usePublicPath($this->root.'/public');
         $app->useEnvironmentPath($this->root);
         $app['config']->set([
             'app.key' => '',

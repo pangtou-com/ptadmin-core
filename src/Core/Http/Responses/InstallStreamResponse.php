@@ -11,11 +11,24 @@ final class InstallStreamResponse extends StreamedResponse
 {
     public function send(bool $flush = true): static
     {
-        // 必须在响应头和正文发送前关闭压缩；单次 ob_flush 只能刷新最内层缓冲。
-        @ini_set('zlib.output_compression', '0');
-        $this->sendHeaders();
-        self::closeOutputBuffers(0, true);
+        // 安装不能随浏览器断连而中止，否则已完成的迁移会阻止安全重试。
+        $previousIgnoreUserAbort = ignore_user_abort(true);
+        $previousTimeLimit = (int) ini_get('max_execution_time');
+        try {
+            if (function_exists('set_time_limit')) {
+                set_time_limit(0);
+            }
+            // 必须在响应头和正文发送前关闭压缩；单次 ob_flush 只能刷新最内层缓冲。
+            @ini_set('zlib.output_compression', '0');
+            $this->sendHeaders();
+            self::closeOutputBuffers(0, true);
 
-        return parent::send($flush);
+            return parent::send($flush);
+        } finally {
+            if (function_exists('set_time_limit')) {
+                set_time_limit($previousTimeLimit);
+            }
+            ignore_user_abort((bool) $previousIgnoreUserAbort);
+        }
     }
 }

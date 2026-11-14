@@ -61,7 +61,7 @@ final class InstallDatabaseConfigurator
 
         $current = (array) config('database.connections.'.$driver, []);
         $database = trim((string) ($input['db_database'] ?? ($driver === 'sqlite' ? self::DEFAULT_SQLITE_DATABASE : 'ptadmin')));
-        $prefix = (string) ($input['db_prefix'] ?? 'pt_');
+        $prefix = array_key_exists('db_prefix', $input) ? (string) $input['db_prefix'] : 'pt_';
         if (preg_match('/^[A-Za-z0-9_]{0,32}$/', $prefix) !== 1) {
             throw new InvalidInstallStateException('数据表前缀只能包含字母、数字和下划线。');
         }
@@ -94,7 +94,9 @@ final class InstallDatabaseConfigurator
             $host = trim((string) ($input['db_host'] ?? ($current['host'] ?? '127.0.0.1')));
             $port = trim((string) ($input['db_port'] ?? (($current['port'] ?? '') ?: ($driver === 'pgsql' ? '5432' : '3306'))));
             $username = (string) ($input['db_username'] ?? ($current['username'] ?? ''));
-            $password = (string) ($input['db_password'] ?? ($current['password'] ?? ''));
+            $password = array_key_exists('db_password', $input)
+                ? (string) $input['db_password']
+                : (string) ($current['password'] ?? '');
             if (preg_match('/[\x00-\x1F\x7F]/', $database) === 1) {
                 throw new InvalidInstallStateException('数据库名称包含非法字符。');
             }

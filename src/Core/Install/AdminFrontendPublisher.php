@@ -22,6 +22,36 @@ final class AdminFrontendPublisher
     ) {
     }
 
+    /** 在建库前验证前端产物和发布路径；正式发布时仍重新校验，防止期间文件被修改。 */
+    public function assertCanPublishForInstall(string $webPrefix): void
+    {
+        if (!WebPrefixGenerator::isValid($webPrefix)) {
+            throw new RuntimeException('The PTAdmin web prefix is invalid.');
+        }
+
+        $target = rtrim($this->publicRoot, '/').'/'.$webPrefix;
+        if (is_dir($target)) {
+            $this->manifest->verify($target);
+            $this->ensureRuntimeDirectories($target);
+
+            return;
+        }
+        if (file_exists($target) || is_link($target)) {
+            throw new RuntimeException('The PTAdmin frontend target is not a directory.');
+        }
+        $this->manifest->verify($this->source);
+
+        // 多级入口的目标父目录可写，不代表 public 下的暂存目录也能创建。
+        foreach ([dirname($target), $this->publicRoot] as $directory) {
+            while (!file_exists($directory) && !is_link($directory)) {
+                $directory = dirname($directory);
+            }
+            if (!is_dir($directory) || !is_writable($directory)) {
+                throw new RuntimeException('The PTAdmin frontend parent directory is unavailable or not writable: '.$directory);
+            }
+        }
+    }
+
     /** @return array{published:bool, frontend_version:string, path:string} */
     public function publishForInstall(string $webPrefix): array
     {

@@ -11,16 +11,18 @@ use Symfony\Component\Process\Process;
 
 final class InstallStreamingHttpTest extends TestCase
 {
-    /** @return iterable<string, array{bool, bool}> */
+    /** @return iterable<string, array{bool, bool, bool}> */
     public static function streamingCases(): iterable
     {
-        yield 'nested buffers' => [false, false];
-        yield 'nested buffers and compression' => [true, false];
-        yield 'migration failure after progress' => [true, true];
+        yield 'nested buffers' => [false, false, false];
+        yield 'nested buffers and compression' => [true, false, false];
+        yield 'migration failure after progress' => [true, true, false];
+        yield 'client disconnects during migration' => [true, false, true];
+        yield 'migration fails after client disconnects' => [false, true, true];
     }
 
     #[DataProvider('streamingCases')]
-    public function testProgressArrivesBeforeMigrationCanFinish(bool $compression, bool $failMigration): void
+    public function testProgressArrivesBeforeMigrationCanFinish(bool $compression, bool $failMigration, bool $disconnect): void
     {
         $root = sys_get_temp_dir().'/ptadmin-stream-http-'.bin2hex(random_bytes(6));
         mkdir($root.'/storage', 0700, true);
@@ -39,6 +41,7 @@ final class InstallStreamingHttpTest extends TestCase
             self::assertIsString($address);
             $server = new Process([
                 PHP_BINARY, '-d', 'output_buffering=4096', '-d', 'zlib.output_compression='.($compression ? '1' : '0'),
+                '-d', 'ignore_user_abort=0', '-d', 'max_execution_time=30',
                 '-S', $address, dirname(__DIR__).'/Fixtures/Install/stream-router.php',
             ], dirname(__DIR__, 2), ['PTADMIN_STREAM_TEST_ROOT' => $root]);
             $server->start();
@@ -78,20 +81,53 @@ final class InstallStreamingHttpTest extends TestCase
                 if ($event['message'] === '正在执行数据库迁移') {
                     self::assertFileDoesNotExist($root.'/storage/app/ptadmin/install/installed.json');
                     self::assertFileDoesNotExist($root.'/continue-migration');
+                    if ($disconnect) {
+                        stream_socket_shutdown($connection, STREAM_SHUT_RDWR);
+                        fclose($connection);
+                        $connection = null;
+                        file_put_contents($root.'/continue-migration', '1');
+                        break;
+                    }
                     file_put_contents($root.'/continue-migration', '1');
                 }
             }
-            self::assertFalse(stream_get_meta_data($connection)['timed_out'], 'Progress was buffered until the installation finished.');
+            if (!$disconnect) {
+                self::assertFalse(stream_get_meta_data($connection)['timed_out'], 'Progress was buffered until the installation finished.');
+            }
+            $deadline = microtime(true) + 10;
+            while (!is_file($root.'/runtime-after.json') && microtime(true) < $deadline) {
+                usleep(10000);
+            }
+            self::assertFileExists($root.'/runtime-after.json', $server->getErrorOutput());
+            $during = json_decode(file_get_contents($root.'/runtime-during.json'), true, 512, JSON_THROW_ON_ERROR);
+            $after = json_decode(file_get_contents($root.'/runtime-after.json'), true, 512, JSON_THROW_ON_ERROR);
+            self::assertSame(1, $during['ignore_user_abort']);
+            self::assertSame(0, $during['max_execution_time']);
+            self::assertSame(0, $after['ignore_user_abort']);
+            self::assertSame(30, $after['max_execution_time']);
+            if ($disconnect && !$failMigration) {
+                self::assertSame(1, $after['connection_aborted']);
+            }
             self::assertFileExists($root.'/migration-waiting');
             self::assertFileExists($root.'/continue-migration', 'The migration log must arrive while installation is still running.');
-            self::assertSame($failMigration ? 'error' : 'success', $events[array_key_last($events)]['type'] ?? null, json_encode($events));
+            if (!$disconnect) {
+                self::assertSame($failMigration ? 'error' : 'success', $events[array_key_last($events)]['type'] ?? null, json_encode($events));
+            }
+            $state = json_decode(file_get_contents($root.'/storage/app/ptadmin/install/state.json'), true, 512, JSON_THROW_ON_ERROR);
+            self::assertSame($failMigration ? 'failed' : 'installed', $state['stage']);
             self::assertStringNotContainsString('stream-password', json_encode($events));
             if ($failMigration) {
                 self::assertFileDoesNotExist($root.'/storage/app/ptadmin/install/installed.json');
                 self::assertStringNotContainsString('Isolated migration failure', json_encode($events));
             } else {
                 self::assertFileExists($root.'/storage/app/ptadmin/install/installed.json');
-                self::assertStringEndsWith('/stream_admin/', $events[array_key_last($events)]['data']['admin_url']);
+                if (!$disconnect) {
+                    self::assertStringEndsWith('/stream_admin/', $events[array_key_last($events)]['data']['admin_url']);
+                }
+                $database = new \PDO('sqlite:'.$root.'/storage/database/stream.sqlite');
+                self::assertSame('stream-founder', $database->query('select username from admins')->fetchColumn());
+                self::assertFileExists($root.'/public/stream_admin/index.html');
+                self::assertStringContainsString('PTADMIN_WEB_PREFIX=stream_admin', file_get_contents($root.'/.env'));
             }
         } finally {
             if (is_resource($connection)) {
