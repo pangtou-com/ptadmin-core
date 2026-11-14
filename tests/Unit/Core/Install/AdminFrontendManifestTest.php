@@ -19,7 +19,7 @@ final class AdminFrontendManifestTest extends TestCase
             dirname(__DIR__, 4).'/resources/admin-frontend'
         );
 
-        self::assertSame('0.12.1', $manifest['frontend_version']);
+        self::assertSame('0.13.0', $manifest['frontend_version']);
         self::assertSame('./index.html', $manifest['entry']);
     }
 

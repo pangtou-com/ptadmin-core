@@ -15,7 +15,8 @@
                 "operations": [
                     {
                         "key": "view",
-                        "title": "查看详情"
+                        "title": "查看详情",
+                        "desc": "进入仪表盘并读取内容；各业务区块仍按各自的数据查看权限展示。"
                     }
                 ],
                 "scopes": [
@@ -28,7 +29,8 @@
                 "operations": [
                     {
                         "key": "update",
-                        "title": "编辑"
+                        "title": "布局编辑",
+                        "desc": "调整当前管理员的区块显示、排序和尺寸，保存个人布局。"
                     }
                 ],
                 "scopes": [
@@ -45,7 +47,17 @@
         "is_menu": true,
         "status": true,
         "sort": 20,
-        "icon": "settings",
+        "icon": "settings"
+    },
+    {
+        "resource_key": "admin.tasks",
+        "title": "任务中心",
+        "type": "group",
+        "parent_key": "admin",
+        "is_menu": false,
+        "status": true,
+        "sort": 80,
+        "icon": "list-checks",
         "permissions": [
             {
                 "resource_key": "core.tasks",
@@ -53,37 +65,65 @@
                 "operations": [
                     {
                         "key": "view",
-                        "title": "查看详情"
+                        "title": "查看任务记录",
+                        "desc": "查看任务列表和历史记录；具体任务详情仍校验对应任务类型的权限。"
                     },
                     {
                         "key": "remove",
-                        "title": "remove"
+                        "title": "清理任务历史",
+                        "desc": "按清理规则删除已结束任务的历史文件，不停止正在执行的任务。"
                     }
                 ],
                 "scopes": [
                     "all"
                 ]
-            },
+            }
+        ]
+    },
+    {
+        "resource_key": "admin.maintenance",
+        "title": "系统维护",
+        "type": "group",
+        "parent_key": "admin",
+        "is_menu": false,
+        "status": true,
+        "sort": 90,
+        "icon": "settings",
+        "permissions": [
             {
                 "resource_key": "system.maintenance",
                 "title": "系统维护",
                 "operations": [
                     {
                         "key": "manage",
-                        "title": "manage"
+                        "title": "同步应用信息",
+                        "desc": "手动刷新应用信息摘要，需要同时具备仪表盘查看权限。"
                     }
                 ],
                 "scopes": [
                     "all"
                 ]
-            },
+            }
+        ]
+    },
+    {
+        "resource_key": "admin.updates",
+        "title": "版本与更新",
+        "type": "group",
+        "parent_key": "admin",
+        "is_menu": false,
+        "status": true,
+        "sort": 100,
+        "icon": "refresh-cw",
+        "permissions": [
             {
                 "resource_key": "system.updates",
                 "title": "版本检查与安全提醒",
                 "operations": [
                     {
                         "key": "manage",
-                        "title": "manage"
+                        "title": "检查版本与管理安全公告",
+                        "desc": "检查官方版本、处理更新提醒及确认安全公告；还需满足创始人身份要求，不等于执行更新。"
                     }
                 ],
                 "scopes": [
@@ -92,19 +132,22 @@
             },
             {
                 "resource_key": "core.update",
-                "title": "Core 更新",
+                "title": "核心更新",
                 "operations": [
                     {
                         "key": "view",
-                        "title": "查看详情"
+                        "title": "查看核心更新任务",
+                        "desc": "查看核心更新任务的状态、事件和执行进度。"
                     },
                     {
                         "key": "create",
-                        "title": "新增"
+                        "title": "发起核心更新",
+                        "desc": "提交指定版本的核心更新任务；在线更新入口还需满足创始人身份要求。"
                     },
                     {
                         "key": "update",
-                        "title": "编辑"
+                        "title": "重试或取消核心更新",
+                        "desc": "按任务状态重试或取消核心更新；不可逆阶段不能取消。"
                     }
                 ],
                 "scopes": [
@@ -117,15 +160,18 @@
                 "operations": [
                     {
                         "key": "view",
-                        "title": "查看详情"
+                        "title": "查看后台界面更新任务",
+                        "desc": "查看后台界面更新任务的状态、事件和执行进度。"
                     },
                     {
                         "key": "create",
-                        "title": "新增"
+                        "title": "发起后台界面更新",
+                        "desc": "提交后台界面更新任务；在线更新入口还需满足创始人身份要求。"
                     },
                     {
                         "key": "update",
-                        "title": "编辑"
+                        "title": "重试或取消后台界面更新",
+                        "desc": "按任务状态重试或取消后台界面更新；不可逆阶段不能取消。"
                     }
                 ],
                 "scopes": [
@@ -180,19 +226,23 @@
                     },
                     {
                         "key": "sync_roles",
-                        "title": "设置角色"
+                        "title": "设置角色",
+                        "desc": "修改管理员关联的角色；角色权限会影响其最终有效权限。"
                     },
                     {
                         "key": "sync_permissions",
-                        "title": "设置权限"
+                        "title": "设置权限",
+                        "desc": "设置管理员的个人允许、拒绝及数据范围，不修改角色本身的授权。"
                     },
                     {
                         "key": "reset_password",
-                        "title": "reset_password"
+                        "title": "重置密码",
+                        "desc": "重置所选管理员的密码，并撤销其现有登录会话。"
                     },
                     {
                         "key": "revoke_sessions",
-                        "title": "revoke_sessions"
+                        "title": "撤销登录会话",
+                        "desc": "使所选管理员的现有后台登录会话失效，需要重新登录。"
                     }
                 ],
                 "target_resource_key": "admin.admin_users",
@@ -249,7 +299,8 @@
                     },
                     {
                         "key": "sync_permissions",
-                        "title": "设置权限"
+                        "title": "设置权限",
+                        "desc": "修改角色的授权规则，影响所有关联该角色的管理员。"
                     }
                 ],
                 "target_resource_key": "admin.admin_roles",
@@ -306,11 +357,13 @@
                     },
                     {
                         "key": "move_resource",
-                        "title": "move_resource"
+                        "title": "移动资源",
+                        "desc": "调整导航资源的父级和排序，不改写业务权限及已有授权。"
                     },
                     {
                         "key": "move_menu",
-                        "title": "move_menu"
+                        "title": "移动菜单",
+                        "desc": "调整菜单的父级和排序，与移动资源使用同一导航调整流程。"
                     }
                 ],
                 "target_resource_key": "admin.admin_resources",
@@ -444,7 +497,8 @@
                     },
                     {
                         "key": "design",
-                        "title": "design"
+                        "title": "管理配置项",
+                        "desc": "新增或删除自定义配置项定义；修改已有配置值由编辑权限控制。"
                     },
                     {
                         "key": "update",
@@ -596,7 +650,7 @@
                     },
                     {
                         "key": "upload",
-                        "title": "upload"
+                        "title": "上传资源"
                     },
                     {
                         "key": "update",
@@ -661,7 +715,8 @@
                     },
                     {
                         "key": "publish",
-                        "title": "publish"
+                        "title": "发布",
+                        "desc": "发布模型草稿，使资源定义生效；发布计划可能变更数据库结构。"
                     }
                 ],
                 "scopes": [
@@ -701,23 +756,27 @@
                 "operations": [
                     {
                         "key": "read",
-                        "title": "读取"
+                        "title": "查看主题"
                     },
                     {
                         "key": "install",
-                        "title": "install"
+                        "title": "安装主题",
+                        "desc": "安装主题包，不自动切换当前主题。"
                     },
                     {
                         "key": "activate",
-                        "title": "activate"
+                        "title": "启用主题",
+                        "desc": "切换当前启用的公开主题。"
                     },
                     {
                         "key": "publish",
-                        "title": "publish"
+                        "title": "发布主题资源",
+                        "desc": "发布当前主题的公开资源，替换前保留旧资源备份。"
                     },
                     {
                         "key": "remove",
-                        "title": "remove"
+                        "title": "移除主题",
+                        "desc": "移除指定主题版本；当前启用主题仍受后端保护规则限制。"
                     }
                 ],
                 "scopes": [
@@ -730,15 +789,18 @@
                 "operations": [
                     {
                         "key": "view",
-                        "title": "查看详情"
+                        "title": "查看主题安装任务",
+                        "desc": "查看任务状态和执行进度。"
                     },
                     {
                         "key": "create",
-                        "title": "新增"
+                        "title": "发起主题安装任务",
+                        "desc": "提交对应主题操作的文件任务。"
                     },
                     {
                         "key": "update",
-                        "title": "编辑"
+                        "title": "重试或取消主题安装任务",
+                        "desc": "根据任务状态重试失败任务或取消尚可取消的任务。"
                     }
                 ],
                 "scopes": [
@@ -751,15 +813,18 @@
                 "operations": [
                     {
                         "key": "view",
-                        "title": "查看详情"
+                        "title": "查看主题移除任务",
+                        "desc": "查看任务状态和执行进度。"
                     },
                     {
                         "key": "create",
-                        "title": "新增"
+                        "title": "发起主题移除任务",
+                        "desc": "提交对应主题操作的文件任务。"
                     },
                     {
                         "key": "update",
-                        "title": "编辑"
+                        "title": "重试或取消主题移除任务",
+                        "desc": "根据任务状态重试失败任务或取消尚可取消的任务。"
                     }
                 ],
                 "scopes": [

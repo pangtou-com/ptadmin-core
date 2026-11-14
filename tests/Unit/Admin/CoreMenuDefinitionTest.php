@@ -81,8 +81,48 @@ final class CoreMenuDefinitionTest extends TestCase
         $definitions = $this->definitions();
         $resources = array_column($definitions, null, 'resource_key');
         self::assertArrayNotHasKey('core.tasks', $resources);
-        $permissions = array_column($resources['admin']['permissions'], null, 'resource_key');
+        self::assertArrayNotHasKey('permissions', $resources['admin']);
+        foreach (['admin.tasks', 'admin.maintenance', 'admin.updates'] as $key) {
+            self::assertSame('group', $resources[$key]['type']);
+            self::assertSame('admin', $resources[$key]['parent_key']);
+            self::assertFalse($resources[$key]['is_menu']);
+            self::assertArrayNotHasKey('path', $resources[$key]);
+        }
+        $permissions = array_column($resources['admin.tasks']['permissions'], null, 'resource_key');
         self::assertSame(['view', 'remove'], array_column($permissions['core.tasks']['operations'], 'key'));
+        self::assertSame(['查看任务记录', '清理任务历史'], array_column($permissions['core.tasks']['operations'], 'title'));
+        self::assertSame(['system.maintenance'], array_column($resources['admin.maintenance']['permissions'], 'resource_key'));
+        self::assertSame(['system.updates', 'core.update', 'admin.frontend'], array_column($resources['admin.updates']['permissions'], 'resource_key'));
+    }
+
+    public function testDashboardLabelsDescribeViewingAndPersonalLayoutWithStablePermissions(): void
+    {
+        $resources = array_column($this->definitions(), null, 'resource_key');
+        $permissions = array_column($resources['dashboard']['permissions'], null, 'resource_key');
+        self::assertSame('dashboard.view', $resources['dashboard']['entry_permission']);
+        self::assertSame('view', $permissions['dashboard']['operations'][0]['key']);
+        self::assertSame('查看详情', $permissions['dashboard']['operations'][0]['title']);
+        self::assertSame('update', $permissions['admin.dashboard_widgets']['operations'][0]['key']);
+        self::assertSame('布局编辑', $permissions['admin.dashboard_widgets']['operations'][0]['title']);
+    }
+
+    public function testPermissionOperationsHaveChineseLabelsAndComplexActionsExplainTheirEffect(): void
+    {
+        $permissions = [];
+        foreach ($this->definitions() as $definition) {
+            foreach ($definition['permissions'] ?? [] as $permission) {
+                if (isset($permission['ref'])) {
+                    continue;
+                }
+                foreach ($permission['operations'] as $operation) {
+                    self::assertMatchesRegularExpression('/\\p{Han}/u', $operation['title'], $permission['resource_key'].'.'.$operation['key']);
+                    $permissions[$permission['resource_key'].'.'.$operation['key']] = $operation;
+                }
+            }
+        }
+        foreach (['admin.users.reset_password', 'admin.users.revoke_sessions', 'admin.config.design', 'schema.resources.publish', 'system.updates.manage'] as $key) {
+            self::assertNotEmpty($permissions[$key]['desc'], $key);
+        }
     }
 
     public function testSchemaMenuPermissionsAreExplicitlyDeclared(): void

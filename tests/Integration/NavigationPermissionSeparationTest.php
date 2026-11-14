@@ -204,6 +204,13 @@ final class NavigationPermissionSeparationTest extends TestCase
         self::assertSame(['orders'], $byKey['__navigation__:order.page']['permission_keys']);
         self::assertSame([], $byKey['__navigation__:order.page']['abilities']);
         self::assertSame('orders.list', $byKey['__navigation__:order.page']['entry_permission']);
+        self::assertSame([], $byKey['__navigation__:admin']['permission_keys']);
+        self::assertSame(['core.tasks'], $byKey['__navigation__:admin.tasks']['permission_keys']);
+        self::assertFalse($byKey['__navigation__:admin.tasks']['is_menu']);
+        self::assertSame('查看详情', $byKey['dashboard']['operation_labels']['view']['title']);
+        self::assertSame('布局编辑', $byKey['admin.dashboard_widgets']['operation_labels']['update']['title']);
+        self::assertSame('重置密码', $byKey['admin.users']['operation_labels']['reset_password']['title']);
+        self::assertStringContainsString('撤销其现有登录会话', $byKey['admin.users']['operation_labels']['reset_password']['desc']);
     }
 
     public function testDeniedParentPageIsOnlyAContainerForAuthorizedChildren(): void
@@ -249,6 +256,52 @@ final class NavigationPermissionSeparationTest extends TestCase
         self::assertTrue(app(\PTAdmin\Admin\Auth\AuthorizationService::class)->allows($admin, 'list', 'orders'));
         $this->postJson($url, ['data' => array_replace($input, ['resource_key' => 'invalid.orders', 'entry_permission' => 'orders.missing'])])
             ->assertStatus(422)->assertJsonPath('data.code', 'invalid_entry_permission');
+    }
+
+    public function testCorePermissionRegroupingPreservesGrantsAndVisibleNavigation(): void
+    {
+        $definitions = json_decode((string) file_get_contents(dirname(__DIR__, 2).'/resources/menu.json'), true, 512, JSON_THROW_ON_ERROR);
+        $groups = ['admin.tasks', 'admin.maintenance', 'admin.updates'];
+        $previous = [];
+        $permissions = [];
+        foreach ($definitions as $definition) {
+            if (in_array($definition['resource_key'], $groups, true)) {
+                array_push($permissions, ...$definition['permissions']);
+            } else {
+                $previous[] = $definition;
+            }
+        }
+        foreach ($previous as &$definition) {
+            if ($definition['resource_key'] === 'admin') {
+                $definition['permissions'] = $permissions;
+            }
+        }
+        unset($definition);
+        $this->write($previous);
+        $this->menus->syncCore();
+        $ids = DB::table('admin_resources')->orderBy('resource_key')->pluck('id', 'resource_key')->all();
+        $visible = DB::table('admin_menus')->where('is_menu', true)->orderBy('id')->get()->toJson();
+        DB::table('admin_grants')->insert([
+            'subject_type' => 'admin', 'subject_id' => '10', 'resource_id' => $ids['core.tasks'],
+            'effect' => 'allow', 'abilities_json' => '["view"]', 'scope_type' => 'all',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $grants = DB::table('admin_grants')->get()->toJson();
+        $this->write($definitions);
+        $this->menus->syncCore();
+
+        self::assertSame($ids, DB::table('admin_resources')->orderBy('resource_key')->pluck('id', 'resource_key')->all());
+        self::assertSame($grants, DB::table('admin_grants')->get()->toJson());
+        // 父目录移除关联权限，其他导航字段及可见菜单集合保持不变。
+        $currentVisible = DB::table('admin_menus')->where('is_menu', true)->orderBy('id')->get();
+        $previousVisible = json_decode($visible, true, 512, JSON_THROW_ON_ERROR);
+        self::assertSame(array_column($previousVisible, 'resource_key'), $currentVisible->pluck('resource_key')->all());
+        foreach ($groups as $key) {
+            $this->assertDatabaseHas('admin_menus', ['resource_key' => $key, 'parent_key' => 'admin', 'is_menu' => false, 'type' => 'group']);
+        }
+        $meta = json_decode(DB::table('admin_menus')->where('resource_key', 'admin')->value('meta_json'), true, 512, JSON_THROW_ON_ERROR);
+        self::assertSame([], $meta['permission_keys']);
+        self::assertSame(0, $this->menus->syncCore()['updated']);
     }
 
     private function page(): array
