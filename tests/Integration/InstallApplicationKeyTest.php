@@ -37,6 +37,7 @@ final class InstallApplicationKeyTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $app->useStoragePath($this->root.'/storage');
         $app->usePublicPath($this->root.'/public');
         $app->useEnvironmentPath($this->root);

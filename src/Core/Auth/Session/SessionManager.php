@@ -7,6 +7,7 @@ namespace PTAdmin\Core\Auth\Session;
 use DateTimeImmutable;
 use DateTimeZone;
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Contracts\Events\Dispatcher;
 use PTAdmin\Core\Auth\Exceptions\InvalidSessionException;
 use RuntimeException;
 
@@ -20,7 +21,7 @@ final class SessionManager
     /**
      * @param array{table?:string, idle_minutes?:int, absolute_hours?:int} $config
      */
-    public function __construct(ConnectionInterface $database, array $config = [], ?BearerTokenGenerator $tokens = null)
+    public function __construct(ConnectionInterface $database, array $config = [], ?BearerTokenGenerator $tokens = null, private readonly ?Dispatcher $events = null)
     {
         $this->database = $database;
         $this->table = (string) ($config['table'] ?? 'ptadmin_sessions');
@@ -135,11 +136,12 @@ final class SessionManager
             'revoked_at' => $this->format($this->now()),
             'updated_at' => $this->format($this->now()),
         ]);
+        $this->events?->dispatch(new SessionRevoked(tokenHash: $hash));
     }
 
     public function revokeSubject(string $subjectType, string|int $subjectId, string $guardName): int
     {
-        return $this->database->table($this->table)
+        $count = $this->database->table($this->table)
             ->where('subject_type', $subjectType)
             ->where('subject_id', (string) $subjectId)
             ->where('guard_name', $guardName)
@@ -148,6 +150,8 @@ final class SessionManager
                 'revoked_at' => $this->format($this->now()),
                 'updated_at' => $this->format($this->now()),
             ]);
+        $this->events?->dispatch(new SessionRevoked(subjectType: $subjectType, subjectId: (string) $subjectId, guardName: $guardName));
+        return $count;
     }
 
     /** @return list<array<string,mixed>> */
@@ -172,13 +176,18 @@ final class SessionManager
 
     public function revokeByIdForSubject(string $sessionId, string $subjectType, string|int $subjectId, string $guardName): bool
     {
-        return $this->database->table($this->table)
+        $revoked = $this->database->table($this->table)
             ->where('id', $sessionId)
             ->where('subject_type', $subjectType)
             ->where('subject_id', (string) $subjectId)
             ->where('guard_name', $guardName)
             ->whereNull('revoked_at')
             ->update(['revoked_at' => $this->format($this->now()), 'updated_at' => $this->format($this->now())]) > 0;
+        if ($revoked) {
+            $this->events?->dispatch(new SessionRevoked(sessionId: $sessionId, subjectType: $subjectType,
+                subjectId: (string) $subjectId, guardName: $guardName));
+        }
+        return $revoked;
     }
 
     private function now(): DateTimeImmutable

@@ -47,7 +47,7 @@ final class CloudInstallationPolicyTest extends TestCase
         ], $this->policy->describe('cms', 'addon', '0.3.0', '>=0.12.0 <0.13.0'));
 
         $this->expectException(AddonException::class);
-        $this->expectExceptionMessage('incompatible');
+        $this->expectExceptionMessage('插件 cms (0.2.2) 要求 ptadmin/core >=0.11.0 <0.12.0，当前后端版本为 0.12.0。');
         $this->verifier->verifyRuntime($this->directory.'/cms');
     }
 

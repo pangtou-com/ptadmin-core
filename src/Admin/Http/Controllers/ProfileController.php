@@ -7,6 +7,7 @@ namespace PTAdmin\Admin\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use PTAdmin\Admin\Facades\AdminAuth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -28,12 +29,12 @@ final class ProfileController extends Controller
 
     public function show(Request $request): JsonResponse
     {
-        return AdminResponse::success('', $this->authenticator->userPayload($this->admin($request)));
+        return AdminResponse::success('', $this->authenticator->userPayload(AdminAuth::authenticate()));
     }
 
     public function update(Request $request): JsonResponse
     {
-        $admin = $this->admin($request);
+        $admin = AdminAuth::authenticate();
         try {
             $data = $request->validate([
                 'nickname' => ['required', 'string', 'max:100'],
@@ -61,7 +62,7 @@ final class ProfileController extends Controller
             return AdminResponse::error(42200, '密码信息校验失败。', $exception->errors(), 422);
         }
 
-        $admin = $this->admin($request);
+        $admin = AdminAuth::authenticate();
         if (!Hash::check((string) $data['current_password'], (string) $admin->password)) {
             return AdminResponse::error(42201, '当前密码不正确。', ['field' => 'current_password'], 422);
         }
@@ -74,7 +75,7 @@ final class ProfileController extends Controller
     public function loginLogs(Request $request): JsonResponse
     {
         return AdminResponse::success('', $this->audit->loginLogs(
-            (int) $this->admin($request)->getKey(),
+            (int) AdminAuth::authenticate()->getKey(),
             $request->integer('page', 1),
             $request->integer('limit', 20),
         ));
@@ -83,7 +84,7 @@ final class ProfileController extends Controller
     public function operationLogs(Request $request): JsonResponse
     {
         return AdminResponse::success('', $this->audit->operationLogs(
-            (int) $this->admin($request)->getKey(),
+            (int) AdminAuth::authenticate()->getKey(),
             $request->integer('page', 1),
             $request->integer('limit', 20),
         ));
@@ -91,18 +92,11 @@ final class ProfileController extends Controller
 
     public function operationDetail(Request $request, int $id): JsonResponse
     {
-        $operation = $this->audit->operation((int) $this->admin($request)->getKey(), $id);
+        $operation = $this->audit->operation((int) AdminAuth::authenticate()->getKey(), $id);
         if ($operation === null) {
             return AdminResponse::error(40400, '操作记录不存在。', null, 404);
         }
 
         return AdminResponse::success('', $operation);
-    }
-
-    private function admin(Request $request): Admin
-    {
-        $session = (array) $request->attributes->get('ptadmin.session', []);
-
-        return Admin::query()->findOrFail($session['subject_id'] ?? null);
     }
 }

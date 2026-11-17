@@ -20,6 +20,7 @@ final class InitialAdministratorInstallationTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $this->root = sys_get_temp_dir().'/ptadmin-initial-permissions-'.bin2hex(random_bytes(6));
         mkdir($this->root.'/public', 0700, true);
         mkdir($this->root.'/resources', 0700, true);

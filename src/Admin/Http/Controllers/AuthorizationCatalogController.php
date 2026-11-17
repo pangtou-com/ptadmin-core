@@ -20,8 +20,7 @@ final class AuthorizationCatalogController
 
     public function __invoke(Request $request): JsonResponse
     {
-        $session = $request->attributes->get('ptadmin.session', []);
-        $admin = ($session['guard_name'] ?? '') === 'admin' ? Admin::query()->find($session['subject_id'] ?? null) : null;
+        $admin = \PTAdmin\Admin\Facades\AdminAuth::user();
         if (!$admin instanceof Admin) {
             return AdminResponse::error(40102, '管理员账号不可用。', null, 401);
         }

@@ -24,6 +24,7 @@ final class NavigationPermissionSeparationTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $app->useStoragePath($this->root.'/storage');
         $app['config']->set([
             'database.default' => 'testing',
@@ -115,7 +116,7 @@ final class NavigationPermissionSeparationTest extends TestCase
         ]);
         $this->app['router']->get('/permission-probe/delete', static fn () => response()->json(['executed' => true]))
             ->middleware(['ptadmin.session', 'ptadmin.permission:orders,delete']);
-        $this->withToken(app(\PTAdmin\Core\Auth\Session\SessionManager::class)->issue('admin', $admin->id, 'admin')->toArray()['access_token']);
+        $this->withToken(app(\PTAdmin\Core\Auth\Session\SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $admin->id, 'admin')->toArray()['access_token']);
         $this->getJson('/permission-probe/delete')->assertOk();
         $auth = app(\PTAdmin\Admin\Auth\AuthorizationService::class);
         self::assertContains('orders.delete', $auth->permissions($admin));
@@ -193,7 +194,7 @@ final class NavigationPermissionSeparationTest extends TestCase
         $this->write([$this->page()]);
         $this->menus->syncApp($this->root);
         $admin = \PTAdmin\Admin\Models\Admin::query()->forceCreate(['username' => 'editor', 'password' => 'unused', 'status' => true]);
-        $token = app(\PTAdmin\Core\Auth\Session\SessionManager::class)->issue('admin', $admin->id, 'admin')->toArray()['access_token'];
+        $token = app(\PTAdmin\Core\Auth\Session\SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $admin->id, 'admin')->toArray()['access_token'];
         $this->getJson('/ptadmin/authorization/catalog')->assertUnauthorized();
         $this->withToken($token)->getJson('/ptadmin/authorization/catalog')->assertForbidden();
         app(\PTAdmin\Core\Install\InitialAdministratorPermissions::class)->grant($admin);
@@ -241,7 +242,7 @@ final class NavigationPermissionSeparationTest extends TestCase
         $this->menus->syncApp($this->root);
         $admin = \PTAdmin\Admin\Models\Admin::query()->forceCreate(['username' => 'navigation-editor', 'password' => 'unused', 'status' => true]);
         app(\PTAdmin\Core\Install\InitialAdministratorPermissions::class)->grant($admin);
-        $token = app(\PTAdmin\Core\Auth\Session\SessionManager::class)->issue('admin', $admin->id, 'admin')->toArray()['access_token'];
+        $token = app(\PTAdmin\Core\Auth\Session\SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $admin->id, 'admin')->toArray()['access_token'];
         $this->withToken($token);
         $before = DB::table('admin_grants')->get()->toJson();
         $url = '/ptadmin/schema/action/admin.admin_resources/records';
@@ -640,7 +641,7 @@ final class NavigationPermissionSeparationTest extends TestCase
         app(\PTAdmin\Schema\SchemaFile\SchemaFileSynchronizer::class)->sync(app(\PTAdmin\Schema\SchemaFile\SchemaSourceDiscovery::class)->discoverCore());
         $admin = \PTAdmin\Admin\Models\Admin::query()->forceCreate(['username' => 'navigation-editor', 'password' => 'unused', 'status' => true]);
         app(\PTAdmin\Core\Install\InitialAdministratorPermissions::class)->grant($admin);
-        $this->withToken(app(\PTAdmin\Core\Auth\Session\SessionManager::class)->issue('admin', $admin->id, 'admin')->toArray()['access_token']);
+        $this->withToken(app(\PTAdmin\Core\Auth\Session\SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $admin->id, 'admin')->toArray()['access_token']);
         return $admin;
     }
 

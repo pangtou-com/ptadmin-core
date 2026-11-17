@@ -17,11 +17,7 @@ final class FounderAccess
 
     public function resolve(Request $request): ?Admin
     {
-        $session = $request->attributes->get('ptadmin.session');
-        if (!is_array($session) || ($session['guard_name'] ?? null) !== 'admin') {
-            return null;
-        }
-        $admin = Admin::query()->find($session['subject_id'] ?? null);
+        $admin = app(AdminAuth::class)->user();
         return $admin instanceof Admin && self::allows($admin) ? $admin : null;
     }
 

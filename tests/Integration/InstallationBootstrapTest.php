@@ -35,6 +35,7 @@ final class InstallationBootstrapTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $app->useStoragePath($this->storage);
         $app['config']->set([
             'database.default' => 'not_configured',
@@ -65,6 +66,22 @@ final class InstallationBootstrapTest extends TestCase
         self::assertSame(1, $this->app->make(RateLimiter::class)->hit('installation-probe'));
         self::assertSame('/__ptadmin__/install', parse_url(redirect('/__ptadmin__/install')->getTargetUrl(), PHP_URL_PATH));
         self::assertSame([], $this->app['db']->getConnections());
+    }
+
+    public function testAdminGuardAndFacadeDoNotResolveDatabaseBeforeInstallation(): void
+    {
+        $missingDatabase = $this->storage.'/not-created.sqlite';
+        config(['database.default' => 'missing', 'database.connections.missing' => [
+            'driver' => 'sqlite', 'database' => $missingDatabase, 'foreign_key_constraints' => true,
+        ]]);
+        request()->headers->set('Authorization', 'Bearer not-a-session');
+        self::assertNull(\Illuminate\Support\Facades\Auth::guard('ptadmin')->user());
+        self::assertFalse(\PTAdmin\Admin\Facades\AdminAuth::check());
+        self::assertSame([], \PTAdmin\Admin\Facades\AdminAuth::roles());
+        self::assertSame([], \PTAdmin\Admin\Facades\AdminAuth::permissions());
+        self::assertFalse(\PTAdmin\Admin\Facades\AdminAuth::can('dashboard.view'));
+        self::assertSame([], $this->app['db']->getConnections());
+        self::assertFileDoesNotExist($missingDatabase);
     }
 
     public function testInstalledApplicationKeepsDatabaseCacheAndSessionConfiguration(): void

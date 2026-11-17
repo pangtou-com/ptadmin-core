@@ -138,6 +138,7 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app->register(SchemaServiceProvider::class);
         $this->app->register(ServiceProtocolServiceProvider::class);
         $this->app->register(\PTAdmin\User\UserServiceProvider::class);
+        $this->app->register(\PTAdmin\Admin\Auth\AdminAuthServiceProvider::class);
 
         $this->app->singleton(ApplicationIdentity::class, static function (): ApplicationIdentity {
             return new ApplicationIdentity(storage_path('ptadmin.json'));
@@ -289,7 +290,8 @@ final class PTAdminServiceProvider extends ServiceProvider
         $this->app->singleton(SessionManager::class, static function ($app): SessionManager {
             return new SessionManager(
                 $app['db']->connection(),
-                (array) $app['config']->get('ptadmin.session', [])
+                (array) $app['config']->get('ptadmin.session', []),
+                events: $app['events'],
             );
         });
         $this->app->singleton(AdminAuthenticator::class);

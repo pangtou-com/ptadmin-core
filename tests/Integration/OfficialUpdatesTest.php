@@ -20,6 +20,7 @@ final class OfficialUpdatesTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $this->directory = sys_get_temp_dir().'/ptadmin-official-updates-'.bin2hex(random_bytes(6));
         $app->useStoragePath($this->directory);
         $app->usePublicPath($this->directory.'/public');

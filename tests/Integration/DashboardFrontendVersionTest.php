@@ -34,6 +34,7 @@ final class DashboardFrontendVersionTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $app->useStoragePath($this->storage);
         $app->usePublicPath($this->storage.'/public');
         $app['config']->set('ptadmin.web_prefix', 'manual_admin');

@@ -32,6 +32,7 @@ final class AddonInstallationTransactionTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $this->root = sys_get_temp_dir().'/ptadmin-addon-ddl-'.bin2hex(random_bytes(6));
         $app->useStoragePath($this->root.'/storage');
         $app['config']->set('database.default', 'testing');

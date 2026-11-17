@@ -6,26 +6,21 @@ namespace PTAdmin\Admin\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
-use PTAdmin\Admin\Auth\AuthorizationService;
-use PTAdmin\Admin\Models\Admin;
+use PTAdmin\Admin\Auth\AdminAuth;
 use PTAdmin\Core\Http\Responses\AdminResponse;
 use Symfony\Component\HttpFoundation\Response;
 
 final class RequirePermissionMiddleware
 {
-    public function __construct(private AuthorizationService $authorization)
+    public function __construct(private AdminAuth $auth)
     {
     }
 
     public function handle(Request $request, Closure $next, string $resourceKey, string $ability = 'view'): Response
     {
-        $session = $request->attributes->get('ptadmin.session');
-        $admin = is_array($session) ? Admin::query()->find($session['subject_id'] ?? null) : null;
-        if (!$admin instanceof Admin || 'admin' !== ($session['guard_name'] ?? null)) {
-            return AdminResponse::error(40102, '管理员账号不可用，请重新登录。', null, 401);
-        }
+        $this->auth->authenticate();
 
-        if (!$this->authorization->allows($admin, $ability, $resourceKey)) {
+        if (!$this->auth->can($resourceKey.'.'.$ability)) {
             return AdminResponse::error(40300, '当前账号无权执行此操作。', [
                 'resource' => $resourceKey,
                 'ability' => $ability,

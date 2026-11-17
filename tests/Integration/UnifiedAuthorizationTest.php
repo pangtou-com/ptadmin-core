@@ -32,6 +32,7 @@ final class UnifiedAuthorizationTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $this->storage = sys_get_temp_dir().'/ptadmin-authorization-'.bin2hex(random_bytes(6));
         $app->useStoragePath($this->storage);
         $app['config']->set('database.default', 'testing');
@@ -67,7 +68,7 @@ final class UnifiedAuthorizationTest extends TestCase
     {
         $context = app(\PTAdmin\Schema\Contracts\SchemaSubjectContextInterface::class);
         $middleware = app(\PTAdmin\Core\Http\Middleware\AuthenticateSessionMiddleware::class);
-        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $token = app(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $this->admin->id, 'admin')->toArray()['access_token'];
         foreach ([false, true] as $fail) {
             $request = \Illuminate\Http\Request::create('/');
             $request->headers->set('Authorization', 'Bearer '.$token);
@@ -199,7 +200,7 @@ final class UnifiedAuthorizationTest extends TestCase
         $this->schemas();
         app(InitialAdministratorPermissions::class)->grant($this->admin);
         $other = Admin::query()->forceCreate(['username' => 'operator', 'password' => 'unused', 'status' => 1]);
-        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $token = app(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $this->admin->id, 'admin')->toArray()['access_token'];
         $this->withToken($token);
         $before = $this->getJson('/ptadmin/session')->assertOk()->json('data.generation');
         foreach (['admin.login_logs', 'admin.operation_records', 'admin.notification_templates'] as $resource) {
@@ -225,7 +226,7 @@ final class UnifiedAuthorizationTest extends TestCase
 
     public function testFounderCloudAccessDoesNotBypassOtherManagementPermissions(): void
     {
-        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $token = app(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $this->admin->id, 'admin')->toArray()['access_token'];
         $this->withToken($token)->getJson('/ptadmin/cloud/session')->assertOk();
         $this->postJson('/ptadmin/system/updates/check')->assertForbidden();
         $this->postJson('/ptadmin/system/updates/install', ['component' => 'core', 'version' => '1.0.0'])->assertForbidden();
@@ -239,7 +240,7 @@ final class UnifiedAuthorizationTest extends TestCase
         DB::table('admin_user_roles')->insert([
             'admin_id' => $other->id, 'role_id' => $this->role, 'created_at' => now(), 'updated_at' => now(),
         ]);
-        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $token = app(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $this->admin->id, 'admin')->toArray()['access_token'];
         $this->withToken($token);
         $allow = ['resource_key' => 'admin.users', 'effect' => 'allow', 'abilities' => ['list', 'update'], 'priority' => 0, 'scope_type' => 'all'];
         $deny = ['resource_key' => 'admin.users', 'effect' => 'deny', 'abilities' => ['update'], 'priority' => 0, 'scope_type' => 'all'];
@@ -278,7 +279,7 @@ final class UnifiedAuthorizationTest extends TestCase
         \Illuminate\Support\Facades\Bus::fake();
         $tasks = app(\PTAdmin\Core\Tasks\TaskManager::class);
         $task = $tasks->create(\PTAdmin\Core\Tasks\TaskManager::CLOUD_PACKAGE);
-        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $token = app(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $this->admin->id, 'admin')->toArray()['access_token'];
         $this->withToken($token);
         foreach (['session', 'session/authorize', 'catalog', 'developer/products'] as $path) {
             $this->getJson('/ptadmin/cloud/'.$path)->assertForbidden();
@@ -321,7 +322,7 @@ final class UnifiedAuthorizationTest extends TestCase
         self::assertSame(0, DB::table('admin_resources')->where('resource_key', 'cloud.market')->whereNull('deleted_at')->count());
         $this->schemas();
         app(InitialAdministratorPermissions::class)->grant($this->admin);
-        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $token = app(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $this->admin->id, 'admin')->toArray()['access_token'];
         $this->withToken($token);
         $results = $this->getJson('/ptadmin/schema/action/admin.admin_resources/records?limit=500')->assertOk()->json('data.results');
         self::assertNotContains('cloud.market', array_column($results, 'resource_key'));
@@ -346,7 +347,7 @@ final class UnifiedAuthorizationTest extends TestCase
             $this->grant('role', ['*'], 'allow', 0);
         }
         $this->bindRole();
-        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $token = app(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $this->admin->id, 'admin')->toArray()['access_token'];
         $this->withToken($token);
         foreach (['/ptadmin/addons', '/ptadmin/addons/demo/configuration', '/ptadmin/addons/demo/configuration/general'] as $path) {
             $this->getJson($path)->assertForbidden();
@@ -410,7 +411,7 @@ final class UnifiedAuthorizationTest extends TestCase
         self::assertSame([], app(AuthorizationService::class)->permissions($this->admin));
         $this->schemas();
         app(InitialAdministratorPermissions::class)->grant($this->admin);
-        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $token = app(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $this->admin->id, 'admin')->toArray()['access_token'];
         $this->withToken($token);
         $listed = array_column($this->getJson('/ptadmin/schema/action/admin.admin_resources/records?limit=500')->assertOk()->json('data.results'), 'resource_key');
         foreach ($keys as $key) {
@@ -495,7 +496,7 @@ final class UnifiedAuthorizationTest extends TestCase
         $this->grant('admin', ['view', 'update'], 'allow', 0);
         $this->grant('admin', ['sync_permissions', 'sync_roles'], 'deny', 0);
         self::assertFalse($auth->allows($this->admin, 'manage', 'cloud.market'));
-        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $token = app(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $this->admin->id, 'admin')->toArray()['access_token'];
         $this->withToken($token);
         $permissions = [
             ['resource_key' => 'admin.users', 'effect' => 'allow', 'abilities' => ['view', 'update'], 'scope_type' => 'all'],
@@ -521,7 +522,7 @@ final class UnifiedAuthorizationTest extends TestCase
         $this->grant('admin', ['sync_permissions'], 'deny', 0);
         self::assertFalse($auth->allows($this->admin, 'manage', 'cloud.market'));
         self::assertFalse($auth->allows($this->admin, 'sync_permissions', 'admin.admin_users'));
-        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $token = app(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $this->admin->id, 'admin')->toArray()['access_token'];
         $this->withToken($token)->postJson('/ptadmin/schema/action', ['operation' => 'executeAction', 'context' => [
             'resource' => 'admin.admin_users', 'action' => 'sync_roles', 'id' => $this->admin->id,
             'formValues' => ['role_ids' => [], 'permissions' => [
@@ -537,7 +538,7 @@ final class UnifiedAuthorizationTest extends TestCase
         $this->schemas();
         $this->grant('admin', ['create', 'update', 'view'], 'allow', 0);
         $this->grant('admin', ['sync_roles', 'sync_permissions'], 'deny', 0);
-        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $token = app(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $this->admin->id, 'admin')->toArray()['access_token'];
         $this->withToken($token);
         foreach (['role_ids' => [$this->role], 'permissions' => []] as $field => $value) {
             $this->postJson('/ptadmin/schema/action/admin.admin_users/records', ['data' => [
@@ -566,7 +567,7 @@ final class UnifiedAuthorizationTest extends TestCase
         DB::table('schema_resource_versions')->where('id', $version)->update(['schema_json' => json_encode($schema)]);
         $this->grant('admin', ['view', 'sync_roles', 'sync_permissions'], 'allow', 0, 'self');
         $other = Admin::query()->forceCreate(['username' => 'outside-scope', 'password' => 'unused', 'status' => 1]);
-        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $token = app(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $this->admin->id, 'admin')->toArray()['access_token'];
         $this->withToken($token);
         foreach (['sync_roles' => ['role_ids' => [$this->role]], 'sync_permissions' => ['permissions' => []]] as $action => $data) {
             $this->postJson('/ptadmin/schema/action', ['operation' => 'executeAction', 'context' => [

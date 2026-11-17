@@ -6,7 +6,6 @@ namespace PTAdmin\Core\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use PTAdmin\Admin\Models\Admin;
 use PTAdmin\Admin\Auth\AuthorizationService;
 use PTAdmin\Core\Http\Responses\AdminResponse;
 use PTAdmin\Core\Updates\OfficialUpdateService;
@@ -27,7 +26,7 @@ final class OfficialUpdateController
     public function checkOnLogin(Request $request, OfficialUpdateService $updates): JsonResponse
     {
         $session = $request->attributes->get('ptadmin.session', []);
-        $admin = Admin::query()->findOrFail($session['subject_id'] ?? null);
+        $admin = \PTAdmin\Admin\Facades\AdminAuth::authenticate();
         if (!$admin->status || !$admin->is_founder || !app(AuthorizationService::class)->allows($admin, 'manage', 'system.updates')) {
             return AdminResponse::error(40300, '仅有版本检查权限的创始人可检查更新。', null, 403);
         }
@@ -53,8 +52,7 @@ final class OfficialUpdateController
 
     public function install(Request $request, \PTAdmin\Core\Updates\OfficialUpdateInstaller $installer, \PTAdmin\Core\Tasks\PendingTaskDispatcher $dispatcher): JsonResponse
     {
-        $session = $request->attributes->get('ptadmin.session', []);
-        $admin = Admin::query()->findOrFail($session['subject_id'] ?? null);
+        $admin = \PTAdmin\Admin\Facades\AdminAuth::authenticate();
         $input = $request->validate(['component' => ['required', 'in:core,admin-shell'],
             'version' => ['required', 'string', 'max:80'], 'database_backup_confirmed' => ['sometimes', 'boolean']]);
         $resource = $input['component'] === 'core' ? 'core.update' : 'admin.frontend';
@@ -76,7 +74,7 @@ final class OfficialUpdateController
     private function respond(Request $request, OfficialUpdateService $updates, string $action): JsonResponse
     {
         $session = $request->attributes->get('ptadmin.session', []);
-        $admin = Admin::query()->findOrFail($session['subject_id'] ?? null);
+        $admin = \PTAdmin\Admin\Facades\AdminAuth::authenticate();
         $showUpdates = (bool) $admin->status && (bool) $admin->is_founder;
         $canManage = $showUpdates && app(AuthorizationService::class)->allows($admin, 'manage', 'system.updates');
         if ($action !== 'show' && !$canManage) {

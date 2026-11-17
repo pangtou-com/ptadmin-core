@@ -51,8 +51,7 @@ final class NoticeInboxController extends Controller
 
     private function receiver(Request $request): NoticeReceiver
     {
-        $session = (array) $request->attributes->get('ptadmin.session', []);
 
-        return NoticeReceiver::admin((int) ($session['subject_id'] ?? 0));
+        return NoticeReceiver::admin(\PTAdmin\Admin\Facades\AdminAuth::authenticate()->id);
     }
 }

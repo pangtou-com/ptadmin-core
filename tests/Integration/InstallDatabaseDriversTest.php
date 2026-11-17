@@ -35,6 +35,7 @@ final class InstallDatabaseDriversTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $app->useStoragePath($this->storage);
         $app['config']->set('database.default', 'not_configured');
     }

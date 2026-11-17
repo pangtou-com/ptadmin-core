@@ -19,17 +19,15 @@ final class AdminSessionController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $session = (array) $request->attributes->get('ptadmin.session', []);
 
         return AdminResponse::success('', [
-            'results' => $this->sessions->forSubject(Admin::class, (string) ($session['subject_id'] ?? ''), 'admin'),
+            'results' => $this->sessions->forSubject(Admin::class, (string) \PTAdmin\Admin\Facades\AdminAuth::authenticate()->id, 'admin'),
         ]);
     }
 
     public function revoke(Request $request, string $sessionId): JsonResponse
     {
-        $session = (array) $request->attributes->get('ptadmin.session', []);
-        $revoked = $this->sessions->revokeByIdForSubject($sessionId, Admin::class, (string) ($session['subject_id'] ?? ''), 'admin');
+        $revoked = $this->sessions->revokeByIdForSubject($sessionId, Admin::class, (string) \PTAdmin\Admin\Facades\AdminAuth::authenticate()->id, 'admin');
         if (!$revoked) {
             return AdminResponse::error(40400, 'The session was not found.', null, 404);
         }

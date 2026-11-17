@@ -7,9 +7,9 @@ namespace PTAdmin\Admin\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use PTAdmin\Admin\Facades\AdminAuth;
 use PTAdmin\Admin\Dashboard\DashboardService;
 use PTAdmin\Admin\Dashboard\DashboardWidgetUnavailableException;
-use PTAdmin\Admin\Models\Admin;
 use PTAdmin\Core\Http\Responses\AdminResponse;
 
 final class DashboardController extends Controller
@@ -20,12 +20,12 @@ final class DashboardController extends Controller
 
     public function show(Request $request): JsonResponse
     {
-        return AdminResponse::success('', $this->dashboard->dashboard($this->admin($request)));
+        return AdminResponse::success('', $this->dashboard->dashboard(AdminAuth::authenticate()));
     }
 
     public function settings(Request $request): JsonResponse
     {
-        return AdminResponse::success('', $this->dashboard->settings($this->admin($request)));
+        return AdminResponse::success('', $this->dashboard->settings(AdminAuth::authenticate()));
     }
 
     public function saveSettings(Request $request): JsonResponse
@@ -36,7 +36,7 @@ final class DashboardController extends Controller
         }
 
         try {
-            return AdminResponse::success('', $this->dashboard->saveSettings($this->admin($request), $widgets));
+            return AdminResponse::success('', $this->dashboard->saveSettings(AdminAuth::authenticate(), $widgets));
         } catch (DashboardWidgetUnavailableException $exception) {
             return AdminResponse::error(42200, $exception->getMessage(), ['reason' => 'widget_unavailable'], 422);
         } catch (\InvalidArgumentException $exception) {
@@ -51,22 +51,15 @@ final class DashboardController extends Controller
             return AdminResponse::error(42200, '仪表盘组件查询必须是最多 100 项的数组。', null, 422);
         }
 
-        return AdminResponse::success('', $this->dashboard->query($this->admin($request), $widgets));
+        return AdminResponse::success('', $this->dashboard->query(AdminAuth::authenticate(), $widgets));
     }
 
     public function synchronize(Request $request): JsonResponse
     {
-        if (!app(\PTAdmin\Admin\Auth\AuthorizationService::class)->allows($this->admin($request), 'manage', 'system.maintenance')) {
+        if (!app(\PTAdmin\Admin\Auth\AuthorizationService::class)->allows(AdminAuth::authenticate(), 'manage', 'system.maintenance')) {
             return AdminResponse::error(40300, '当前账号没有系统维护权限。', null, 403);
         }
 
         return AdminResponse::success('', $this->dashboard->summary(true));
-    }
-
-    private function admin(Request $request): Admin
-    {
-        $session = (array) $request->attributes->get('ptadmin.session', []);
-
-        return Admin::query()->findOrFail($session['subject_id'] ?? null);
     }
 }

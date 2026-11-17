@@ -28,6 +28,7 @@ final class ThemeResourceHttpTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $app->useStoragePath($this->storage);
         $app['config']->set([
             'database.default' => 'testing',
@@ -60,7 +61,7 @@ final class ThemeResourceHttpTest extends TestCase
         $this->resourceId = (int) DB::table('admin_resources')->where('resource_key', 'site.theme')->value('id');
         self::assertGreaterThan(0, $this->resourceId);
         $this->admin = Admin::query()->forceCreate(['username' => 'publisher', 'password' => 'unused', 'status' => true, 'is_founder' => false]);
-        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $token = app(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $this->admin->id, 'admin')->toArray()['access_token'];
         $this->headers = ['Authorization' => 'Bearer '.$token];
     }
 

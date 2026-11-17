@@ -27,6 +27,7 @@ final class AddonTaskProcessTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $this->root = sys_get_temp_dir().'/ptadmin-addon-process-'.bin2hex(random_bytes(6));
         $this->namespace = 'ProcessAddon'.bin2hex(random_bytes(6));
         foreach (['storage/framework/views', 'bootstrap/cache', 'config', 'public', 'vendor'] as $directory) {

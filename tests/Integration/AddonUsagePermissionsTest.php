@@ -37,6 +37,7 @@ final class AddonUsagePermissionsTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $this->root = sys_get_temp_dir().'/ptadmin-addon-usage-'.bin2hex(random_bytes(6));
         mkdir($this->root.'/storage/app/ptadmin/install', 0700, true);
         mkdir($this->root.'/public', 0700, true);
@@ -312,7 +313,7 @@ final class AddonUsagePermissionsTest extends TestCase
 
     private function login(Admin $admin): void
     {
-        $this->withToken(app(SessionManager::class)->issue('admin', $admin->id, 'admin')->toArray()['access_token']);
+        $this->withToken(app(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $admin->id, 'admin')->toArray()['access_token']);
     }
 
     private function install(?array $selection = null, bool $update = false): void

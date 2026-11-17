@@ -41,6 +41,7 @@ final class AdminExceptionContractTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $app->useStoragePath($this->storage);
         $app['config']->set('ptadmin.addon.path', $this->storage.'/addons');
         $app['config']->set('app.debug', true);

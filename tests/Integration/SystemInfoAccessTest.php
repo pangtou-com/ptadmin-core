@@ -28,6 +28,7 @@ final class SystemInfoAccessTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $app->useStoragePath($this->storage);
         $app['config']->set('database.default', 'testing');
         $app['config']->set('database.connections.testing', ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
@@ -63,7 +64,7 @@ final class SystemInfoAccessTest extends TestCase
                 'created_at' => now(), 'updated_at' => now(),
             ]);
         }
-        $token = app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token'];
+        $token = app(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $this->admin->id, 'admin')->toArray()['access_token'];
         $this->headers = ['Authorization' => 'Bearer '.$token];
         Bus::fake();
     }

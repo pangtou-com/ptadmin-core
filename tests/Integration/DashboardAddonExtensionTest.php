@@ -30,6 +30,7 @@ final class DashboardAddonExtensionTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $app->useStoragePath($this->storage);
         $app['config']->set('database.default', 'testing');
         $app['config']->set('database.connections.testing', ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
@@ -196,7 +197,7 @@ final class DashboardAddonExtensionTest extends TestCase
         DB::table('admin_grants')->where('subject_type', 'admin')->where('subject_id', (string) $this->admin->id)->delete();
         $this->grant('dashboard', ['view', 'update']);
         $this->grant('admin.dashboard_widgets', ['update']);
-        $headers = ['Authorization' => 'Bearer '.app(SessionManager::class)->issue('admin', $this->admin->id, 'admin')->toArray()['access_token']];
+        $headers = ['Authorization' => 'Bearer '.app(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $this->admin->id, 'admin')->toArray()['access_token']];
         $this->postJson('/ptadmin/dashboard/widgets/query', ['widgets' => [['code' => 'alpha.summary']]], $headers)
             ->assertOk()->assertJsonPath('data.results.0.error.reason', 'widget_unavailable');
         self::assertSame([], $this->alpha->calls);

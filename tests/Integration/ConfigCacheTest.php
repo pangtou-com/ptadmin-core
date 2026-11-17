@@ -19,6 +19,7 @@ final class ConfigCacheTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $app['config']->set('database.default', 'testing');
         $app['config']->set('database.connections.testing', ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
         $app['config']->set('cache.default', 'array');

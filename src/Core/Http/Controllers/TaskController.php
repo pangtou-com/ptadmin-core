@@ -173,8 +173,7 @@ final class TaskController extends Controller
             }
             return $founder;
         }
-        $session = $request->attributes->get('ptadmin.session');
-        $admin = is_array($session) ? Admin::query()->find($session['subject_id'] ?? null) : null;
+        $admin = \PTAdmin\Admin\Facades\AdminAuth::user();
         if (!$admin instanceof Admin) {
             throw new TaskException('The administrator account is unavailable.', 'unauthorized');
         }

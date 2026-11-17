@@ -25,6 +25,7 @@ final class TaskHistoryHttpTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $app->useStoragePath($this->storage);
         $app['config']->set('ptadmin.addon.path', $this->storage.'/addons');
         $app['config']->set('ptadmin.tasks.path', $this->storage.'/app/ptadmin/tasks');
@@ -48,7 +49,7 @@ final class TaskHistoryHttpTest extends TestCase
             'id' => 1, 'username' => 'history-viewer', 'password' => 'unused',
             'status' => 1, 'is_founder' => false, 'created_at' => now(), 'updated_at' => now(),
         ]);
-        $token = $this->app->make(SessionManager::class)->issue('admin', 1, 'admin')->toArray()['access_token'];
+        $token = $this->app->make(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, 1, 'admin')->toArray()['access_token'];
         $this->headers = ['Authorization' => 'Bearer '.$token];
         $this->app->make(TaskStore::class)->writeState('history-test', [
             'task_id' => 'history-test', 'type' => 'addon.install', 'status' => 'succeeded',

@@ -103,15 +103,18 @@ final class AuthorizationService
     /** @return list<string> */
     public function roles(Admin $admin): array
     {
-        return array_values(array_unique(array_map(
-            static fn (mixed $code): string => (string) $code,
-            $this->database->table('admin_roles as roles')
-                ->whereIn('roles.id', $this->identity($admin)->roleIds)
-                ->where('roles.status', 1)
-                ->whereNull('roles.deleted_at')
-                ->pluck('roles.code')
-                ->all(),
-        )));
+        return array_values(array_unique(array_column($this->roleSummaries($admin), 'code')));
+    }
+
+    /** @return list<array{id:int,code:string,title:string}> */
+    public function roleSummaries(Admin $admin): array
+    {
+        return $this->database->table('admin_roles as roles')
+            ->whereIn('roles.id', $this->identity($admin)->roleIds)
+            ->where('roles.status', 1)->whereNull('roles.deleted_at')
+            ->get(['roles.id', 'roles.code', 'roles.name'])
+            ->map(static fn (object $role): array => ['id' => (int) $role->id, 'code' => (string) $role->code, 'title' => (string) $role->name])
+            ->all();
     }
 
     /** @return array<int, array<string, mixed>> */

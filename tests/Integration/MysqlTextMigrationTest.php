@@ -25,6 +25,7 @@ final class MysqlTextMigrationTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $this->storage = sys_get_temp_dir().'/ptadmin-text-migration-'.bin2hex(random_bytes(6));
         $app->useStoragePath($this->storage);
         $app['config']->set('database.default', 'testing');

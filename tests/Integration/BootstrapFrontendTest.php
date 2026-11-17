@@ -36,6 +36,7 @@ final class BootstrapFrontendTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $app->useStoragePath($this->storage);
         $app->usePublicPath($this->storage.'/public');
         $app['config']->set('ptadmin.addon.path', $this->storage.'/addons');
@@ -212,7 +213,7 @@ final class BootstrapFrontendTest extends TestCase
         file_put_contents($directory.'/index.html', '<html>Manually updated</html>');
 
         $this->getJson('/ptadmin/bootstrap')->assertOk()
-            ->assertJsonPath('data.runtime.frontend_version', '0.13.0');
+            ->assertJsonPath('data.runtime.frontend_version', '0.13.1');
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('The PTAdmin frontend file failed verification: index.html');

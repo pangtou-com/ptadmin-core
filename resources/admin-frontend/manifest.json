@@ -1,20 +1,20 @@
 {
   "manifest_version": 1,
-  "frontend_version": "0.13.0",
-  "backend_constraint": ">=0.12.0 <0.13.0",
+  "frontend_version": "0.13.1",
+  "backend_constraint": ">=0.13.0 <0.14.0",
   "api_protocol": 1,
   "schema_protocol": 1,
   "entry": "./index.html",
   "files": [
     {
-      "path": "assets/LoginPage-CKJlJNL6.js",
+      "path": "assets/LoginPage-AEAPYZtG.js",
       "size": 5801,
-      "sha256": "44092693e98e7b124e5f53b4389402a9154dfac4ee0a448d591f99310116d06c"
+      "sha256": "72b48bbb03934a665c89cf203db1b1a4732fe04cd4d5736813ff5e3389cf657b"
     },
     {
-      "path": "assets/_admin-shared-runtime_element-plus-DNW8tGSz.js",
+      "path": "assets/_admin-shared-runtime_element-plus-COgk1__S.js",
       "size": 946132,
-      "sha256": "e9bc70f8d80cd4354ab982dabe00187ba07a53584c7d158a0731594d143c9cda"
+      "sha256": "f16d6118730dfb1ceb85f68b42c2fea7990e0043fcee291d41b8e86d685c796b"
     },
     {
       "path": "assets/client-BtSqNp0l.js",
@@ -32,19 +32,19 @@
       "sha256": "ef44ae59842e037563a26e27b13fd555ea318083757289e4b3f6bbb8be3023d6"
     },
     {
-      "path": "assets/index-Bd_ZhGTM.css",
-      "size": 657293,
-      "sha256": "441ac28df153da2602aa7f64786089595bc016536e304f15d37da8f388884f05"
+      "path": "assets/index-CmScmXCO.js",
+      "size": 1271810,
+      "sha256": "16813c06758212acf1de2139f73d32237c49b08dcb468d26de4e47ac778356b0"
     },
     {
-      "path": "assets/index-D1Q2lZNC.js",
-      "size": 1272498,
-      "sha256": "93aa79c493a7b499f329203ff18049ce2c532483d0ae45ea9920667022d3227b"
-    },
-    {
-      "path": "assets/index-dc5VDrmi.js",
+      "path": "assets/index-CmXWb10-.js",
       "size": 630391,
-      "sha256": "601bd95b7f059d57da7700cdbac9b5614f14fd387b19d746c7cb667b4eed3065"
+      "sha256": "5487947a2e7b6a7e17b2c50d5b7c9241cc2b7e0f28561c173528ae4235edd435"
+    },
+    {
+      "path": "assets/index-CxtJBZQV.css",
+      "size": 657065,
+      "sha256": "954e5793bca938f6b4032d0c8565e0e6cde7ca5dccbb7528a167f2752a1ac871"
     },
     {
       "path": "assets/index.esm-B3ROeNbW-BU_memu0.js",
@@ -74,7 +74,7 @@
     {
       "path": "assets/shared/admin-v1/element-plus.js",
       "size": 16257,
-      "sha256": "ba140aadc99278379026185c30f9afde0d9e47af45ce99cce852ccff572a6f05"
+      "sha256": "628f8c3fda82c7c396262187a1f9c97d507637ee05d935b880404637a4713e67"
     },
     {
       "path": "assets/shared/admin-v1/plugin-sdk-bridge.js",
@@ -114,7 +114,7 @@
     {
       "path": "assets/shared/admin-v1/schema-designer.js",
       "size": 252695,
-      "sha256": "be69dc19a3d042d94807061af681d3cfbbbd4ce6ae417b9e8a483dc54e84f778"
+      "sha256": "e6503631a5e7843a8a96f7e621e315cbf107f89f76355863c057b63183376e12"
     },
     {
       "path": "assets/shared/admin-v1/schema-protocol.js",
@@ -124,12 +124,12 @@
     {
       "path": "assets/shared/admin-v1/schema-ui-element-plus-preset.js",
       "size": 2030,
-      "sha256": "ea68aa96b5cd0ea33ce60a5cd8bc8d480cce479b8606194164fc72b93d192f65"
+      "sha256": "4355203c4c91f6e260eb53f7a0305d9b51919e521d5e4dd9cd51538d7cef779a"
     },
     {
       "path": "assets/shared/admin-v1/schema-ui-element-plus.js",
       "size": 500,
-      "sha256": "2452332c9a4d95c8436de5a3b9eb58a147bbbb3bd2def3e05b0b5f7fa77e81ec"
+      "sha256": "c29cae9aba2a6bd8f3015985dabcad283ed2bd7638de2f55e80f50b3d7265975"
     },
     {
       "path": "assets/shared/admin-v1/schema-vue.js",
@@ -159,10 +159,10 @@
     {
       "path": "index.html",
       "size": 5068,
-      "sha256": "026458b3133ab8882680b066424f1fa99f5b84ce0016258a7af66e9d743bc6f5"
+      "sha256": "5330a7a063105f49f408bfd767c715f9551fb63682aa624ac6e552404a05da1f"
     }
   ],
-  "artifact_sha256": "f6cf2820d57eabefd4849bcc4f120f5332aca24c459b3167d2f4d7b3fd347131",
-  "git_commit": "1b8c92169b48ec2007636955cdfd53b78b0f207e",
-  "source_sha256": "a1bafc3f465957e65c856b356e06a2a0f7e23ddb1f7af6b35e5d2aa3729357eb"
+  "artifact_sha256": "7c94ad328869a422d7f39741e9477d3950d344048c2a091866fd9e9b249f85bd",
+  "git_commit": "d38876a4fb8e538fd84cf79758e89f414417533a",
+  "source_sha256": "8b75b87638dcc13bbcf96eaf289ba96b46d4fcb84a6e91a904ba094563794522"
 }

@@ -9,12 +9,10 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use PTAdmin\Admin\Auth\AdminAuthenticator;
 use PTAdmin\Admin\Auth\AuthorizationService;
-use PTAdmin\Admin\Models\Admin;
 use PTAdmin\Admin\Dashboard\DashboardService;
 use PTAdmin\Admin\Navigation\MenuIconResolver;
 use PTAdmin\Addon\Frontend\FrontendRegistry;
 use PTAdmin\Admin\Frontend\ApplicationFrontendRegistry;
-use PTAdmin\Core\Auth\Exceptions\InvalidSessionException;
 use PTAdmin\Core\Auth\Session\SessionManager;
 use PTAdmin\Core\Http\Responses\AdminResponse;
 
@@ -35,11 +33,7 @@ final class SessionController extends Controller
     {
         /** @var array{id:string, subject_type:string, subject_id:string, guard_name:string, metadata:array<string,mixed>, expires_at:string, absolute_expires_at:string} $session */
         $session = $request->attributes->get('ptadmin.session');
-        $admin = Admin::query()->find($session['subject_id']);
-        if (!$admin instanceof Admin || 'admin' !== $session['guard_name']) {
-            return AdminResponse::error(40102, '管理员账号不可用，请重新登录。', null, 401);
-        }
-
+        $admin = \PTAdmin\Admin\Facades\AdminAuth::authenticate();
         $permissions = $this->authorization->permissions($admin);
         $menus = $this->authorization->menus($admin);
         $plugins = $this->addonFrontends->resolve($menus, $this->dashboard->frontendReferences($admin));
@@ -73,11 +67,9 @@ final class SessionController extends Controller
 
     public function renew(Request $request): JsonResponse
     {
-        try {
-            $renewed = $this->sessions->renew((string) $request->bearerToken());
-        } catch (InvalidSessionException $exception) {
-            return AdminResponse::error(40101, $exception->getMessage(), null, 401);
-        }
+        // 认证中间件已经更新活动时间，续期响应复用本次解析结果。
+        $session = app(\PTAdmin\Admin\Auth\AdminAuth::class)->guard()->session();
+        $renewed = ['expires_at' => $session['expires_at'], 'absolute_expires_at' => $session['absolute_expires_at']];
 
         return AdminResponse::success('', $renewed)->header('Cache-Control', 'no-store');
     }

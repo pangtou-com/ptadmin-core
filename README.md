@@ -2,6 +2,10 @@
 
 `ptadmin/core` 是 PTAdmin 重构后的后端核心包，正式源码目录为当前仓库的 `src/`。核心包统一维护 `Admin`、`Addon`、`Schema`、`User` 和 `Core`，并提供 `Notice`、`Template` 和 `Cloud` 等能力；Schema Runtime 是标准资源和 CRUD 的唯一运行时基础设施。
 
+0.13.0 新增后台 `ptadmin` Guard、`AdminAuth` 服务与 Facade，统一获取当前管理员、角色和操作权限；支持 `hasRole/anyRole`、`can/hasPerm/authorize`，以及专用 Gate `ptadmin.permission`。同一请求共享管理员实例，撤销会话立即清理身份。组织部门及新增数据范围能力由后续扩展模块提供。配套正式 Shell 0.13.1，外链导航直接新标签页打开。
+
+升级到 0.13.0 必须在宿主 `config/auth.php` 的 `guards` 中增加 `'ptadmin' => ['driver' => 'ptadmin-session']`，保留原有 web 配置；重新生成配置缓存。登录 Bearer Token 和 Session 响应保持兼容。升级前备份，按常规流程执行迁移，并运行 `php artisan ptadmin:sync` 同步导航及代码型 Schema；内置导航只保护编码、类型、目标资源与入口业务权限，展示和启用状态可以调整。外链无入口业务权限时使用导航编码对应的 view 权限，目录随可见子项展示，不再使用入口可见性字段。
+
 0.10.0 新增 `User` 通用会员能力：默认 `PTAdmin\User\Models\User`、`UserIdentityInterface`、Eloquent 身份适配器及 `UserUnavailable` 事件均由 Core 提供，插件直接依赖 Core 会员接口。默认模型使用 `users` 表，迁移保留宿主已有会员表与数据；基础壳不再重复定义模型或会员迁移。宿主在 `config/auth.php` 的 `web` guard 对应 provider 中配置用户模型；Core 不注入认证配置。特殊账户体系通过绑定统一接口接入。此能力从 Core `0.10.0` 提供，Core `0.9.0` 不包含新接口。
 
 0.12.1 修复 Core 升级后旧插件因兼容范围不匹配而无法在线更新的问题。更新预检只读取并验证旧版清单元数据，新版安装与运行仍严格校验兼容性及签名。沿用正式 Shell 0.12.0；从 0.12.0 升级无新增数据库迁移。

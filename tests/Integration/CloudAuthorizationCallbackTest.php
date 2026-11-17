@@ -27,6 +27,7 @@ final class CloudAuthorizationCallbackTest extends TestCase
 
     protected function defineEnvironment($app): void
     {
+        $app['config']->set('auth.guards.ptadmin', ['driver' => 'ptadmin-session']);
         $app->useStoragePath($this->storage);
         $app['config']->set('app.key', 'base64:'.base64_encode(str_repeat('b', 32)));
         $app['config']->set('cache.default', 'array');
@@ -74,7 +75,7 @@ final class CloudAuthorizationCallbackTest extends TestCase
             'username' => 'cloud-founder', 'nickname' => '创始人', 'password' => 'unused', 'status' => 1, 'is_founder' => true,
         ]);
         app(\PTAdmin\Admin\Navigation\MenuSynchronizer::class)->syncCore();
-        $token = app(SessionManager::class)->issue('admin', $admin->id, 'admin')->toArray()['access_token'];
+        $token = app(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $admin->id, 'admin')->toArray()['access_token'];
         $authorization = [];
         Http::fake(function (Request $request) use (&$authorization) {
             if ($request->url() === CloudProtocol::SITE_URL.'/api/cloud/requests') {
@@ -106,7 +107,7 @@ final class CloudAuthorizationCallbackTest extends TestCase
         $admin = Admin::query()->forceCreate([
             'username' => 'former-founder', 'password' => 'unused', 'status' => 1, 'is_founder' => true,
         ]);
-        $token = app(SessionManager::class)->issue('admin', $admin->id, 'admin')->toArray()['access_token'];
+        $token = app(SessionManager::class)->issue(\PTAdmin\Admin\Models\Admin::class, $admin->id, 'admin')->toArray()['access_token'];
         $authorization = [];
         Http::fake(function (Request $request) use (&$authorization) {
             self::assertSame(CloudProtocol::SITE_URL.'/api/cloud/requests', $request->url());

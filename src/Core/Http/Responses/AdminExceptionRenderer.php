@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PTAdmin\Core\Http\Responses;
 
 use Illuminate\Auth\AuthenticationException;
+use PTAdmin\Admin\Auth\Exceptions\AdminAuthenticationException;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -27,7 +28,10 @@ final class AdminExceptionRenderer
         $message = '服务器内部错误，请稍后重试。';
         $data = [];
         $headers = [];
-        if ($exception instanceof ValidationException) {
+        if ($exception instanceof AdminAuthenticationException) {
+            $response = AdminResponse::error($exception->errorCode, $exception->getMessage(), null, 401);
+            return (new RequestIdMiddleware())->handle($request, static fn (): Response => $response);
+        } elseif ($exception instanceof ValidationException) {
             $status = $exception->status;
             $message = $exception->getMessage();
             $data = ['errors' => $exception->errors()];
