@@ -66,13 +66,13 @@ final class MenuChildrenSynchronizationTest extends TestCase
         ];
         $this->write([
             $this->group('demo', [$article, $this->group('demo.settings')]),
-            ['resource_key' => 'demo.extra', 'type' => 'page', 'visibility' => 'authenticated', 'is_menu' => true,
+            ['resource_key' => 'demo.extra', 'type' => 'page', 'entry_permission' => 'demo.view', 'permissions' => [['resource_key' => 'demo', 'operations' => [['key' => 'view']]]], 'is_menu' => true,
                 'parent_key' => 'demo.settings', 'path' => $ownerType === 'core' ? '/extra' : 'extra'],
         ]);
         $result = $this->sync($ownerType);
         self::assertSame(4, $result['menus']['created']);
-        self::assertSame(['articles'], $result['resource_keys']);
-        self::assertSame(5, $this->sync($ownerType)['unchanged']);
+        self::assertSame(['articles', 'demo'], $result['resource_keys']);
+        self::assertSame(6, $this->sync($ownerType)['unchanged']);
         $menus = DB::table('admin_menus')->get()->keyBy('resource_key');
         self::assertSame('demo', $menus['demo.articles']->parent_key);
         self::assertSame('demo.settings', $menus['demo.extra']->parent_key);
@@ -133,13 +133,13 @@ final class MenuChildrenSynchronizationTest extends TestCase
 
     public function testTreeAndFlatFormsAreEquivalentAndRemovedChildrenAreDisabled(): void
     {
-        $child = ['resource_key' => 'demo.page', 'type' => 'page', 'visibility' => 'authenticated', 'path' => 'page', 'is_menu' => true];
+        $child = ['resource_key' => 'demo.page', 'type' => 'page', 'entry_permission' => 'demo.view', 'permissions' => [['resource_key' => 'demo', 'operations' => [['key' => 'view']]]], 'path' => 'page', 'is_menu' => true];
         $this->write([$this->group('demo', [$child]), $this->group('demo.other', [])]);
         $this->menus->syncApp($this->root);
         $id = DB::table('admin_menus')->where('resource_key', 'demo.page')->value('id');
 
         $this->write([$this->group('demo'), $child + ['parent_key' => 'demo'], $this->group('demo.other')]);
-        self::assertSame(3, $this->menus->syncApp($this->root)['unchanged']);
+        self::assertSame(4, $this->menus->syncApp($this->root)['unchanged']);
 
         $this->write([$this->group('demo'), $this->group('demo.other', [$child + ['parent_key' => 'demo.other']])]);
         self::assertSame(1, $this->menus->syncApp($this->root)['updated']);
@@ -155,7 +155,7 @@ final class MenuChildrenSynchronizationTest extends TestCase
     #[DataProvider('invalidTrees')]
     public function testInvalidChildrenAndCrossLevelConflictsLeaveExistingResourcesUnchanged(array $definitions, string $message): void
     {
-        $this->write([$this->group('demo')]);
+        $this->write([$this->group('demo') + ['permissions' => [['resource_key' => 'demo', 'operations' => [['key' => 'view']]]]]]);
         $this->menus->syncApp($this->root);
         $before = DB::table('admin_menus')->get()->toJson();
         $this->write($definitions);
@@ -172,7 +172,7 @@ final class MenuChildrenSynchronizationTest extends TestCase
     public static function invalidTrees(): iterable
     {
         $root = ['resource_key' => 'demo', 'type' => 'group', 'is_menu' => true];
-        $child = ['resource_key' => 'demo.page', 'type' => 'page', 'visibility' => 'authenticated', 'path' => 'page', 'is_menu' => true];
+        $child = ['resource_key' => 'demo.page', 'type' => 'page', 'entry_permission' => 'demo.view', 'permissions' => [['ref' => 'demo']], 'path' => 'page', 'is_menu' => true];
         foreach (['空值' => null, '字符串' => 'invalid', '布尔值' => false, '空对象' => (object) [], '对象' => (object) ['page' => $child]] as $name => $children) {
             yield $name => [[$root + ['children' => $children]], 'children 必须是对象数组'];
         }
@@ -184,7 +184,7 @@ final class MenuChildrenSynchronizationTest extends TestCase
         yield '跨分支重复编码' => [[$root + ['children' => [$child]], ['resource_key' => 'other', 'type' => 'group', 'children' => [$child]]], '导航声明重复'];
         yield '跨层重复路径' => [[$root + ['children' => [$child]], array_replace($child, ['resource_key' => 'demo.duplicate'])], '菜单路径重复'];
         yield '父级循环' => [[$root + ['parent_key' => 'demo.page', 'children' => [$child]]], '导航父级形成循环'];
-        yield '外链作为导航父级' => [[['resource_key' => 'demo', 'type' => 'external', 'visibility' => 'authenticated', 'path' => '/external', 'external_url' => 'https://example.com', 'is_menu' => true, 'children' => [$child]]], '导航父级不存在或不能作为目录'];
+        yield '外链作为导航父级' => [[['resource_key' => 'demo', 'type' => 'external', 'entry_permission' => 'demo.view', 'permissions' => [['ref' => 'demo']], 'path' => '/external', 'external_url' => 'https://example.com', 'is_menu' => true, 'children' => [$child]]], '导航父级不存在或不能作为目录'];
     }
 
     public function testNestedOwnerConflictRollsBackChangesToEarlierNodes(): void

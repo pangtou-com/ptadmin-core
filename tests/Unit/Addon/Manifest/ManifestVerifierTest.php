@@ -117,6 +117,30 @@ final class ManifestVerifierTest extends TestCase
         self::assertArrayNotHasKey('verified_files', $manifest);
     }
 
+    public function testBackendCompatibilityFailureIdentifiesAddonAndVersions(): void
+    {
+        file_put_contents($this->directory.'/manifest.json', json_encode([
+            'code' => 'legacy-addon',
+            'version' => '2.1.0',
+            'compatibility' => ['ptadmin/core' => '>=0.11.0 <0.12.0'],
+        ], JSON_THROW_ON_ERROR));
+
+        try {
+            (new ManifestVerifier('0.12.5'))->verifyRuntime($this->directory);
+            self::fail('不兼容的插件必须被拒绝。');
+        } catch (AddonException $exception) {
+            self::assertSame('backend_incompatible', $exception->errorCode);
+            self::assertSame([
+                'code' => 'legacy-addon',
+                'version' => '2.1.0',
+                'constraint' => '>=0.11.0 <0.12.0',
+                'backend_version' => '0.12.5',
+            ], $exception->details);
+            self::assertStringContainsString('legacy-addon (2.1.0)', $exception->getMessage());
+            self::assertStringContainsString('当前后端版本为 0.12.5', $exception->getMessage());
+        }
+    }
+
     public function testActualPackageFilesAreDiscoveredWithoutManifestFileList(): void
     {
         file_put_contents($this->directory.'/manifest.json', json_encode([

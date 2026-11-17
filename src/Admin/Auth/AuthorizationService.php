@@ -164,13 +164,12 @@ final class AuthorizationService
                 'node' => $menu,
                 'parent_key' => (string) ($resource->parent_key ?? ''),
             ];
-            $entry = (string) $resource->entry_permission;
+            $entry = \PTAdmin\Admin\Navigation\ExternalNavigationPermission::entry($type, (string) $resource->resource_key, (string) $resource->entry_permission);
             $position = strrpos($entry, '.');
             $entryResource = $position === false ? '' : substr($entry, 0, $position);
             $entryAbility = $position === false ? '' : substr($entry, $position + 1);
-            if ($type !== 'group' && ($resource->visibility === 'authenticated'
-                || ($entryResource !== '' && $this->identities->permits($admin, $entryResource, $entryAbility)
-                    && $this->evaluate($admin, $entryAbility, $entryResource, $resources, $rows)->allowed))) {
+            if ($type !== 'group' && $entryResource !== '' && $this->identities->permits($admin, $entryResource, $entryAbility)
+                && $this->evaluate($admin, $entryAbility, $entryResource, $resources, $rows)->allowed) {
                 $allowed[(string) $resource->resource_key] = true;
             }
         }

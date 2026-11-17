@@ -148,7 +148,7 @@ final class AdminRuntimeHook
         } elseif ($resourceKey === 'admin.admin_resources') {
             $resource = AdminMenu::query()->findOrFail($id);
             if (array_key_exists('resource_key', $input) && (string) $input['resource_key'] !== (string) $resource->resource_key) {
-                throw $this->error('resource_key_immutable', '权限资源编码创建后不能修改。', ['id' => $id]);
+                throw $this->error('resource_key_immutable', '导航编码创建后不能修改。', ['id' => $id]);
             }
             $prepared = $this->prepareAdminResource($input, $prepared, $resource);
         } elseif ($resourceKey === 'admin.notification_templates') {
@@ -516,6 +516,9 @@ final class AdminRuntimeHook
      */
     private function prepareAdminResource(array $input, array $prepared, ?AdminMenu $current = null): array
     {
+        if (array_key_exists('visibility', $input)) {
+            throw $this->error('invalid_input', '导航不再支持入口可见性，请使用入口业务权限。', ['field' => 'visibility']);
+        }
         $currentAttributes = $current?->getAttributes() ?? [];
         $meta = $this->decodeMeta($currentAttributes['meta_json'] ?? null);
         if ($current === null) {
@@ -546,6 +549,9 @@ final class AdminRuntimeHook
         if ($current === null && $type === 'group' && !array_key_exists('is_menu', $input)) {
             $prepared['is_menu'] = true;
         }
+        if ($type === 'external') {
+            $prepared['path'] = '';
+        }
         if ($type === 'group' && $this->resourceOwnerType($meta) === 'custom') {
             $prepared['path'] = '';
         }
@@ -553,23 +559,34 @@ final class AdminRuntimeHook
         if ($current && in_array($this->resourceOwnerType($meta), ['core', 'app', 'addon'], true)) {
             $currentMeta = $this->decodeMeta($currentAttributes['meta_json'] ?? null);
             if ((string) ($prepared['type'] ?? $current->type) !== (string) $current->type
-                || (bool) ($prepared['is_menu'] ?? $current->is_menu) !== (bool) $current->is_menu
+                || (string) ($prepared['entry_permission'] ?? $current->entry_permission) !== (string) $current->entry_permission
                 || (string) ($meta['target_resource_key'] ?? '') !== (string) ($currentMeta['target_resource_key'] ?? $currentMeta['resource_key'] ?? '')
             ) {
-                throw $this->error('resource_binding_protected', '核心或插件资源的类型和页面绑定不能修改。', [
+                throw $this->error('resource_binding_protected', '内置导航的类型、目标资源编码和入口业务权限不能修改。', [
                     'resource_key' => (string) $current->resource_key,
                 ]);
             }
         }
 
         $entry = (string) ($prepared['entry_permission'] ?? $current->entry_permission ?? '');
+        $defaultExternalPermission = $type === 'external' && $entry === '';
+        if ($defaultExternalPermission) {
+            $key = (string) ($prepared['resource_key'] ?? $current->resource_key);
+            $meta['permission_keys'] = array_values(array_unique([...($meta['permission_keys'] ?? []), $key]));
+        }
         if ($entry !== '' && ($position = strrpos($entry, '.')) !== false) {
             $meta['permission_keys'] = array_values(array_unique([...($meta['permission_keys'] ?? []), substr($entry, 0, $position)]));
+        }
+        if ($current !== null) {
+            $meta = \PTAdmin\Admin\Navigation\NavigationOverrides::record($currentAttributes, $prepared, $meta);
         }
         $prepared['meta_json'] = json_encode($meta, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $next = array_merge($currentAttributes, $prepared);
         $next['meta_json'] = $meta;
         $this->assertAdminResourceDefinition($next, (int) ($current?->getKey() ?? 0));
+        if ($defaultExternalPermission) {
+            \PTAdmin\Admin\Navigation\ExternalNavigationPermission::register($this->database, $next, $meta);
+        }
 
         return $prepared;
     }
@@ -592,12 +609,11 @@ final class AdminRuntimeHook
             throw $this->error('invalid_menu_resource', '导航类型只能是分组、Schema、页面或外链。', ['field' => 'type']);
         }
         $this->assertParentResource($resourceKey, $parentKey);
-        $visibility = (string) ($resource['visibility'] ?? 'permission');
         $entry = (string) ($resource['entry_permission'] ?? '');
-        if (!in_array($visibility, ['permission', 'authenticated'], true) || ($visibility === 'authenticated' && $entry !== '')) {
-            throw $this->error('invalid_entry_permission', '可见性规则与入口权限冲突。');
+        if ($type === 'group' && $entry !== '') {
+            throw $this->error('invalid_entry_permission', '目录不配置入口业务权限。');
         }
-        if ($type !== 'group' && $visibility === 'permission') {
+        if ($type !== 'group' && !($type === 'external' && $entry === '')) {
             $position = strrpos($entry, '.');
             $entryKey = $position === false ? '' : substr($entry, 0, $position);
             $ability = $position === false ? '' : substr($entry, $position + 1);
@@ -605,6 +621,15 @@ final class AdminRuntimeHook
             $abilities = $permission === null ? [] : ($this->decodeMeta($permission->meta_json)['abilities'] ?? []);
             if (!in_array($ability, $abilities, true)) {
                 throw $this->error('invalid_entry_permission', '入口必须引用已声明且启用的业务权限。', ['entry_permission' => $entry]);
+            }
+            if ($type === 'schema') {
+                $target = (string) ($meta['target_resource_key'] ?? $meta['resource_key'] ?? '');
+                $permissionTarget = (string) ($this->decodeMeta($permission->meta_json)['target_resource_key'] ?? '');
+                if ($permissionTarget !== '' && $permissionTarget !== $target) {
+                    throw $this->error('invalid_entry_permission', 'Schema 导航入口权限必须属于当前目标资源。', [
+                        'entry_permission' => $entry, 'target_resource_key' => $target,
+                    ]);
+                }
             }
         }
 
@@ -619,7 +644,8 @@ final class AdminRuntimeHook
             throw $this->error('invalid_external_url', '外链必须配置 external_url。', ['field' => 'external_url']);
         }
         if ($isMenu) {
-            if ($type !== 'group' && ($path === '' || !preg_match('!^/(?:[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*)?$!', $path))) {
+            if (in_array($type, ['page', 'schema'], true)
+                && ($path === '' || !preg_match('!^/(?:[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*)?$!', $path))) {
                 throw $this->error('invalid_resource_path', '菜单路径必须是以 / 开头且不包含查询参数的后台相对路径。', ['field' => 'path']);
             }
             $pathQuery = AdminMenu::query()->where('is_menu', true)->where('path', $path)->where('path', '<>', '');
@@ -633,7 +659,7 @@ final class AdminRuntimeHook
 
         if ($isMenu && $parentKey !== '') {
             $parent = AdminMenu::query()->where('resource_key', $parentKey)->first();
-            if (!$parent || !$parent->is_menu || !in_array($parent->type, ['group', 'schema', 'page'], true)) {
+            if (!$parent || !in_array($parent->type, ['group', 'schema', 'page'], true)) {
                 throw $this->error('invalid_parent_resource', '菜单父级必须是未删除的页面菜单。', ['parent_key' => $parentKey]);
             }
             if ($status && !$parent->status) {
@@ -713,11 +739,15 @@ final class AdminRuntimeHook
         $rowsByKey->put((string) $resource->resource_key, $resource);
         $rows = [];
         foreach ($orderedKeys as $index => $resourceKey) {
-            $rows[] = array_replace($rowsByKey->get($resourceKey)->getAttributes(), [
+            $currentAttributes = $rowsByKey->get($resourceKey)->getAttributes();
+            $next = array_replace($currentAttributes, [
                 'parent_key' => $parentKey, 'sort' => ($index + 1) * 10, 'updated_at' => now(),
             ]);
+            $meta = \PTAdmin\Admin\Navigation\NavigationOverrides::record($currentAttributes, $next, $this->decodeMeta($currentAttributes['meta_json']));
+            $next['meta_json'] = json_encode($meta, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $rows[] = $next;
         }
-        $this->database->transaction(fn () => $this->database->table('admin_menus')->upsert($rows, ['id'], ['parent_key', 'sort', 'updated_at']));
+        $this->database->transaction(fn () => $this->database->table('admin_menus')->upsert($rows, ['id'], ['parent_key', 'sort', 'meta_json', 'updated_at']));
 
         $moved = AdminMenu::query()->findOrFail($id)->getAttributes();
 

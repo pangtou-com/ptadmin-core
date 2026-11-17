@@ -154,7 +154,22 @@ final class ManifestVerifier
             try {
                 (new VersionParser())->parseConstraints($compatibility);
                 if ($checkBackendCompatibility && !Semver::satisfies($this->backendVersion, $compatibility)) {
-                    throw new AddonException('The addon is incompatible with this backend.', 'backend_incompatible');
+                    throw new AddonException(
+                        sprintf(
+                            '插件 %s (%s) 要求 ptadmin/core %s，当前后端版本为 %s。',
+                            $code,
+                            $version,
+                            $compatibility,
+                            $this->backendVersion,
+                        ),
+                        'backend_incompatible',
+                        [
+                            'code' => $code,
+                            'version' => $version,
+                            'constraint' => $compatibility,
+                            'backend_version' => $this->backendVersion,
+                        ],
+                    );
                 }
             } catch (\UnexpectedValueException $exception) {
                 throw new AddonException('The addon compatibility constraint is invalid.', 'invalid_constraint');

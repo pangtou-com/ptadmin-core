@@ -19,8 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property array<string, mixed>|null $meta_json
  * @property bool $is_menu
  * @property bool $status
- * @property string $entry_permission 页面入口业务权限
- * @property string $visibility 可见性规则
+ * @property string $entry_permission 页面入口业务权限；外链留空时使用导航编码.view，目录不配置
  * @property int $sort
  */
 final class AdminMenu extends Model

@@ -93,7 +93,12 @@
                         {
                             "type": "field",
                             "field": "resource_key",
-                            "span": 12
+                            "span": 12,
+                            "readonly_when": {
+                                "field": "formMode",
+                                "op": "eq",
+                                "value": "edit"
+                            }
                         },
                         {
                             "type": "field",
@@ -104,6 +109,15 @@
                             "type": "field",
                             "field": "type",
                             "span": 12,
+                            "readonly_when": {
+                                "field": "owner_type",
+                                "op": "in",
+                                "value": [
+                                    "core",
+                                    "app",
+                                    "addon"
+                                ]
+                            },
                             "component": "admin-menu-type-picker"
                         },
                         {
@@ -124,14 +138,26 @@
                                     "span": 12,
                                     "show_when": {
                                         "field": "type",
-                                        "op": "neq",
-                                        "value": "group"
+                                        "op": "in",
+                                        "value": [
+                                            "schema",
+                                            "page"
+                                        ]
                                     }
                                 },
                                 {
                                     "type": "field",
                                     "field": "target_resource_key",
                                     "span": 12,
+                                    "readonly_when": {
+                                        "field": "owner_type",
+                                        "op": "in",
+                                        "value": [
+                                            "core",
+                                            "app",
+                                            "addon"
+                                        ]
+                                    },
                                     "component": "admin-schema-resource-picker",
                                     "show_when": {
                                         "field": "type",
@@ -192,18 +218,23 @@
                             "children": [
                                 {
                                     "type": "field",
-                                    "field": "visibility",
-                                    "span": 12
-                                },
-                                {
-                                    "type": "field",
                                     "field": "entry_permission",
                                     "component": "admin-entry-permission-picker",
                                     "span": 12,
+                                    "readonly_when": {
+                                        "field": "owner_type",
+                                        "op": "in",
+                                        "value": [
+                                            "core",
+                                            "app",
+                                            "addon"
+                                        ]
+                                    },
+                                    "help": "普通页面必须选择；外链留空时按导航编码生成“查看”权限。",
                                     "show_when": {
-                                        "field": "visibility",
-                                        "op": "eq",
-                                        "value": "permission"
+                                        "field": "type",
+                                        "op": "neq",
+                                        "value": "external"
                                     }
                                 }
                             ]
@@ -510,6 +541,10 @@
                             "label": "核心代码"
                         },
                         {
+                            "value": "app",
+                            "label": "宿主代码"
+                        },
+                        {
                             "value": "addon",
                             "label": "插件代码"
                         },
@@ -540,29 +575,7 @@
                 "persisted": true,
                 "formable": true,
                 "listable": true,
-                "description": "填写已声明的资源编码.操作编码，不会创建或授予权限"
-            },
-            {
-                "name": "visibility",
-                "type": "string",
-                "label": "入口可见性",
-                "persisted": true,
-                "formable": true,
-                "default": "permission",
-                "options": {
-                    "mode": "static",
-                    "value_policy": "closed",
-                    "items": [
-                        {
-                            "value": "permission",
-                            "label": "按入口权限显示"
-                        },
-                        {
-                            "value": "authenticated",
-                            "label": "所有已登录管理员可见"
-                        }
-                    ]
-                }
+                "description": "普通页面选择已声明的资源编码.操作编码；外链留空时自动登记导航编码.view，需在角色或个人权限中授权"
             }
         ]
     }

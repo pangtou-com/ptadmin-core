@@ -52,7 +52,7 @@ final class AuthorizationCatalogController
                     'operation_labels' => $isNavigation ? new \stdClass() : ($meta['operations'] ?? new \stdClass()),
                     'scopes' => $isNavigation ? [] : ($meta['scopes'] ?? ['all']),
                     'permission_keys' => $isNavigation ? ($meta['permission_keys'] ?? []) : [],
-                    'entry_permission' => $isNavigation ? $row->entry_permission : '',
+                    'entry_permission' => $isNavigation ? \PTAdmin\Admin\Navigation\ExternalNavigationPermission::entry($row->type, $row->resource_key, $row->entry_permission) : '',
                 ];
             }
         }

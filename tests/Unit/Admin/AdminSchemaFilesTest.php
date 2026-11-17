@@ -80,7 +80,14 @@ final class AdminSchemaFilesTest extends TestCase
         $ownerType = $this->field($definition['fields'], 'owner_type');
         self::assertTrue($ownerType['readonly']);
         self::assertFalse($ownerType['formable']);
-        self::assertSame(['core', 'addon', 'custom', 'unknown'], array_column($ownerType['options']['items'], 'value'));
+        self::assertSame(['core', 'app', 'addon', 'custom', 'unknown'], array_column($ownerType['options']['items'], 'value'));
+        self::assertSame(['field' => 'formMode', 'op' => 'eq', 'value' => 'edit'], $this->formField($form['children'], 'resource_key')['readonly_when']);
+        foreach (['type', 'target_resource_key', 'entry_permission'] as $field) {
+            self::assertSame(['field' => 'owner_type', 'op' => 'in', 'value' => ['core', 'app', 'addon']], $this->formField($form['children'], $field)['readonly_when']);
+        }
+        foreach (['title', 'is_menu', 'status'] as $field) {
+            self::assertArrayNotHasKey('readonly_when', $this->formField($form['children'], $field));
+        }
         self::assertSame('dialog', $form['wrapper']['type']);
         self::assertSame('group', $this->field($definition['fields'], 'type')['default']);
         self::assertSame('page', $this->field($definition['fields'], 'type')['options']['items'][2]['value']);
@@ -97,12 +104,15 @@ final class AdminSchemaFilesTest extends TestCase
         self::assertContains('layout-dashboard', $icon['props']['icons']);
         self::assertArrayNotHasKey('component', (array) ($this->field($definition['fields'], 'icon')['extensions'] ?? []));
         self::assertSame('admin-schema-resource-picker', $this->formField($form['children'], 'target_resource_key')['component']);
-        self::assertSame(['field' => 'type', 'op' => 'neq', 'value' => 'group'], $this->formField($form['children'], 'path')['show_when']);
+        self::assertSame(['field' => 'type', 'op' => 'in', 'value' => ['schema', 'page']], $this->formField($form['children'], 'path')['show_when']);
         self::assertSame(['is_menu', 'status', 'sort'], array_column(array_slice($form['children'], -3), 'field'));
         self::assertSame(12, $this->formField($form['children'], 'is_menu')['span']);
         self::assertSame(12, $this->formField($form['children'], 'status')['span']);
         self::assertNotContains('page_key', $this->formFields($form['children']));
         self::assertNotContains('page_key', array_column($definition['fields'], 'name'));
+        self::assertNotContains('visibility', $this->formFields($form['children']));
+        self::assertNotContains('visibility', array_column($definition['fields'], 'name'));
+        self::assertSame(['field' => 'type', 'op' => 'neq', 'value' => 'external'], $this->formField($form['children'], 'entry_permission')['show_when']);
         self::assertTrue($this->field($definition['fields'], 'owner_code')['listable']);
         self::assertTrue($this->field($definition['fields'], 'is_menu')['default']);
         self::assertArrayNotHasKey('menu.select', $definition['actions']);

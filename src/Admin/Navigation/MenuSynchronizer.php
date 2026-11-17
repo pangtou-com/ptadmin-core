@@ -125,6 +125,20 @@ final class MenuSynchronizer
                 }
                 $this->flatten($decoded, '', $source['owner_type'], $source['owner_code'], $menus, $permissions);
             }
+            foreach ($menus as $key => $definition) {
+                $menus[$key] = NavigationOverrides::apply($definition, $existingMenus[$key] ?? null);
+                if ($definition['type'] === 'external' && $definition['entry_permission'] === '') {
+                    $meta = json_decode($menus[$key]['meta_json'], true, 512, JSON_THROW_ON_ERROR);
+                    $permission = ExternalNavigationPermission::definition($menus[$key], $meta);
+                    if (isset($permissions[$key])) {
+                        throw new RuntimeException('外链默认权限与显式权限编码重复，请配置入口业务权限：'.$key);
+                    }
+                    ExternalNavigationPermission::assertOwnership($permission, $existingPermissions[$key] ?? null);
+                    $permissions[$key] = $permission;
+                    $meta['permission_keys'] = array_values(array_unique([...$meta['permission_keys'], $key]));
+                    $menus[$key]['meta_json'] = $this->json($meta);
+                }
+            }
             foreach ([[$menus, $existingMenus, $allMenus], [$permissions, $existingPermissions, $allPermissions]] as [$definitions, $existing, $collected]) {
                 foreach ($definitions as $key => $definition) {
                     if (isset($collected[$key])) {
@@ -197,6 +211,9 @@ final class MenuSynchronizer
                 throw new RuntimeException('菜单声明项必须是对象，父级：'.$parent);
             }
             $item = get_object_vars($node);
+            if (array_key_exists('visibility', $item)) {
+                throw new RuntimeException('导航不再支持 visibility，请配置入口业务权限；外链留空时使用导航编码的 view 权限。');
+            }
             if (array_key_exists('abilities', $item) || ($item['type'] ?? '') === 'action') {
                 throw new RuntimeException('菜单不再支持 action 或 abilities，请使用 permissions：'.($item['resource_key'] ?? $parent));
             }
@@ -229,6 +246,9 @@ final class MenuSynchronizer
                 }
             }
             $path = (string) ($item['path'] ?? '');
+            if ($type === 'external') {
+                $path = '';
+            }
             if ($path !== '' && in_array($ownerType, ['app', 'addon'], true) && $type !== 'external') {
                 if (!preg_match('!^[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$!', $path)) {
                     throw new RuntimeException('模块资源 path 必须是相对路由片段：'.$key);
@@ -239,7 +259,6 @@ final class MenuSynchronizer
                 'resource_key' => $key, 'title' => (string) ($item['title'] ?? $key), 'type' => $type,
                 'parent_key' => $parent !== '' ? $parent : (string) ($item['parent_key'] ?? ''),
                 'path' => $path, 'entry_permission' => (string) ($item['entry_permission'] ?? ''),
-                'visibility' => (string) ($item['visibility'] ?? 'permission'),
                 'module' => in_array($ownerType, ['app', 'addon'], true) ? $ownerType : 'admin',
                 'icon' => $item['icon'] ?? null, 'meta_json' => $this->json($meta),
                 'is_menu' => (bool) ($item['is_menu'] ?? true), 'status' => (bool) ($item['status'] ?? true),
@@ -350,12 +369,12 @@ final class MenuSynchronizer
                 || !in_array(parse_url($meta['external_url'], PHP_URL_SCHEME), ['http', 'https'], true))) {
                 throw new RuntimeException('外链只支持有效 HTTP/HTTPS 地址：'.$key);
             }
-            if ($type !== 'group' && ($menu['path'] === '' || !preg_match('!^/(?:[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*)?$!', $menu['path']))) {
+            if (in_array($type, ['page', 'schema'], true)
+                && ($menu['path'] === '' || !preg_match('!^/(?:[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*)?$!', $menu['path']))) {
                 throw new RuntimeException('页面必须配置有效 path：'.$key);
             }
-            if (!in_array($menu['visibility'], ['permission', 'authenticated'], true)
-                || ($menu['visibility'] === 'authenticated' && $menu['entry_permission'] !== '')) {
-                throw new RuntimeException('导航 visibility 与入口权限冲突：'.$key);
+            if ($type === 'group' && $menu['entry_permission'] !== '') {
+                throw new RuntimeException('目录不配置入口业务权限：'.$key);
             }
             foreach ($meta['permission_keys'] as $permissionKey) {
                 $resource = $allPermissions[$permissionKey] ?? null;
@@ -363,8 +382,8 @@ final class MenuSynchronizer
                     throw new RuntimeException('导航引用不存在的权限资源：'.$key.' → '.$permissionKey);
                 }
             }
-            if ($type !== 'group' && $menu['visibility'] === 'permission') {
-                $entry = $menu['entry_permission'];
+            if ($type !== 'group') {
+                $entry = ExternalNavigationPermission::entry($type, $key, $menu['entry_permission']);
                 $position = strrpos($entry, '.');
                 $resourceKey = $position === false ? '' : substr($entry, 0, $position);
                 $ability = $position === false ? '' : substr($entry, $position + 1);
@@ -373,6 +392,10 @@ final class MenuSynchronizer
                 if ($resource === null || $resource['deleted_at'] !== null || !$resource['status']
                     || !in_array($ability, $capabilities['abilities'] ?? [], true)) {
                     throw new RuntimeException('导航入口权限未声明或已停用：'.$key.' → '.$entry);
+                }
+                if ($type === 'schema' && ($capabilities['target_resource_key'] ?? '') !== ''
+                    && (string) $capabilities['target_resource_key'] !== (string) ($meta['target_resource_key'] ?? '')) {
+                    throw new RuntimeException('Schema 导航入口权限必须属于当前目标资源：'.$key.' → '.$entry);
                 }
                 if (!in_array($resourceKey, $meta['permission_keys'], true)) {
                     throw new RuntimeException('入口权限必须包含在本页面 permissions 定义或引用中：'.$key);
@@ -386,8 +409,7 @@ final class MenuSynchronizer
                 }
                 $seen[$parentKey] = true;
                 $parent = $allMenus[$parentKey] ?? null;
-                if ($parent === null || $parent['deleted_at'] !== null || $parent['type'] === 'external'
-                    || ($menu['is_menu'] && !$parent['is_menu'])) {
+                if ($parent === null || $parent['deleted_at'] !== null || $parent['type'] === 'external') {
                     throw new RuntimeException('导航父级不存在或不能作为目录：'.$key.' → '.$parentKey);
                 }
                 $parentKey = $parent['parent_key'];
