@@ -15,7 +15,6 @@ final class TaskStore
     public function __construct(string $root)
     {
         $this->root = $root;
-        $this->ensureDirectory($this->root);
     }
 
     public function root(): string
@@ -26,6 +25,7 @@ final class TaskStore
     /** @param Closure(): mixed $callback */
     public function withCreationLock(Closure $callback): mixed
     {
+        $this->ensureDirectory($this->root);
         $handle = fopen($this->root.'/.create.lock', 'c+');
         if (false === $handle) {
             throw new RuntimeException('Unable to open task creation lock.');
@@ -160,6 +160,9 @@ final class TaskStore
     /** @return array<string, array<string, mixed>> */
     public function summaries(): array
     {
+        if (!is_dir($this->root)) {
+            return [];
+        }
         return $this->withIndexLock(static fn (array &$index): array => $index);
     }
 
@@ -169,6 +172,7 @@ final class TaskStore
      */
     private function withIndexLock(Closure $callback, bool $mutating = false): mixed
     {
+        $this->ensureDirectory($this->root);
         $handle = fopen($this->root.'/.index.lock', 'c+');
         if ($handle === false) {
             throw new RuntimeException('Unable to open task index lock.');

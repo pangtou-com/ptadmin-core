@@ -187,6 +187,7 @@ final class AdminExceptionContractTest extends TestCase
 
     public function testCacheRepairCommandBootsWithCorruptSnapshot(): void
     {
+        $this->app->make(\PTAdmin\Addon\Catalog\AddonCatalog::class)->rebuild();
         $path = $this->storage.'/app/ptadmin/addons/catalog.json';
         file_put_contents($path, '{broken');
         $arguments = $_SERVER['argv'];

@@ -1,5 +1,7 @@
 # PTAdmin Core
 
+0.13.1 修复 Composer 包发现提前创建 `storage/app/ptadmin` 私有目录的问题，避免 root 执行 Composer 后 Web 安装进程无法访问。插件状态、操作锁和任务存储改为实际写入时创建；缺少插件注册快照时只读发现，正式安装、插件生命周期操作或 `ptadmin:addon:cache` 才持久化快照。沿用正式 Shell 0.13.1，从 0.13.0 升级无新增迁移。此前由 root 创建的运行目录仍需部署人员修正属主，不自动修改现有权限或数据。
+
 `ptadmin/core` 是 PTAdmin 重构后的后端核心包，正式源码目录为当前仓库的 `src/`。核心包统一维护 `Admin`、`Addon`、`Schema`、`User` 和 `Core`，并提供 `Notice`、`Template` 和 `Cloud` 等能力；Schema Runtime 是标准资源和 CRUD 的唯一运行时基础设施。
 
 0.13.0 新增后台 `ptadmin` Guard、`AdminAuth` 服务与 Facade，统一获取当前管理员、角色和操作权限；支持 `hasRole/anyRole`、`can/hasPerm/authorize`，以及专用 Gate `ptadmin.permission`。同一请求共享管理员实例，撤销会话立即清理身份。组织部门及新增数据范围能力由后续扩展模块提供。配套正式 Shell 0.13.1，外链导航直接新标签页打开。

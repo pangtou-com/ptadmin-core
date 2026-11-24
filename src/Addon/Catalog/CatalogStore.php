@@ -44,6 +44,7 @@ final class CatalogStore
     public function write(array $snapshot): array
     {
         $contents = json_encode(['format' => 1] + $snapshot, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $this->ensureDirectory();
         $temporary = $this->path.'.tmp-'.bin2hex(random_bytes(8));
         try {
             if (file_put_contents($temporary, $contents, LOCK_EX) === false || !rename($temporary, $this->path)) {
@@ -60,6 +61,7 @@ final class CatalogStore
     /** @return resource */
     public function lock(bool $wait = true)
     {
+        $this->ensureDirectory();
         $handle = fopen($this->path.'.lock', 'c+');
         if ($handle === false) {
             throw new RuntimeException('Unable to open addon catalog lock.');
@@ -79,5 +81,13 @@ final class CatalogStore
     {
         flock($handle, LOCK_UN);
         fclose($handle);
+    }
+
+    private function ensureDirectory(): void
+    {
+        $directory = dirname($this->path);
+        if (!is_dir($directory) && !mkdir($directory, 0700, true) && !is_dir($directory)) {
+            throw new RuntimeException('Unable to create addon catalog directory: '.$directory);
+        }
     }
 }

@@ -59,6 +59,34 @@ final class InstallationBootstrapTest extends TestCase
         });
     }
 
+    public function testPackageDiscoveryDoesNotCreateRuntimeStorageBeforeInstallation(): void
+    {
+        self::assertDirectoryDoesNotExist($this->storage.'/app/ptadmin');
+        $this->runPackageDiscovery();
+        self::assertDirectoryDoesNotExist($this->storage.'/app/ptadmin');
+        self::assertSame([], $this->app['db']->getConnections());
+    }
+
+    public function testPackageDiscoveryDoesNotCreateAddonOrTaskStorageAfterInstallation(): void
+    {
+        $this->app->make(InstallStateStore::class)->markInstalled('0.1.0', 'admin_test');
+        $this->refreshApplication();
+        $this->runPackageDiscovery();
+        self::assertDirectoryDoesNotExist($this->storage.'/app/ptadmin/addons');
+        self::assertDirectoryDoesNotExist($this->storage.'/app/ptadmin/tasks');
+    }
+
+    private function runPackageDiscovery(): void
+    {
+        $directory = $this->storage.'/bootstrap/cache';
+        mkdir($directory, 0700, true);
+        $this->app->instance(\Illuminate\Foundation\PackageManifest::class, new \Illuminate\Foundation\PackageManifest(
+            new Filesystem(), $this->app->basePath(), $directory.'/packages.php',
+        ));
+        self::assertSame(0, \Illuminate\Support\Facades\Artisan::call('package:discover'));
+        self::assertFileExists($directory.'/packages.php');
+    }
+
     public function testCacheRateLimiterAndRedirectWorkWithoutDatabaseConfiguration(): void
     {
         $this->app['cache']->put('installation-probe', 'ready', 60);

@@ -50,8 +50,10 @@ final class InitialAdministratorInstallationTest extends TestCase
             'permissions' => [['resource_key' => 'host.orders', 'operations' => [['key' => 'list'], ['key' => 'update']]]],
         ]]));
         $input = ['username' => 'founder', 'password' => 'test-password', 'db_connection' => 'sqlite', 'db_database' => 'install.sqlite'];
+        self::assertDirectoryDoesNotExist($this->root.'/storage/app/ptadmin');
         $result = app(InstallService::class)->install($input);
         self::assertTrue($result['installed']);
+        self::assertFileExists($this->root.'/storage/app/ptadmin/addons/catalog.json');
         $admin = Admin::query()->firstOrFail();
         $auth = app(AuthorizationService::class);
         self::assertTrue($admin->is_founder);

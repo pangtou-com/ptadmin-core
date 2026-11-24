@@ -29,9 +29,6 @@ final class LifecycleStore
 
     public function __construct(private readonly string $root)
     {
-        if (!is_dir($root) && !mkdir($root, 0700, true) && !is_dir($root)) {
-            throw new RuntimeException('Unable to create addon lifecycle directory.');
-        }
     }
 
     /**
@@ -111,13 +108,15 @@ final class LifecycleStore
             throw new AddonException('The addon lifecycle input is invalid.', 'invalid_lifecycle_input');
         }
         $directory = $this->root.'/'.$code;
-        if (!is_dir($directory) && !mkdir($directory, 0700, true) && !is_dir($directory)) {
-            throw new RuntimeException('Unable to create addon lifecycle state directory.');
-        }
         $path = $directory.'/state.json';
         if (null === $snapshot) {
-            @unlink($path);
+            if (is_file($path)) {
+                unlink($path);
+            }
             return;
+        }
+        if (!is_dir($directory) && !mkdir($directory, 0700, true) && !is_dir($directory)) {
+            throw new RuntimeException('Unable to create addon lifecycle state directory.');
         }
         $tmp = $path.'.tmp-'.bin2hex(random_bytes(4));
         file_put_contents($tmp, json_encode($snapshot, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n", LOCK_EX);

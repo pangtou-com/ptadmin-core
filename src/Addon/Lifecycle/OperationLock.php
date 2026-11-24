@@ -16,9 +16,6 @@ final class OperationLock
 {
     public function __construct(private string $root)
     {
-        if (!is_dir($root) && !mkdir($root, 0700, true) && !is_dir($root)) {
-            throw new RuntimeException('Unable to create addon lock directory.');
-        }
     }
 
     /**
@@ -30,6 +27,9 @@ final class OperationLock
     {
         if (preg_match('/^[a-z][a-z0-9._-]{1,63}$/', $code) !== 1) {
             throw new AddonException('The addon code is invalid.', 'invalid_addon_code');
+        }
+        if (!is_dir($this->root) && !mkdir($this->root, 0700, true) && !is_dir($this->root)) {
+            throw new RuntimeException('Unable to create addon lock directory.');
         }
         $handle = fopen($this->root.'/'.strtolower($code).'.lock', 'c+');
         if (false === $handle) {

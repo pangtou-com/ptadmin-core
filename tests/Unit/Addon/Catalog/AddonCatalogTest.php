@@ -42,6 +42,18 @@ final class AddonCatalogTest extends TestCase
         self::assertSame([], $result['errors']);
         $again = (new AddonCatalog($this->root, new ManifestVerifier(), new LifecycleStore($this->lifecyclePath)))->scan();
         self::assertCount(1, $again['addons']);
+        self::assertDirectoryDoesNotExist($this->lifecyclePath);
+    }
+
+    public function testExplicitRebuildCreatesPrivateStorageAndPublishesSnapshot(): void
+    {
+        $lifecycle = new LifecycleStore($this->lifecyclePath);
+        $catalog = new AddonCatalog($this->root, new ManifestVerifier(), $lifecycle);
+        self::assertDirectoryDoesNotExist($this->lifecyclePath);
+        $snapshot = $catalog->rebuild();
+        self::assertFileExists($lifecycle->catalogPath());
+        self::assertSame(0700, fileperms($this->lifecyclePath) & 0777);
+        self::assertSame($snapshot, $catalog->scan());
     }
 
     public function testScanReturnsDiagnosticForInvalidAddon(): void
@@ -59,7 +71,7 @@ final class AddonCatalogTest extends TestCase
         $lifecycle->transition('valid-addon', 'active', ['manifest' => ['code' => 'valid-addon', 'version' => '1.0.0']]);
         $before = file_get_contents($this->lifecyclePath.'/valid-addon/state.json');
         $catalog = new AddonCatalog($this->root, new ManifestVerifier(), $lifecycle);
-        $snapshot = $catalog->scan();
+        $snapshot = $catalog->rebuild();
         $published = file_get_contents($lifecycle->catalogPath());
         file_put_contents($this->root.'/valid-addon/manifest.json', '{broken');
         for ($index = 0; $index < 5; $index++) {
@@ -92,6 +104,7 @@ final class AddonCatalogTest extends TestCase
     {
         $lifecycle = new LifecycleStore($this->lifecyclePath);
         $catalog = new AddonCatalog($this->root, new ManifestVerifier(), $lifecycle);
+        $catalog->rebuild();
         file_put_contents($lifecycle->catalogPath(), '{broken');
         try {
             $catalog->scan();

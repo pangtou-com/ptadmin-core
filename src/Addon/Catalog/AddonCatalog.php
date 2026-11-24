@@ -8,7 +8,7 @@ use PTAdmin\Addon\Exception\AddonException;
 use PTAdmin\Addon\Lifecycle\LifecycleStore;
 use PTAdmin\Addon\Manifest\ManifestVerifier;
 
-/** 请求读取已发布的插件清单；只有首次初始化、显式重建和生命周期操作发布快照。 */
+/** 请求读取已发布的插件清单；只有正式安装、显式重建和生命周期操作发布快照。 */
 final class AddonCatalog
 {
     private readonly CatalogStore $store;
@@ -23,23 +23,14 @@ final class AddonCatalog
     }
 
     /**
-     * 保留 scan 入口供现有调用方使用，但不再扫描目录或修改生命周期。
-     * 缺少快照的旧安装只在锁内初始化一次；损坏快照必须显式重建。
+     * 优先读取已发布快照；缺少快照时只读发现，避免 Composer 启动时写入运行目录。
+     * 损坏快照必须显式重建，不自动覆盖。
      *
      * @return array{addons:array<int,array<string,mixed>>,errors:array<int,array<string,mixed>>}
      */
     public function scan(): array
     {
-        $snapshot = $this->store->read();
-        if ($snapshot !== null) {
-            return $snapshot;
-        }
-        $lock = $this->store->lock();
-        try {
-            return $this->store->read() ?? $this->store->write($this->discover());
-        } finally {
-            $this->store->unlock($lock);
-        }
+        return $this->store->read() ?? $this->discover();
     }
 
     /** 显式重建不改变启停状态，也不执行安装回调或同步业务资源。 */

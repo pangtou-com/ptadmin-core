@@ -25,7 +25,11 @@ final class LifecycleStoreTest extends TestCase
     public function testLifecycleTransitionsArePersistedAndInvalidTransitionsRejected(): void
     {
         $store = new LifecycleStore($this->directory);
+        self::assertNull($store->read('demo'));
+        $store->restore('demo', null);
+        self::assertDirectoryDoesNotExist($this->directory);
         self::assertSame('discovered', $store->transition('demo', 'discovered')['state']);
+        self::assertSame(0700, fileperms($this->directory) & 0777);
         self::assertSame('validating', $store->transition('demo', 'validating')['state']);
         self::assertSame('loading', $store->transition('demo', 'loading')['state']);
         self::assertSame('ready', $store->transition('demo', 'ready')['state']);
@@ -33,6 +37,20 @@ final class LifecycleStoreTest extends TestCase
 
         $this->expectException(AddonException::class);
         $store->transition('demo', 'discovered');
+    }
+
+    public function testOperationLockCreatesDirectoryOnlyWhenAcquiredAndStillRejectsConcurrentOperations(): void
+    {
+        $lock = new \PTAdmin\Addon\Lifecycle\OperationLock($this->directory);
+        self::assertDirectoryDoesNotExist($this->directory);
+        $handle = $lock->acquire('demo');
+        try {
+            self::assertSame(0700, fileperms($this->directory) & 0777);
+            $this->expectException(AddonException::class);
+            $lock->acquire('demo');
+        } finally {
+            $lock->release($handle);
+        }
     }
 
     private function remove(string $path): void

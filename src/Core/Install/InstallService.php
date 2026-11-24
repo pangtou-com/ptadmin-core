@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use PTAdmin\Admin\Models\Admin;
 use PTAdmin\Admin\Navigation\MenuSynchronizer;
+use PTAdmin\Addon\Catalog\AddonCatalog;
 use PTAdmin\Core\Config\ConfigService;
 use PTAdmin\Core\Config\ConfigException;
 use PTAdmin\Core\Dictionary\DictionarySynchronizer;
@@ -41,6 +42,7 @@ final class InstallService
         private SchemaFileSynchronizer $schemaSynchronizer,
         private MenuSynchronizer $menus,
         private RuntimeCacheStore $runtimeCache,
+        private AddonCatalog $addons,
         private ?NoticeSynchronizer $notices = null,
     ) {
     }
@@ -164,6 +166,7 @@ final class InstallService
             $this->progress($progress, 'environment_ready');
 
             $this->progress($progress, 'runtime_finalizing');
+            $this->addons->rebuild();
             $this->resetRuntimeCaches();
             $this->progress($progress, 'runtime_ready');
 

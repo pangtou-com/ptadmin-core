@@ -37,7 +37,10 @@ final class TaskManagerTest extends TestCase
 
     public function testTaskLifecycleWritesStatePayloadResultAndEvents(): void
     {
+        self::assertSame(0, $this->tasks->history()['total']);
+        self::assertDirectoryDoesNotExist($this->directory);
         $task = $this->tasks->create(TaskManager::ADMIN_FRONTEND_UPDATE, ['version' => '1.2.0'], 'req-1');
+        self::assertSame(0700, fileperms($this->directory) & 0777);
         self::assertSame('pending', $task['status']);
         self::assertSame(['version' => '1.2.0'], $task['payload']);
         self::assertTrue($task['can_cancel']);
