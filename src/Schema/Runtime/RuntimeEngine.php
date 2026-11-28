@@ -33,6 +33,9 @@ use PTAdmin\Schema\Support\FieldProtection;
  */
 final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInterface
 {
+    /** @var array<string, array<string, mixed>> 当前资源解析时取得的停用字段，不读取数据库结构。 */
+    private array $retiredFields = [];
+
     public function __construct(
         ?SchemaAuthorizationInterface $authorization = null,
         ?SchemaScopeResolverInterface $scopeResolver = null,
@@ -533,6 +536,7 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         if (!$version) {
             throw $this->error('active_version_not_found', 'active version not found', ['resource_key' => $key]);
         }
+        $this->retiredFields[$resource->resource_key] = $resource->retired_fields_json ?? [];
         return ['resource' => $resource, 'version' => $version, 'schema' => new Schema((array) $version->schema_json)];
     }
 
@@ -922,6 +926,10 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
 
     private function validateOptions(mixed $value, array $field): void
     {
+        // 清空选项表示未选择；必填由字段校验负责，闭集规则只检查实际选值。
+        if ($value === null || $value === '' || $value === []) {
+            return;
+        }
         $options = (array) ($field['options'] ?? []);
         $mode = strtolower((string) ($options['mode'] ?? ''));
         if ($mode === 'dictionary' && strtolower((string) ($options['value_policy'] ?? 'open')) === 'closed') {
@@ -976,6 +984,10 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
 
     private function castValue(mixed $value, array $field): mixed
     {
+        // 表单清空提交的 null 必须保留，不能转成 0、false 或日期时间戳。
+        if ($value === null) {
+            return null;
+        }
         if (!empty($field['multiple'])) {
             if (!is_array($value)) {
                 throw $this->error('invalid_input', 'multiple field requires array value', ['field' => $field['name']]);
@@ -986,6 +998,9 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
     }
     private function castScalar(mixed $value, string $type): mixed
     {
+        if ($value === null || ($value === '' && in_array($type, ['integer', 'number', 'boolean', 'date', 'datetime'], true))) {
+            return null;
+        }
         return match ($type) {
             'integer' => (int) $value, 'number' => (float) $value, 'boolean' => is_bool($value) ? $value : in_array(strtolower((string) $value), ['1', 'true', 'yes', 'on'], true), 'date', 'datetime' => is_numeric($value) ? (int) $value : (int) strtotime((string) $value), 'json' => $value, default => is_string($value) ? $value : (string) $value
         };
@@ -995,6 +1010,9 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
         foreach ($data as $key => $value) {
             if (!isset($fields[$key]) || empty($fields[$key]['persisted'])) {
                 unset($data[$key]);
+                continue;
+            }
+            if ($value === null) {
                 continue;
             }
             if (!empty($fields[$key]['multiple']) || ($fields[$key]['type'] ?? '') === 'json') {
@@ -1140,6 +1158,7 @@ final class RuntimeEngine implements \PTAdmin\Schema\Contracts\RuntimeEngineInte
      */
     private function output(array $row, Schema $schema, string $resourceKey = '', array $referenceLabels = [], array $mirrorValues = []): array
     {
+        $row = array_diff_key($row, $this->retiredFields[$resourceKey] ?? []);
         foreach ((array) $schema->fields as $field) {
             $name = $field['name'];
             if (array_key_exists($name, $row) && (!empty($field['multiple']) || ($field['type'] ?? '') === 'json') && is_string($row[$name])) {

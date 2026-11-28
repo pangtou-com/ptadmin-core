@@ -178,24 +178,29 @@ final class ResourceService implements \PTAdmin\Schema\Contracts\ResourceService
 
     public function beginDraftEdit(string $resourceKey): BeginDraftEditResult
     {
-        $resource = $this->locator->resource($resourceKey);
-        if ($resource->status === 'archived') {
-            throw $this->error('resource_archived', 'resource is archived', 'resource', ['resource_key' => $resourceKey]);
-        }
-        $version = $resource->versions()->where('status', 'draft')->first();
-        $created = false;
-        if (!$version) {
-            $active = $resource->versions()->where('status', 'active')->first();
-            if (!$active) {
-                throw $this->error('active_version_not_found', 'active version not found', 'draft', ['resource_key' => $resourceKey]);
+        return DB::transaction(function () use ($resourceKey): BeginDraftEditResult {
+            $resource = $this->locator->resource($resourceKey, lockForUpdate: true);
+            if ($resource->status === 'archived') {
+                throw $this->error('resource_archived', 'resource is archived', 'resource', ['resource_key' => $resourceKey]);
             }
-            $version = ResourceVersion::query()->create([
-                'resource_id' => $resource->id, 'version' => $active->version + 1, 'status' => 'draft',
-                'schema_json' => $active->schema_json, 'checksum' => $active->checksum, 'check_status' => 'none',
-            ]);
-            $created = true;
-        }
-        return new BeginDraftEditResult(['resource' => $resource->resource_key, 'version' => $this->locator->versionInfo($version), 'schema' => new Schema($version->schema_json), 'created' => $created]);
+            if (PublishTask::query()->where('resource_id', $resource->id)->where('status', 'running')->exists()) {
+                throw $this->error('publish_in_progress', '资源正在发布，请稍后开始编辑。', 'draft');
+            }
+            $version = $resource->versions()->where('status', 'draft')->first();
+            $created = false;
+            if (!$version) {
+                $active = $resource->versions()->where('status', 'active')->first();
+                if (!$active) {
+                    throw $this->error('active_version_not_found', 'active version not found', 'draft', ['resource_key' => $resourceKey]);
+                }
+                $version = ResourceVersion::query()->create([
+                    'resource_id' => $resource->id, 'version' => $active->version + 1, 'status' => 'draft',
+                    'schema_json' => $active->schema_json, 'checksum' => $active->checksum, 'check_status' => 'none',
+                ]);
+                $created = true;
+            }
+            return new BeginDraftEditResult(['resource' => $resource->resource_key, 'version' => $this->locator->versionInfo($version), 'schema' => new Schema($version->schema_json), 'created' => $created]);
+        });
     }
 
     /** @param array<string, mixed>|object $input */
@@ -203,10 +208,9 @@ final class ResourceService implements \PTAdmin\Schema\Contracts\ResourceService
     {
         $input = Payload::dto($input, SaveDraftSchemaInput::class);
         return DB::transaction(function () use ($input): SaveDraftSchemaResult {
-            $resource = $this->locator->resource((string) ($input['resource'] ?? ''));
-            $resource = Resource::query()->whereKey($resource->id)->lockForUpdate()->first();
-            if ($resource === null) {
-                throw $this->error('resource_not_found', '资源不存在。', 'draft');
+            $resource = $this->locator->resource((string) ($input['resource'] ?? ''), lockForUpdate: true);
+            if ($resource->status === 'archived') {
+                throw $this->error('resource_archived', '已归档模型不能保存草稿。', 'draft');
             }
             if (PublishTask::query()->where('resource_id', $resource->id)->where('status', 'running')->exists()) {
                 throw $this->error('publish_in_progress', '资源正在发布，请稍后保存草稿。', 'draft');
@@ -387,12 +391,17 @@ final class ResourceService implements \PTAdmin\Schema\Contracts\ResourceService
 
     private function setStatus(string $key, string $status): void
     {
-        $resource = $this->locator->resource($key);
-        if ($resource->status === 'archived' && $status !== 'archived') {
-            throw $this->error('resource_archived', 'resource is archived', 'resource', ['resource_key' => $key]);
-        }
-        $resource->status = $status;
-        $resource->save();
+        DB::transaction(function () use ($key, $status): void {
+            $resource = $this->locator->resource($key, lockForUpdate: true);
+            if ($resource->status === 'archived' && $status !== 'archived') {
+                throw $this->error('resource_archived', 'resource is archived', 'resource', ['resource_key' => $key]);
+            }
+            if (PublishTask::query()->where('resource_id', $resource->id)->where('status', 'running')->exists()) {
+                throw $this->error('publish_in_progress', '资源正在发布，不能改变模型状态。', 'resource');
+            }
+            $resource->status = $status;
+            $resource->save();
+        });
     }
 
     /** @param array<string, mixed> $result */

@@ -23,6 +23,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $table_name
  * @property string $design_flow_id
  * @property string $status
+ * @property array<string, mixed>|null $retired_fields_json 停用字段定义和保留列结构。
+ * @property bool $publish_repair_required 发布失败后的结构修复标记。
  * @property int $active_version_id
  * @property bool $allow_import
  * @property bool $allow_export
@@ -48,7 +50,7 @@ final class Resource extends Model
         'active_version_id' => 'integer',
         'allow_import' => 'boolean', 'allow_export' => 'boolean', 'allow_duplicate' => 'boolean',
         'allow_print' => 'boolean', 'allow_recycle' => 'boolean', 'allow_draft' => 'boolean',
-        'draft_value' => 'json',
+        'draft_value' => 'json', 'retired_fields_json' => 'json', 'publish_repair_required' => 'boolean',
     ];
 
     /** @return HasMany<ResourceVersion, $this> */

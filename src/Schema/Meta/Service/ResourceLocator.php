@@ -15,9 +15,14 @@ use PTAdmin\Schema\Meta\Models\ResourceVersion;
 final class ResourceLocator
 {
     /** 按稳定资源键查询资源，不存在时返回协议错误。 */
-    public function resource(string $resourceKey, string $stage = 'resource'): Resource
+    public function resource(string $resourceKey, string $stage = 'resource', bool $lockForUpdate = false): Resource
     {
-        $resource = Resource::query()->where('resource_key', trim($resourceKey))->first();
+        $query = Resource::query()->where('resource_key', trim($resourceKey));
+        // 写事务首次查询即加锁，避免 MySQL 在等待行锁前建立旧的可重复读快照。
+        if ($lockForUpdate) {
+            $query->lockForUpdate();
+        }
+        $resource = $query->first();
         if (!$resource) {
             throw $this->error('draft_not_found', 'resource not found', $stage, ['resource_key' => $resourceKey]);
         }

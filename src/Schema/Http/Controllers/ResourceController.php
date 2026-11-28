@@ -83,9 +83,38 @@ final class ResourceController extends Controller
         return $this->respond(fn (): mixed => $resources->beginDraftEdit($resource));
     }
 
+    public function recovery(string $resource, \PTAdmin\Schema\Meta\Service\DraftRecoveryService $recovery): JsonResponse
+    {
+        return $this->respond(fn (): array => $recovery->info($resource));
+    }
+
+    public function resetDraft(string $resource, Request $request, \PTAdmin\Schema\Meta\Service\DraftRecoveryService $recovery): JsonResponse
+    {
+        return $this->respond(function () use ($resource, $request, $recovery): array {
+            $checksum = $request->input('expected_checksum');
+            $activeVersion = $request->input('expected_active_version');
+            if (!is_string($checksum) || $checksum === '' || filter_var($activeVersion, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false) {
+                throw new \InvalidArgumentException('expected_checksum 和 expected_active_version 是必填项。');
+            }
+            return $recovery->reset($resource, $checksum, (int) $activeVersion);
+        });
+    }
+
     public function saveDraft(string $resource, Request $request, ResourceServiceInterface $resources): JsonResponse
     {
         return $this->respond(fn (): mixed => $resources->saveDraftSchema(array_merge($this->schemaInput($request), ['resource' => $resource])));
+    }
+
+    public function purgeRetiredField(string $resource, string $field, Request $request, \PTAdmin\Schema\Publish\Service\RetiredFieldPurger $purger): JsonResponse
+    {
+        return $this->respond(function () use ($resource, $field, $request, $purger): array {
+            $input = $request->validate([
+                'confirmation' => ['required', 'string'], 'expected_checksum' => ['required', 'string'],
+                'expected_active_version' => ['required', 'integer', 'min:1'],
+            ]);
+            return $purger->purge($resource, $field, $input['confirmation'], $input['expected_checksum'],
+                (int) $input['expected_active_version'], (string) app(\PTAdmin\Admin\Auth\AdminAuth::class)->id());
+        });
     }
 
     public function activeVersion(string $resource, ResourceServiceInterface $resources): JsonResponse

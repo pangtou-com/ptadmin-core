@@ -383,6 +383,19 @@ Route::middleware($schemaMiddleware)
             ->middleware('ptadmin.permission:schema.resources,update')
             ->where('resource', '[^/]+')
             ->name('resources.draft.edit');
+        Route::get('resources/{resource}/recovery', [ResourceController::class, 'recovery'])
+            ->middleware('ptadmin.permission:schema.resources,view')
+            ->where('resource', '[^/]+')
+            ->name('resources.recovery');
+        Route::post('resources/{resource}/draft/reset', [ResourceController::class, 'resetDraft'])
+            ->middleware('ptadmin.permission:schema.resources,update')
+            ->where('resource', '[^/]+')
+            ->name('resources.draft.reset');
+        Route::post('resources/{resource}/retired-fields/{field}/purge', [ResourceController::class, 'purgeRetiredField'])
+            ->middleware(['ptadmin.permission:schema.resources,update', 'ptadmin.permission:schema.resources,publish'])
+            ->where('resource', '[^/]+')
+            ->where('field', '[A-Za-z_][A-Za-z0-9_]*')
+            ->name('resources.fields.purge');
         Route::put('resources/{resource}/draft', [ResourceController::class, 'saveDraft'])
             ->middleware('ptadmin.permission:schema.resources,update')
             ->where('resource', '[^/]+')

@@ -294,6 +294,7 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
         $query['parent_field'] = $this->parentField($schema);
         $query['schema'] = $schema->toArray();
         $query['schema_object'] = $schema;
+        $query['retired_fields'] = $resolved['resource']->retired_fields_json ?? [];
         $query['table_name'] = $resolved['resource']->table_name;
         $query['resource'] = $resolved['resource']->resource_key;
         $query['has_soft_deletes'] = DB::getSchemaBuilder()->hasColumn($resolved['resource']->table_name, 'deleted_at');
@@ -711,7 +712,7 @@ final class TreeService implements \PTAdmin\Schema\Contracts\TreeServiceInterfac
     {
         $parentField = (string) ($context['parent_field'] ?? 'parent_id');
         $parentValue = $node->{$parentField} ?? null;
-        $item = (array) $node;
+        $item = array_diff_key((array) $node, $context['retired_fields'] ?? []);
         $fields = [];
         foreach ((array) (($context['schema'] ?? [])['fields'] ?? []) as $field) {
             $fields[(string) ($field['name'] ?? '')] = (string) ($field['type'] ?? '');

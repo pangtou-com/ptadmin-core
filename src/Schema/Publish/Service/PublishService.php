@@ -41,48 +41,61 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
     public function checkDraft(array|object $input): CheckDraftResult
     {
         $input = Payload::dto($input, CheckDraftInput::class);
-        $resource = $this->locator->resource((string) ($input['resource'] ?? ''));
-        $draft = $this->locator->draft($resource);
-        $expected = (string) ($input['expected_checksum'] ?? '');
-        $this->assertChecksum($draft, $expected, 'checking');
-        $schema = new Schema((array) $draft->schema_json);
-        $issues = $schema->validate();
-        $active = $resource->versions()->where('status', 'active')->first();
-        array_push($issues, ...$this->extensions->validate(new ExtensionContext($resource, $schema->toArray(), $active ? (array) $active->schema_json : null)));
-        $plan = $this->migrationPlan($resource, $active, $schema->toArray());
-        $summary = $this->changeSummary($active ? (array) $active->schema_json : [], $schema->toArray());
-        $validation = ['passed' => $issues === [], 'errors' => $issues, 'warnings' => []];
-        $draft->check_status = $issues === [] ? 'passed' : 'failed';
-        $draft->check_checksum = $draft->checksum;
-        $draft->validation_result_json = $validation;
-        $draft->migration_plan_json = $plan;
-        $draft->change_summary_json = $summary;
-        $draft->checked_at = now();
-        $draft->save();
-        return new CheckDraftResult(['resource' => $resource->resource_key, 'version' => $this->locator->versionInfo($draft), 'validation_result' => $validation, 'migration_plan' => $plan, 'change_summary' => $summary]);
+        return DB::transaction(function () use ($input): CheckDraftResult {
+            $resource = $this->locator->resource((string) ($input['resource'] ?? ''), lockForUpdate: true);
+            $this->assertEditableState($resource);
+            if (PublishTask::query()->where('resource_id', $resource->id)->where('status', 'running')->exists()) {
+                throw $this->error('publish_in_progress', '资源正在发布，请稍后操作。', 'draft');
+            }
+            $draft = $this->locator->draft($resource);
+            $expected = (string) ($input['expected_checksum'] ?? '');
+            $this->assertChecksum($draft, $expected, 'checking');
+            $schema = new Schema((array) $draft->schema_json);
+            $issues = $schema->validate();
+            $active = $resource->versions()->where('status', 'active')->first();
+            array_push($issues, ...$this->extensions->validate(new ExtensionContext($resource, $schema->toArray(), $active ? (array) $active->schema_json : null)));
+            $plan = $this->migrationPlan($resource, $active, $schema->toArray());
+            $issues = array_merge($issues, (new FieldLifecycle())->issues($resource, $active ? (array) $active->schema_json : [], $schema->toArray(), $plan));
+            $summary = $this->changeSummary($active ? (array) $active->schema_json : [], $schema->toArray());
+            $validation = ['passed' => $issues === [], 'errors' => $issues, 'warnings' => []];
+            $draft->check_status = $issues === [] ? 'passed' : 'failed';
+            $draft->check_checksum = $draft->checksum;
+            $draft->validation_result_json = $validation;
+            $draft->migration_plan_json = $plan;
+            $draft->change_summary_json = $summary;
+            $draft->checked_at = now();
+            $draft->save();
+            return new CheckDraftResult(['resource' => $resource->resource_key, 'version' => $this->locator->versionInfo($draft), 'validation_result' => $validation, 'migration_plan' => $plan, 'change_summary' => $summary]);
+        });
     }
 
     /** @param array<string, mixed>|object $input */
     public function approveDraft(array|object $input): ApproveDraftResult
     {
         $input = Payload::dto($input, ApproveDraftInput::class);
-        $resource = $this->locator->resource((string) ($input['resource'] ?? ''));
-        $draft = $this->locator->draft($resource);
-        $expected = (string) ($input['expected_checksum'] ?? '');
-        $this->assertChecksum($draft, $expected, 'checking');
-        if ($draft->check_status !== 'passed' || $draft->check_checksum !== $draft->checksum) {
-            throw $this->error('check_required', 'draft must pass check before approval', 'checking', ['resource_key' => $resource->resource_key]);
-        }
-        $plan = (array) ($draft->migration_plan_json ?? []);
-        if (empty($plan['destructive'])) {
-            throw $this->error('invalid_input', 'draft does not require destructive approval', 'checking', ['resource_key' => $resource->resource_key]);
-        }
-        $existing = PublishTask::query()->where('resource_id', $resource->id)->where('version_id', $draft->id)->where('status', 'pending')->where('check_checksum', $draft->check_checksum)->latest('id')->first();
-        if ($existing) {
-            return new ApproveDraftResult(['task' => $this->taskInfo($existing)]);
-        }
-        $task = PublishTask::query()->create(['resource_id' => $resource->id, 'version_id' => $draft->id, 'status' => 'pending', 'phase' => 'checking', 'triggered_by' => (string) ($input['approved_by'] ?? ''), 'check_checksum' => $draft->check_checksum]);
-        return new ApproveDraftResult(['task' => $this->taskInfo($task)]);
+        return DB::transaction(function () use ($input): ApproveDraftResult {
+            $resource = $this->locator->resource((string) ($input['resource'] ?? ''), lockForUpdate: true);
+            $this->assertEditableState($resource);
+            if (PublishTask::query()->where('resource_id', $resource->id)->where('status', 'running')->exists()) {
+                throw $this->error('publish_in_progress', '资源正在发布，请稍后操作。', 'draft');
+            }
+            $draft = $this->locator->draft($resource);
+            $expected = (string) ($input['expected_checksum'] ?? '');
+            $this->assertChecksum($draft, $expected, 'checking');
+            if ($draft->check_status !== 'passed' || $draft->check_checksum !== $draft->checksum) {
+                throw $this->error('check_required', 'draft must pass check before approval', 'checking', ['resource_key' => $resource->resource_key]);
+            }
+            $plan = (array) ($draft->migration_plan_json ?? []);
+            if (empty($plan['destructive'])) {
+                throw $this->error('invalid_input', 'draft does not require destructive approval', 'checking', ['resource_key' => $resource->resource_key]);
+            }
+            $existing = PublishTask::query()->where('resource_id', $resource->id)->where('version_id', $draft->id)->where('status', 'pending')->where('check_checksum', $draft->check_checksum)->latest('id')->first();
+            if ($existing) {
+                return new ApproveDraftResult(['task' => $this->taskInfo($existing)]);
+            }
+            $task = PublishTask::query()->create(['resource_id' => $resource->id, 'version_id' => $draft->id, 'status' => 'pending', 'phase' => 'checking', 'triggered_by' => (string) ($input['approved_by'] ?? ''), 'check_checksum' => $draft->check_checksum]);
+            return new ApproveDraftResult(['task' => $this->taskInfo($task)]);
+        });
     }
 
     public function getDraftApproval(string $resourceKey): GetDraftApprovalResult
@@ -99,6 +112,7 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
     {
         $input = Payload::dto($input, PublishDraftInput::class);
         $resource = $this->locator->resource((string) ($input['resource'] ?? ''));
+        $this->assertEditableState($resource);
         $draft = $this->locator->draft($resource);
         $expected = (string) ($input['expected_checksum'] ?? '');
         $this->assertChecksum($draft, $expected, 'draft');
@@ -112,6 +126,7 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
         }
         $task = DB::transaction(function () use ($resource, $draft, $approval, $expected): PublishTask {
             $lockedResource = Resource::query()->whereKey($resource->id)->lockForUpdate()->firstOrFail();
+            $this->assertEditableState($lockedResource);
             $currentDraft = $this->locator->draft($lockedResource);
             $this->assertChecksum($currentDraft, $draft->checksum, 'draft');
             $this->assertChecksum($currentDraft, $expected, 'draft');
@@ -119,9 +134,13 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
                 throw $this->error('check_required', '草稿已变化，请重新检查后发布。', 'draft');
             }
             $active = $lockedResource->versions()->where('status', 'active')->first();
-            $issues = $this->extensions->validate(new ExtensionContext($lockedResource, (array) $draft->schema_json, $active ? (array) $active->schema_json : null));
+            $plan = $this->migrationPlan($lockedResource, $active, (array) $draft->schema_json);
+            $issues = array_merge(
+                $this->extensions->validate(new ExtensionContext($lockedResource, (array) $draft->schema_json, $active ? (array) $active->schema_json : null)),
+                (new FieldLifecycle())->issues($lockedResource, $active ? (array) $active->schema_json : [], (array) $draft->schema_json, $plan),
+            );
             if ($issues !== []) {
-                throw new SchemaError('invalid_extension', $issues[0]['message'], ['resource_key' => $resource->resource_key], $issues, false, 'checking');
+                throw new SchemaError((string) ($issues[0]['code'] ?? 'invalid_schema_change'), $issues[0]['message'], ['resource_key' => $resource->resource_key], $issues, false, 'checking');
             }
             $running = PublishTask::query()->where('resource_id', $resource->id)->where('status', 'running')->latest('id')->first();
             if ($running) {
@@ -137,15 +156,21 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
             $task->save();
             return $task;
         });
+        $structureBefore = null;
         try {
+            $active = $resource->versions()->where('status', 'active')->first();
+            $plan = $this->migrationPlan($resource, $active, (array) $draft->schema_json);
+            $lifecycle = new FieldLifecycle();
+            $structureBefore = $lifecycle->structure($resource);
             $migrationExecuted = $resource->migration_owner !== 'domain';
             if ($migrationExecuted) {
-                $this->applyMigration($resource, $plan, (array) $draft->schema_json);
+                $this->applyMigration($resource, $plan, (array) $draft->schema_json, $active ? (array) $active->schema_json : []);
             }
+            $retired = $lifecycle->nextRetiredFields($resource, $active ? (array) $active->schema_json : [], (array) $draft->schema_json, (int) $draft->version);
             $task->migration_result_json = ['executed' => $migrationExecuted, 'steps' => count((array) ($plan['steps'] ?? [])), 'migration_owner' => $resource->migration_owner];
             $task->phase = 'activating';
             $task->save();
-            DB::transaction(function () use ($resource, $draft, $task): void {
+            DB::transaction(function () use ($resource, $draft, $task, $retired): void {
                 $lockedResource = Resource::query()->whereKey($resource->id)->lockForUpdate()->firstOrFail();
                 $lockedDraft = ResourceVersion::query()->whereKey($draft->id)->lockForUpdate()->firstOrFail();
                 $capabilities = (array) (($lockedDraft->schema_json ?? [])['capabilities'] ?? []);
@@ -158,6 +183,7 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
                 $lockedDraft->activated_at = now();
                 $lockedDraft->check_status = 'passed';
                 $lockedDraft->save();
+                $lockedResource->retired_fields_json = $retired;
                 $lockedResource->active_version_id = $lockedDraft->id;
                 $lockedResource->status = 'active';
                 $lockedResource->save();
@@ -169,6 +195,7 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
                 $task->save();
             });
         } catch (SchemaError $exception) {
+            $this->recordStructureFailure($resource, $structureBefore);
             $task->status = 'failed';
             $task->last_error_code = $exception->getSchemaCode();
             $task->last_error_message = $exception->getMessage();
@@ -176,6 +203,7 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
             $task->save();
             throw $exception;
         } catch (\Throwable $exception) {
+            $this->recordStructureFailure($resource, $structureBefore);
             $task->status = 'failed';
             $task->last_error_code = 'migration_failed';
             $task->last_error_message = $exception->getMessage();
@@ -184,6 +212,31 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
             throw $this->error('migration_failed', $exception->getMessage(), 'migration', ['resource_key' => $resource->resource_key]);
         }
         return new PublishDraftResult(['task' => $this->taskInfo($task)]);
+    }
+
+    private function assertEditableState(Resource $resource): void
+    {
+        if ($resource->status === 'archived') {
+            throw $this->error('resource_archived', '已归档模型不能检查、审批或发布。', 'draft');
+        }
+    }
+
+    /** 保守记录 DDL 副作用；草稿重置不得清除这一标记。 */
+    private function recordStructureFailure(Resource $resource, ?array $before): void
+    {
+        // 快照取得前尚未执行 DDL，准备阶段失败不应要求修复数据库。
+        if ($before === null || $resource->migration_owner === 'domain') {
+            return;
+        }
+        try {
+            $changed = (new FieldLifecycle())->structure($resource) !== $before;
+        } catch (\Throwable) {
+            $changed = true;
+        }
+        if ($changed) {
+            $resource->publish_repair_required = true;
+            $resource->save();
+        }
     }
 
     public function getPublishTask(int $taskId): GetPublishTaskResult
@@ -208,8 +261,9 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
      *
      * @param array<string, mixed> $plan
      * @param array<string, mixed> $schema
+     * @param array<string, mixed> $before
      */
-    private function applyMigration(Resource $resource, array $plan, array $schema): void
+    private function applyMigration(Resource $resource, array $plan, array $schema, array $before): void
     {
         // Preflight the complete plan before changing the table. Column shape
         // changes need a dialect-aware migration runner; silently skipping one
@@ -217,7 +271,7 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
         $unsupported = [];
         foreach ((array) ($plan['steps'] ?? []) as $step) {
             $key = (string) ($step['key'] ?? '');
-            if (str_starts_with($key, 'alter_field:')) {
+            if (str_starts_with($key, 'alter_field:') && ($step['changes'] ?? []) !== ['required']) {
                 $unsupported[] = $key;
             }
         }
@@ -276,15 +330,33 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
         }
         foreach ((array) ($plan['steps'] ?? []) as $step) {
             $key = (string) ($step['key'] ?? '');
-            if (str_starts_with($key, 'drop_field:')) {
-                $column = substr($key, strlen('drop_field:'));
-                if ($column !== '' && $column !== 'id' && DatabaseSchema::hasColumn($resource->table_name, $column)) {
-                    try {
-                        DatabaseSchema::table($resource->table_name, static fn ($table) => $table->dropColumn($column));
-                    } catch (\Throwable $exception) {
-                        throw $this->error('migration_failed', $exception->getMessage(), 'migration', ['field' => $column]);
+            if (str_starts_with($key, 'alter_field:') && ($step['changes'] ?? []) === ['required']) {
+                $name = substr($key, strlen('alter_field:'));
+                $field = array_column($schema['fields'], null, 'name')[$name];
+                DatabaseSchema::table($resource->table_name, static function ($table) use ($field): void {
+                    self::addColumn($table, $field)->change();
+                });
+            } elseif (str_starts_with($key, 'drop_field:')) {
+                $name = substr($key, strlen('drop_field:'));
+                DatabaseSchema::table($resource->table_name, static fn ($table) => $table->dropColumn($name));
+            } elseif (str_starts_with($key, 'retire_field:') || str_starts_with($key, 'restore_field:')) {
+                [$operation, $name] = explode(':', $key, 2);
+                if ($operation === 'retire_field') {
+                    $field = array_column($before['fields'], null, 'name')[$name];
+                    // 停用后不再提交该字段，解除非空约束但保留历史值及原定义供恢复。
+                    if (empty($field['required'])) {
+                        continue;
+                    }
+                    $field['required'] = false;
+                } else {
+                    $field = array_column($schema['fields'], null, 'name')[$name];
+                    if (empty($field['required'])) {
+                        continue;
                     }
                 }
+                DatabaseSchema::table($resource->table_name, static function ($table) use ($field): void {
+                    self::addColumn($table, $field)->change();
+                });
             } elseif (str_starts_with($key, 'drop_index:')) {
                 $index = substr($key, strlen('drop_index:'));
                 if ($index !== '' && $this->indexExists($resource->table_name, $index)) {
@@ -465,7 +537,7 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
         return $items;
     }
 
-    private static function addColumn($table, array $field): void
+    private static function addColumn($table, array $field): \Illuminate\Database\Schema\ColumnDefinition
     {
         $name = (string) $field['name'];
         $type = strtolower((string) ($field['type'] ?? 'string'));
@@ -487,15 +559,14 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
         } else {
             $column = $table->string($name, 255)->comment(self::fieldComment($field));
         }
-        if (empty($field['required'])) {
-            $column->nullable();
-        }
+        $column->nullable(empty($field['required']));
         // 标量默认值同时用于新表及增量加列，保证已有记录满足安全发布计划。
         if (!$multiple && in_array($type, ['string', 'integer', 'number', 'boolean'], true)
             && \PTAdmin\Schema\Support\FieldProtection::mode($field) !== 'encrypted'
             && array_key_exists('default', $field) && is_scalar($field['default'])) {
             $column->default($field['default']);
         }
+        return $column;
     }
 
     /**
@@ -646,7 +717,7 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
             if (!isset($before[$name])) {
                 if (!empty($field['persisted'])) {
                     $risk = $active !== null && !empty($field['required']) && !array_key_exists('default', $field) ? 'guarded' : 'safe';
-                    $steps[] = $this->migrationStep('add_field:'.$name, 'column:'.$resource->table_name.'.'.$name, $risk, ['persisted']);
+                    $steps[] = $this->migrationStep((isset(($resource->retired_fields_json ?? [])[$name]) ? 'restore_field:' : 'add_field:').$name, 'column:'.$resource->table_name.'.'.$name, $risk, ['persisted']);
                 }
                 continue;
             }
@@ -657,7 +728,7 @@ final class PublishService implements \PTAdmin\Schema\Contracts\PublishServiceIn
                 $risk = !empty($field['required']) && !array_key_exists('default', $field) ? 'guarded' : 'safe';
                 $steps[] = $this->migrationStep('add_field:'.$name, 'column:'.$resource->table_name.'.'.$name, $risk, ['persisted']);
             } elseif ($wasPersisted && !$isPersisted) {
-                $steps[] = $this->migrationStep('drop_field:'.$name, 'column:'.$resource->table_name.'.'.$name, 'destructive', ['persisted']);
+                $steps[] = $this->migrationStep('retire_field:'.$name, 'column:'.$resource->table_name.'.'.$name, 'guarded', ['persisted']);
             } elseif ($wasPersisted && $isPersisted) {
                 $changes = $this->fieldStorageChanges((array) $before[$name], (array) $field);
                 if ($changes !== []) {
