@@ -28,7 +28,7 @@ if ($response->getStatusCode() !== 200 || empty($body['data']['access_token'])) 
     throw new RuntimeException('安装或升级后登录失败：'.$response->getContent());
 }
 $kernel->terminate($request, $response);
-if (\Composer\InstalledVersions::getPrettyVersion('ptadmin/core') === '0.13.1') {
+if (\Composer\InstalledVersions::getPrettyVersion('ptadmin/core') === '0.14.0') {
     $composerPath = __DIR__.'/composer.json';
     $original = file_get_contents($composerPath);
     try {
@@ -36,7 +36,7 @@ if (\Composer\InstalledVersions::getPrettyVersion('ptadmin/core') === '0.13.1') 
         $custom['require']['customer/extra-package'] = '^1.0';
         file_put_contents($composerPath, json_encode($custom, JSON_THROW_ON_ERROR));
         $request = \Illuminate\Http\Request::create('/ptadmin/system/updates/install', 'POST', [
-            'component' => 'core', 'version' => '0.13.2', 'database_backup_confirmed' => true,
+            'component' => 'core', 'version' => '0.14.1', 'database_backup_confirmed' => true,
         ]);
         $request->headers->set('Accept', 'application/json');
         $request->headers->set('Authorization', 'Bearer '.$body['data']['access_token']);

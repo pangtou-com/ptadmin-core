@@ -1,15 +1,15 @@
 {
   "manifest_version": 1,
-  "frontend_version": "0.13.1",
-  "backend_constraint": ">=0.13.0 <0.14.0",
+  "frontend_version": "0.14.0",
+  "backend_constraint": ">=0.14.0 <0.15.0",
   "api_protocol": 1,
   "schema_protocol": 1,
   "entry": "./index.html",
   "files": [
     {
-      "path": "assets/LoginPage-AEAPYZtG.js",
+      "path": "assets/LoginPage-D1vXKndw.js",
       "size": 5801,
-      "sha256": "72b48bbb03934a665c89cf203db1b1a4732fe04cd4d5736813ff5e3389cf657b"
+      "sha256": "fed11151b90e3046f98a5123a8e14cd5d18ced3aa85a3b3c264ca2d3ebc65123"
     },
     {
       "path": "assets/_admin-shared-runtime_element-plus-COgk1__S.js",
@@ -32,9 +32,9 @@
       "sha256": "ef44ae59842e037563a26e27b13fd555ea318083757289e4b3f6bbb8be3023d6"
     },
     {
-      "path": "assets/index-CmScmXCO.js",
-      "size": 1271810,
-      "sha256": "16813c06758212acf1de2139f73d32237c49b08dcb468d26de4e47ac778356b0"
+      "path": "assets/index-BJdl2QXT.css",
+      "size": 657065,
+      "sha256": "62f48bdf2959a1022e2982d519ae1ba18a755e76494b4b73e2552a3313ee661e"
     },
     {
       "path": "assets/index-CmXWb10-.js",
@@ -42,9 +42,9 @@
       "sha256": "5487947a2e7b6a7e17b2c50d5b7c9241cc2b7e0f28561c173528ae4235edd435"
     },
     {
-      "path": "assets/index-CxtJBZQV.css",
-      "size": 657065,
-      "sha256": "954e5793bca938f6b4032d0c8565e0e6cde7ca5dccbb7528a167f2752a1ac871"
+      "path": "assets/index-Du23iOkB.js",
+      "size": 1272327,
+      "sha256": "4539f24cd4aa091ccad073ce34506c3ecb28e963ac68100b4a3bcebf33b45d18"
     },
     {
       "path": "assets/index.esm-B3ROeNbW-BU_memu0.js",
@@ -159,10 +159,10 @@
     {
       "path": "index.html",
       "size": 5068,
-      "sha256": "5330a7a063105f49f408bfd767c715f9551fb63682aa624ac6e552404a05da1f"
+      "sha256": "0147f06e94571fe276f961e8a2c0d89d416e1069aa29485017806825be3ed0e5"
     }
   ],
-  "artifact_sha256": "7c94ad328869a422d7f39741e9477d3950d344048c2a091866fd9e9b249f85bd",
-  "git_commit": "d38876a4fb8e538fd84cf79758e89f414417533a",
-  "source_sha256": "8b75b87638dcc13bbcf96eaf289ba96b46d4fcb84a6e91a904ba094563794522"
+  "artifact_sha256": "70ac33c3a927524170a2a4af8cbb7348ca360dca3e180d868afd0431f907f3db",
+  "git_commit": "11bd253dc310f7575927cea99cabbdc4e84a793d",
+  "source_sha256": "d9744112646e5d46a4ca73790b4ed3176c38031b394b1176f58d3d9a9183927e"
 }

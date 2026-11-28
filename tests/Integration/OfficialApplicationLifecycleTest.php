@@ -31,7 +31,7 @@ final class OfficialApplicationLifecycleTest extends TestCase
             $installed['dev'] = false;
             $installed['dev-package-names'] = [];
             $reports = [];
-            foreach (['0.13.1', '0.13.2'] as $version) {
+            foreach (['0.14.0', '0.14.1'] as $version) {
                 $root = $workspace.'/build-'.$version;
                 foreach (['app', 'bootstrap/app.php', 'bootstrap/update-guard.php', 'config', 'routes', 'resources', 'templates', 'database/migrations', 'public/index.php', 'artisan', '.env.example', 'composer.json'] as $path) {
                     if (file_exists($admin.'/'.$path)) {
@@ -45,10 +45,10 @@ final class OfficialApplicationLifecycleTest extends TestCase
                 foreach (['src', 'config', 'database', 'resources', 'routes', 'composer.json'] as $path) {
                     UpdateFiles::copy($core.'/'.$path, $root.'/vendor/ptadmin/core/'.$path);
                 }
-                if ($version === '0.13.2') {
+                if ($version === '0.14.1') {
                     $shellRoot = $root.'/vendor/ptadmin/core/resources/admin-frontend';
                     $shell = UpdateFiles::read($shellRoot.'/manifest.json');
-                    $shell['frontend_version'] = '0.13.2';
+                    $shell['frontend_version'] = '0.14.1';
                     file_put_contents($shellRoot.'/index.html', "\n<!-- package lifecycle target -->", FILE_APPEND);
                     foreach ($shell['files'] as &$file) {
                         if ($file['path'] === 'index.html') {
@@ -96,12 +96,12 @@ if ($fixture = getenv('PTADMIN_PACKAGE_TEST_CATALOG')) {
 PHP, $code);
                 file_put_contents($provider, $code);
                 $reports[$version] = (new ApplicationPackageBuilder())->build($root, $workspace.'/release-'.$version,
-                    $version, str_repeat('b', 40), '^0.13', $version === '0.13.2' ? $workspace.'/build-0.13.1' : null);
+                    $version, str_repeat('b', 40), '^0.14', $version === '0.14.1' ? $workspace.'/build-0.14.0' : null);
             }
             foreach (['full', 'patch'] as $kind) {
                 $root = $workspace.'/runtime-'.$kind;
                 $zip = new \ZipArchive();
-                self::assertTrue($zip->open($workspace.'/release-0.13.1/install.zip'));
+                self::assertTrue($zip->open($workspace.'/release-0.14.0/install.zip'));
                 self::assertTrue($zip->extractTo($root));
                 $zip->close();
                 self::assertFileDoesNotExist($root.'/.env');
@@ -123,8 +123,8 @@ PHP, $code);
                     file_put_contents($root.'/public/package_admin/'.$path, 'user-content');
                 }
                 $this->process([PHP_BINARY, 'lifecycle.php', 'check'], $root, $environment);
-                $this->process([PHP_BINARY, 'artisan', 'ptadmin:updates:install', 'core', '0.13.2', '--database-backup-confirmed'], $root, $environment);
-                PackageManifest::verify($root, $reports['0.13.2']['target']);
+                $this->process([PHP_BINARY, 'artisan', 'ptadmin:updates:install', 'core', '0.14.1', '--database-backup-confirmed'], $root, $environment);
+                PackageManifest::verify($root, $reports['0.14.1']['target']);
                 $this->process([PHP_BINARY, 'lifecycle.php', 'check'], $root, $environment);
                 self::assertFileDoesNotExist($root.'/storage/framework/down');
                 $plans = glob($root.'/storage/app/ptadmin/updates/operations/*/plan.json');
@@ -132,7 +132,7 @@ PHP, $code);
                 self::assertSame($kind, UpdateFiles::read($plans[0])['artifact']['kind']);
                 self::assertSame('customer/application', UpdateFiles::read($root.'/composer.json')['name']);
                 $this->process([PHP_BINARY, $composerBinary, 'validate', '--no-check-publish'], $root, ['COMPOSER_DISABLE_NETWORK' => '1']);
-                self::assertSame('0.13.2', UpdateFiles::read($root.'/public/package_admin/manifest.json')['frontend_version']);
+                self::assertSame('0.14.1', UpdateFiles::read($root.'/public/package_admin/manifest.json')['frontend_version']);
                 foreach (['modules/app/keep.js', 'plugins/example/keep.js', 'user.txt'] as $path) {
                     self::assertSame('user-content', file_get_contents($root.'/public/package_admin/'.$path));
                 }
@@ -174,7 +174,7 @@ PHP, $code);
             foreach (['core', 'application-template'] as $component) {
                 $results[] = ['component' => $component, 'version' => $version, 'status' => 'published', 'git_commit' => str_repeat($component === 'core' ? 'a' : 'b', 40),
                     'composer_package' => $component === 'core' ? 'ptadmin/core' : 'ptadmin/admin', 'composer_version' => $version,
-                    'compatibility' => ['php' => '^8.2', 'laravel' => '^12.68', 'core' => '^0.13'], 'github_url' => '', 'gitee_url' => '',
+                    'compatibility' => ['php' => '^8.2', 'laravel' => '^12.68', 'core' => '^0.14'], 'github_url' => '', 'gitee_url' => '',
                     'changelog' => '', 'breaking_changes' => '', 'upgrade_steps' => '', 'rollback_steps' => '', 'application' => $application];
             }
         }
