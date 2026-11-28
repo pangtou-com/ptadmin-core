@@ -53,6 +53,7 @@ final class OfficialShellUpdater
                 throw new UpdateException('后台目录与更新备份不在同一文件系统，请使用部署流程更新。', 'update_unavailable');
             }
             $tasks->heartbeat($id, 'preparing', 55, '正在准备新目录并保留模块、插件和用户文件。');
+            $sourceSnapshot = PackageManifest::digest(PackageManifest::files(dirname($target), [basename($target)]));
             UpdateFiles::copy($target, $directory.'/staged');
             $oldPaths = array_fill_keys([...array_column($previous['files'], 'path'), 'manifest.json'], true);
             foreach ($oldPaths as $path => $_) {
@@ -64,12 +65,7 @@ final class OfficialShellUpdater
                 if (file_exists($directory.'/staged/'.$path)) {
                     throw new UpdateException('新 Shell 文件与用户自有文件冲突：'.$path, 'user_file_conflict');
                 }
-                $parent = dirname($directory.'/staged/'.$path);
-                if (!is_dir($parent) && !mkdir($parent, 0755, true)) {
-                    throw new UpdateException('无法创建 Shell 资源目录。', 'prepare_failed');
-                }
-                UpdateFiles::copy($directory.'/bundle/'.$path, $directory.'/staged/'.$path);
-                chmod($directory.'/staged/'.$path, 0644);
+                UpdateFiles::copyPublicAsset($directory.'/bundle/'.$path, $directory.'/staged/'.$path);
             }
             $verifier->verify($directory.'/staged');
             $latest = $this->installer->resolve('admin-shell', $version);
@@ -77,19 +73,76 @@ final class OfficialShellUpdater
                 throw new UpdateException('准备期间发行包记录变化，请重新提交更新。', 'release_changed');
             }
             $tasks->heartbeat($id, 'replacing', 75, '正在备份并切换 Shell。中断恢复入口：php '.escapeshellarg($directory.'/recover.php').' restore');
-            $recovery = new UpdateRecovery($directory);
-            try {
-                $recovery->switch([['source' => $directory.'/staged', 'target' => $target]], ['component' => 'admin-shell', 'version' => $version, 'task_directory' => $this->store->taskDirectory($id)]);
-                $verifier->verify($target);
-                $recovery->stage('completed');
-            } catch (\Throwable $error) {
-                if (is_file($directory.'/journal.json')) {
-                    $recovery->restore();
-                }
-                throw $error;
-            }
+            $this->promote($directory, $target, $sourceSnapshot, $release, $verifier, $task, $tasks);
             return ['component' => 'admin-shell', 'version' => $version, 'reload_required' => true,
                 'message' => 'Shell 已更新，请刷新后台。'];
         });
     }
+
+    private function promote(string $directory, string $target, string $sourceSnapshot, array $release,
+        AdminFrontendManifest $verifier, array $task, TaskManager $tasks): void
+    {
+        $framework = storage_path('framework');
+        UpdateFiles::directory($framework);
+        $maintenance = [$framework.'/maintenance.php', $framework.'/down'];
+        foreach ($maintenance as $path) {
+            if (file_exists($path)) {
+                throw new UpdateException('应用已进入其他维护流程，停止更新。', 'update_unavailable');
+            }
+        }
+        $recovery = new UpdateRecovery($directory);
+        $lock = null;
+        $metadata = ['component' => 'admin-shell', 'version' => $release['version'],
+            'maintenance_files' => $maintenance, 'task_directory' => $this->store->taskDirectory($task['task_id'])];
+        // 恢复脚本也必须取得应用执行锁，不能在仍有业务写入时恢复公开目录。
+        UpdateFiles::write($directory.'/plan.json', ['storage' => storage_path()]);
+        UpdateFiles::write($directory.'/journal.json', $metadata + ['status' => 'entering_maintenance', 'database_started' => false, 'entries' => []]);
+        try {
+            if (file_put_contents($maintenance[0], '<?php http_response_code(503); header("Retry-After: 5"); header("X-PTAdmin-Update: maintenance"); echo "系统正在更新，请稍后刷新。"; exit;') === false) {
+                throw new UpdateException('无法进入维护状态。', 'update_failed');
+            }
+            UpdateFiles::write($maintenance[1], ['time' => time(), 'retry' => 5]);
+            $lock = fopen($framework.'/ptadmin-runtime.lock', 'c+');
+            if ($lock === false) {
+                throw new UpdateException('无法打开应用执行锁。', 'update_failed');
+            }
+            $deadline = microtime(true) + 60;
+            $lastHeartbeat = 0;
+            while (!flock($lock, LOCK_EX | LOCK_NB)) {
+                if (microtime(true) >= $deadline) {
+                    throw new UpdateException('旧请求或常驻命令尚未退出，请暂停队列、调度和长任务后重试。', 'update_running');
+                }
+                if (time() - $lastHeartbeat >= 5) {
+                    $tasks->heartbeat($task['task_id'], 'draining', 75, '等待已进入的请求和命令完成，再切换后台界面。');
+                    $lastHeartbeat = time();
+                }
+                usleep(100000);
+            }
+            $matches = array_values(array_filter(app(OfficialUpdateService::class)->fetchCatalog()['results'], static fn (array $entry): bool =>
+                $entry['component'] === 'admin-shell' && $entry['version'] === $release['version']));
+            if (count($matches) !== 1 || $matches[0]['packages']['build'] !== $release['packages']['build']) {
+                throw new UpdateException('切换前 Shell 发行已撤回或变化，请重新检查。', 'release_changed');
+            }
+            if (PackageManifest::digest(PackageManifest::files(dirname($target), [basename($target)])) !== $sourceSnapshot) {
+                throw new UpdateException('准备期间后台界面或用户文件发生变化，已停止切换，请重新发起更新。', 'source_changed');
+            }
+            $recovery->switch([['source' => $directory.'/staged', 'target' => $target]], $metadata);
+            $verifier->verify($target);
+            foreach ($maintenance as $path) {
+                if (!unlink($path)) {
+                    throw new UpdateException('后台界面已切换，但无法退出维护状态。', 'update_failed');
+                }
+            }
+            $recovery->stage('completed');
+        } catch (\Throwable $error) {
+            $recovery->restore();
+            throw $error;
+        } finally {
+            if (is_resource($lock)) {
+                flock($lock, LOCK_UN);
+                fclose($lock);
+            }
+        }
+    }
+
 }

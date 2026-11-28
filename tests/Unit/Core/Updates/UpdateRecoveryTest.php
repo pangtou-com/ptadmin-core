@@ -37,6 +37,30 @@ final class UpdateRecoveryTest extends TestCase
         self::assertSame('restored', $recovery->read()['status']);
     }
 
+    public function testNewFileSwitchCanRestoreOriginalAbsenceIdempotently(): void
+    {
+        $recovery = new UpdateRecovery($this->directory.'/operation');
+        $target = $this->directory.'/new-identity';
+        $recovery->switch([['source' => $this->directory.'/new', 'target' => $target, 'allow_create' => true]]);
+        self::assertSame('updated', file_get_contents($target));
+        self::assertFalse($recovery->read()['entries'][0]['existed']);
+        $recovery->restore();
+        $recovery->restore();
+        self::assertFileDoesNotExist($target);
+        self::assertSame('original', file_get_contents($this->directory.'/old'));
+    }
+
+    public function testUnpromotedNewFileDoesNotRemoveAnUnrelatedTargetDuringRecovery(): void
+    {
+        $operation = $this->directory.'/operation';
+        UpdateFiles::write($operation.'/journal.json', ['status' => 'switching', 'entries' => [
+            ['source' => $this->directory.'/new', 'target' => $this->directory.'/old', 'backup' => $operation.'/backup/0', 'restored' => false, 'existed' => false],
+        ]]);
+        (new UpdateRecovery($operation))->restore();
+        self::assertSame('original', file_get_contents($this->directory.'/old'));
+        self::assertSame('updated', file_get_contents($this->directory.'/new'));
+    }
+
     public function testInterruptedPreparationWithoutJournalDoesNotTouchRuntimeFiles(): void
     {
         $operation = $this->directory.'/operation';

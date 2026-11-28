@@ -26,11 +26,13 @@ final class CoreUpdateExecutor implements TaskExecutorInterface
             $release = $this->installer->resolve('core', $task['payload']['version']);
             $baseline = app(DependencyBaseline::class)->inspect(null, true);
             $selection = app(ApplicationUpdatePlan::class)->select($release, $baseline);
+            $composerInstallation = ($baseline['installation'] ?? '') === 'composer';
             $inputs = [];
-            foreach (['composer.json', 'composer.lock', PackageManifest::IDENTITY] as $file) {
+            foreach (['composer.json', 'composer.lock', $composerInstallation ? DependencyBaseline::COMPOSER_IDENTITY : PackageManifest::IDENTITY] as $file) {
                 $inputs[$file] = hash_file('sha256', base_path($file));
             }
-            $requiredBytes = 4 * $selection['target']['managed_bytes'] + $baseline['target']['managed_bytes'] + $selection['artifact']['size'] + 67108864;
+            $sourceBytes = $composerInstallation ? array_sum(array_column($baseline['source_snapshot'], 'size')) : $baseline['target']['managed_bytes'];
+            $requiredBytes = 4 * $selection['target']['managed_bytes'] + $sourceBytes + $selection['artifact']['size'] + 67108864;
             $availableBytes = disk_free_space($directory);
             if ($availableBytes === false || $availableBytes < $requiredBytes) {
                 throw new UpdateException('磁盘空间不足，准备和备份至少需要 '.ceil($requiredBytes / 1048576).' MiB 可用空间。', 'insufficient_space');
@@ -63,6 +65,8 @@ final class CoreUpdateExecutor implements TaskExecutorInterface
             UpdateFiles::write($directory.'/plan.json', ['root' => base_path(), 'storage' => storage_path(), 'version' => $release['version'],
                 'git_commit' => $release['git_commit'], 'php' => $php, 'inputs' => $inputs, 'shell_target' => $shellTarget, 'artifact' => $selection['artifact'],
                 'shell_input' => ['path' => $shellPath, 'sha256' => $shellInput],
+                'composer_source' => $composerInstallation ? ['target' => $baseline['target'], 'files' => $baseline['source_snapshot'],
+                    'identity_sha256' => is_file(base_path(PackageManifest::IDENTITY)) ? hash_file('sha256', base_path(PackageManifest::IDENTITY)) : null] : null,
                 'timeout' => (int) config('ptadmin-updates.process_timeout'), 'task_directory' => $this->store->taskDirectory($task['task_id']),
                 'rebuild_caches' => array_values(array_filter([app()->routesAreCached() ? 'route:cache' : null, app()->eventsAreCached() ? 'event:cache' : null])),
                 'config_cached' => app()->configurationIsCached()]);

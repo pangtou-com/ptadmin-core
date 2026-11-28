@@ -39,6 +39,10 @@ final class OfficialUpdateInstallTest extends TestCase
         $this->app->setBasePath($this->directory);
         config(['ptadmin.web_prefix' => 'admin_test', 'ptadmin-updates.path' => $this->directory.'/updates',
             'ptadmin-updates.delivery' => 'manual', 'ptadmin.tasks.path' => $this->directory.'/tasks']);
+        foreach (['artisan', 'public/index.php', 'bootstrap/update-guard.php'] as $entry) {
+            UpdateFiles::directory(dirname($this->directory.'/'.$entry));
+            file_put_contents($this->directory.'/'.$entry, '<?php // update-guard.php');
+        }
         $old = $this->bundle(public_path('admin_test'), '1.0.0', ['index.html' => 'old', 'assets/old.js' => 'old']);
         $new = $this->bundle($this->directory.'/bundle', '1.1.0', ['index.html' => 'new', 'assets/new.js' => 'new']);
         $this->archive = $this->directory.'/new.zip';
@@ -292,6 +296,185 @@ final class OfficialUpdateInstallTest extends TestCase
                 self::assertSame('unsafe_archive', $error->reason);
                 self::assertDirectoryDoesNotExist($this->directory.'/unpacked');
             }
+        }
+    }
+    public function testLocalFrontendTaskStillRunsSynchronouslyWithoutOfficialCoordinator(): void
+    {
+        config(['app.key' => 'base64:'.base64_encode(str_repeat('x', 32))]);
+        $tasks = app(TaskManager::class);
+        $task = $tasks->create(TaskManager::ADMIN_FRONTEND_UPDATE, ['source' => $this->directory.'/bundle']);
+        $executor = new class implements \PTAdmin\Core\Tasks\TaskExecutorInterface {
+            public function execute(array $task, TaskManager $tasks): array
+            {
+                file_put_contents(public_path('local-published.txt'), 'local deployment');
+                return ['published' => true];
+            }
+        };
+        app(\PTAdmin\Core\Tasks\TaskExecutorRegistry::class)->register(TaskManager::ADMIN_FRONTEND_UPDATE, $executor);
+        self::assertSame(0, \Illuminate\Support\Facades\Artisan::call('ptadmin:task:run', ['task_id' => $task['task_id']]));
+        self::assertSame('succeeded', $tasks->get($task['task_id'])['status']);
+        self::assertSame('local deployment', file_get_contents(public_path('local-published.txt')));
+    }
+
+    public function testJointShellNewDirectoriesRemainPubliclyTraversable(): void
+    {
+        chmod(public_path('admin_test'), 0755);
+        chmod(public_path('admin_test/assets'), 0755);
+        $next = $this->bundle($this->directory.'/project/vendor/ptadmin/core/resources/admin-frontend', '1.1.0',
+            ['index.html' => 'new', 'fonts/new/font.woff2' => 'font']);
+        $target = ['version' => '1.1.0', 'shell' => ['version' => '1.1.0', 'artifact_sha256' => $next['artifact_sha256'], 'api_protocol' => 1, 'schema_protocol' => 1]];
+        $previousUmask = umask(0077);
+        try {
+            (new \PTAdmin\Core\Updates\ApplicationShellStage())->prepare($this->directory, $target);
+        } finally {
+            umask($previousUmask);
+        }
+        foreach (['fonts', 'fonts/new'] as $path) {
+            self::assertSame(0755, fileperms($this->directory.'/shell/'.$path) & 0777);
+        }
+        self::assertSame(0644, fileperms($this->directory.'/shell/fonts/new/font.woff2') & 0777);
+        self::assertSame(0700, fileperms($this->directory) & 0777, '私有工作目录不能公开');
+    }
+
+    public function testShellUpdatePreservesFilesWrittenWhilePreparing(): void
+    {
+        Http::swap(new \Illuminate\Http\Client\Factory());
+        Http::preventStrayRequests();
+        $catalogReads = 0;
+        Http::fake(function ($request) use (&$catalogReads) {
+            if (str_ends_with($request->url(), '/releases')) {
+                $catalogReads++;
+                if ($catalogReads === 3) {
+                    file_put_contents(public_path('admin_test/user-late.txt'), 'created during staging');
+                }
+                return Http::response(['code' => 0, 'data' => ['document' => $this->catalog]]);
+            }
+            return Http::response(file_get_contents($this->archive));
+        });
+        try {
+            $this->execute();
+            self::fail('准备期间来源变化必须停止更新');
+        } catch (UpdateException $error) {
+            self::assertSame('source_changed', $error->reason);
+        }
+        self::assertSame(4, $catalogReads);
+        self::assertSame('created during staging', file_get_contents(public_path('admin_test/user-late.txt')));
+        self::assertSame('old', file_get_contents(public_path('admin_test/index.html')));
+        self::assertFileDoesNotExist(storage_path('framework/maintenance.php'));
+        self::assertFileDoesNotExist(storage_path('framework/down'));
+    }
+
+    public function testBrokenComposerDocumentsDoNotBlockShellOverviewOrInstallation(): void
+    {
+        file_put_contents(base_path('composer.json'), '{broken');
+        file_put_contents(base_path('composer.lock'), '{broken');
+        $this->versions['application-template'] = ['version' => null, 'known' => false];
+        $this->versions['host_version'] = null;
+        $service = app(\PTAdmin\Core\Updates\OfficialUpdateService::class);
+        $service->check();
+        $overview = $service->overview(1, true, ['admin-shell' => true]);
+        self::assertSame('current', $overview['check']['status']);
+        self::assertTrue($overview['components'][1]['update']['available']);
+        $reasons = implode(' ', $overview['components'][0]['update']['reasons']);
+        self::assertStringContainsString('composer.json', $reasons);
+        self::assertStringContainsString('composer.lock', $reasons);
+        self::assertSame('succeeded', $this->execute()['status']);
+    }
+
+    public function testShellWithdrawalAfterDrainingRestoresAccessWithoutSwitching(): void
+    {
+        Http::swap(new \Illuminate\Http\Client\Factory());
+        Http::preventStrayRequests();
+        $catalogReads = 0;
+        Http::fake(function ($request) use (&$catalogReads) {
+            if (str_ends_with($request->url(), '/releases')) {
+                if (++$catalogReads === 4) {
+                    self::assertFileExists(storage_path('framework/maintenance.php'));
+                    array_pop($this->catalog['results']);
+                }
+                return Http::response(['code' => 0, 'data' => ['document' => $this->catalog]]);
+            }
+            return Http::response(file_get_contents($this->archive));
+        });
+        try {
+            $this->execute();
+            self::fail('排空后撤回必须停止更新');
+        } catch (UpdateException $error) {
+            self::assertSame('release_changed', $error->reason);
+        }
+        self::assertSame('old', file_get_contents(public_path('admin_test/index.html')));
+        self::assertFileDoesNotExist(storage_path('framework/maintenance.php'));
+        self::assertFileDoesNotExist(storage_path('framework/down'));
+    }
+
+    public function testShellFailureAfterPromotionRestoresOriginalFilesAndMaintenance(): void
+    {
+        Http::swap(new \Illuminate\Http\Client\Factory());
+        Http::preventStrayRequests();
+        $catalogReads = 0;
+        Http::fake(function ($request) use (&$catalogReads) {
+            if (str_ends_with($request->url(), '/releases')) {
+                if (++$catalogReads === 4) {
+                    foreach (glob($this->directory.'/updates/operations/*/staged/index.html') as $file) {
+                        file_put_contents($file, 'damaged staged target');
+                    }
+                }
+                return Http::response(['code' => 0, 'data' => ['document' => $this->catalog]]);
+            }
+            return Http::response(file_get_contents($this->archive));
+        });
+        try {
+            $this->execute();
+            self::fail('切换后损坏的目标必须恢复');
+        } catch (\RuntimeException $error) {
+            self::assertNotSame('', $error->getMessage());
+        }
+        self::assertSame('old', file_get_contents(public_path('admin_test/index.html')));
+        self::assertFileExists(public_path('admin_test/assets/old.js'));
+        self::assertFileDoesNotExist(public_path('admin_test/assets/new.js'));
+        self::assertFileDoesNotExist(storage_path('framework/maintenance.php'));
+        $journals = glob($this->directory.'/updates/operations/*/journal.json');
+        self::assertCount(1, $journals);
+        self::assertSame('restored', UpdateFiles::read($journals[0])['status']);
+    }
+
+    public function testShellWaitsForExistingWriterAndRejectsItsLateChanges(): void
+    {
+        UpdateFiles::directory(storage_path('framework'));
+        $writer = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', <<<'PHP'
+$lock = fopen($argv[1].'/ptadmin-runtime.lock', 'c+');
+flock($lock, LOCK_SH);
+file_put_contents($argv[1].'/writer.ready', '1');
+$deadline = microtime(true) + 10;
+while (!is_file($argv[1].'/maintenance.php')) {
+    if (microtime(true) > $deadline) { exit(2); }
+    usleep(10000);
+    clearstatcache();
+}
+file_put_contents($argv[2].'/late-writer.txt', 'last write before releasing lock');
+flock($lock, LOCK_UN);
+fclose($lock);
+PHP, storage_path('framework'), public_path('admin_test')]);
+        $writer->start();
+        try {
+            $deadline = microtime(true) + 5;
+            while (!is_file(storage_path('framework/writer.ready')) && microtime(true) < $deadline) {
+                usleep(10000);
+                clearstatcache();
+            }
+            self::assertFileExists(storage_path('framework/writer.ready'));
+            try {
+                $this->execute();
+                self::fail('必须等待写入完成再发现来源变化');
+            } catch (UpdateException $error) {
+                self::assertSame('source_changed', $error->reason);
+            }
+            self::assertSame(0, $writer->wait(), $writer->getErrorOutput());
+            self::assertSame('last write before releasing lock', file_get_contents(public_path('admin_test/late-writer.txt')));
+            self::assertSame('old', file_get_contents(public_path('admin_test/index.html')));
+            self::assertFileDoesNotExist(storage_path('framework/maintenance.php'));
+        } finally {
+            $writer->stop(1);
         }
     }
 }

@@ -48,8 +48,7 @@ final class ApplicationShellStage
             if (file_exists($directory.'/shell/'.$relative)) {
                 throw new UpdateException('新 Shell 与用户文件冲突：'.$relative, 'user_file_conflict');
             }
-            UpdateFiles::copy($source.'/'.$relative, $directory.'/shell/'.$relative);
-            chmod($directory.'/shell/'.$relative, 0644);
+            UpdateFiles::copyPublicAsset($source.'/'.$relative, $directory.'/shell/'.$relative);
         }
         $verifier->verify($directory.'/shell');
         return $path;

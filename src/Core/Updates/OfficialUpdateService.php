@@ -83,6 +83,15 @@ final class OfficialUpdateService
         $succeeded = false;
         try {
             $state['envelope'] = ['document' => $this->fetchCatalog($automatic)];
+            if (!$automatic) {
+                try {
+                    app(ComposerBaselineResolver::class)->prepare($state['envelope']['document']);
+                    $state['baseline_error'] = null;
+                } catch (\Throwable $error) {
+                    // Core 来源核验失败不应掩盖已获取目录，也不应阻断独立 Shell 更新。
+                    $state['baseline_error'] = $error->getMessage();
+                }
+            }
             $state['last_success_at'] = now()->getTimestamp();
             $state['error'] = null;
             $succeeded = true;
@@ -203,6 +212,10 @@ final class OfficialUpdateService
             }
             $updateReasons = !$showUpdates ? [] : ($component === 'application-template' ? ['基础壳来源不执行覆盖更新。']
                 : $policy->blockers($component, $versions));
+            if ($showUpdates && $component === 'core' && !empty($state['baseline_error'])
+                && (new DependencyBaseline())->inspect()['status'] !== 'standard') {
+                $updateReasons[] = $state['baseline_error'];
+            }
             if ($component === 'core' && $recommended !== null) {
                 $updateReasons = [...$updateReasons, ...$policy->releaseBlockers($recommended, $versions)];
             }
@@ -251,6 +264,9 @@ final class OfficialUpdateService
             }
         }
         $environment = $showUpdates ? $this->environment->inspect() : null;
+        if ($environment !== null && $environment['dependency']['status'] !== 'standard' && !empty($state['baseline_error'])) {
+            $environment['dependency']['reason'] = $state['baseline_error'];
+        }
         $core = $components[0]['recommended'];
         return ['check' => ['visible' => $showUpdates, 'status' => $status, 'error' => $error, 'last_success_at' => $state['last_success_at'] ?? null,
                 'last_attempt_at' => $state['last_attempt_at'] ?? null, 'last_login_check_at' => $state['last_login_check_at'] ?? null,

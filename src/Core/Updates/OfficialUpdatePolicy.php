@@ -71,6 +71,18 @@ final class OfficialUpdatePolicy
             $reasons[] = '更新工作目录不可写，请由部署负责人处理。';
         }
         if ($component === 'admin-shell') {
+            if (PHP_OS_FAMILY === 'Windows' || !$environment['process_execution'] || !is_executable(config('ptadmin-updates.php_binary'))) {
+                $reasons[] = '后台界面更新需要 Unix PHP CLI 和进程能力，以便独立执行安全切换。';
+            }
+            if (realpath(storage_path()) !== realpath(base_path('storage'))
+                || !is_file(base_path('bootstrap/update-guard.php'))
+                || !is_file(base_path('artisan')) || !str_contains(file_get_contents(base_path('artisan')), 'update-guard.php')
+                || !is_file(public_path('index.php')) || !str_contains(file_get_contents(public_path('index.php')), 'update-guard.php')) {
+                $reasons[] = '后台界面更新需要标准更新执行锁入口和 storage 目录，请通过项目部署流程处理。';
+            }
+            if (is_file(storage_path('framework/down')) || is_file(storage_path('framework/maintenance.php'))) {
+                $reasons[] = '应用已处于维护状态，请先完成原维护操作。';
+            }
             if ($versions['admin-shell']['custom'] || $versions['admin-shell']['integrity'] !== 'verified') {
                 $reasons[] = '当前 Shell 为自定义版本或文件已修改，请合并源码后部署。';
             }
@@ -109,7 +121,17 @@ final class OfficialUpdatePolicy
             if (!$environment['online_core_update']) {
                 $reasons[] = 'Core 在线更新需要可执行的 PHP CLI、ZIP、进程能力和可写依赖目录。';
             }
-            $composer = is_file(base_path('composer.json')) ? UpdateFiles::read(base_path('composer.json')) : [];
+            $documents = [];
+            foreach (['composer.json', 'composer.lock'] as $path) {
+                try {
+                    $documents[$path] = is_file(base_path($path)) ? UpdateFiles::read(base_path($path)) : [];
+                } catch (\Throwable) {
+                    $documents[$path] = [];
+                    $reasons[] = $path.' 无法读取或格式损坏，请恢复有效文件后重新检查 Core 更新。';
+                }
+            }
+            $composer = $documents['composer.json'];
+            $lock = $documents['composer.lock'];
             if (isset($composer['config']['vendor-dir']) && $composer['config']['vendor-dir'] !== 'vendor') {
                 $reasons[] = '自定义 vendor 目录请通过项目部署流程更新。';
             }
@@ -124,7 +146,6 @@ final class OfficialUpdatePolicy
                     }
                 }
             }
-            $lock = is_file(base_path('composer.lock')) ? UpdateFiles::read(base_path('composer.lock')) : [];
             foreach ($lock['packages'] ?? [] as $package) {
                 if (($package['type'] ?? '') === 'composer-plugin') {
                     $reasons[] = '项目依赖 Composer 插件，请通过原部署流程更新。';

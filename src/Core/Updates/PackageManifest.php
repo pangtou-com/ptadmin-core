@@ -185,6 +185,86 @@ final class PackageManifest
         }
     }
 
+    /** Composer 安装允许默认开发工具和本地生成的加载文件；生产源码仍逐文件匹配官方包。 */
+    public static function verifyComposerInstallation(string $root, array $target, ?array $snapshot = null): array
+    {
+        self::validate($target);
+        $composer = self::composer(UpdateFiles::read($root.'/composer.json'));
+        $lock = self::lock(UpdateFiles::read($root.'/composer.lock'));
+        if (self::digest(['composer' => $composer, 'lock' => $lock]) !== $target['baseline_sha256']) {
+            throw new RuntimeException('项目依赖或自动加载配置与官方版本不同，请使用 Composer 更新。');
+        }
+        $installed = UpdateFiles::read($root.'/vendor/composer/installed.json');
+        $development = ($installed['dev'] ?? false) === true;
+        $expected = array_merge($lock['packages'], $development ? ($lock['packages-dev'] ?? []) : []);
+        $graph = static function (array $packages): array {
+            $result = [];
+            foreach ($packages as $package) {
+                if (isset($result[$package['name']])) {
+                    throw new RuntimeException('实际依赖包含重复包。');
+                }
+                $result[$package['name']] = [$package['version'], $package['source']['reference'] ?? null, $package['dist']['reference'] ?? null];
+            }
+            ksort($result);
+            return $result;
+        };
+        if ($graph($installed['packages'] ?? []) !== $graph($expected)) {
+            throw new RuntimeException('实际安装依赖与官方锁文件不一致。');
+        }
+        foreach ($target['host_files'] as $path => $sha) {
+            if (!is_file($root.'/'.$path) || is_link($root.'/'.$path) || hash_file('sha256', $root.'/'.$path) !== $sha) {
+                throw new RuntimeException('标准入口需要人工合并：'.$path);
+            }
+            for ($parent = dirname($path); $parent !== '.'; $parent = dirname($parent)) {
+                if (is_link($root.'/'.$parent)) {
+                    throw new RuntimeException('标准入口目录不能为符号链接。');
+                }
+            }
+        }
+        $actual = self::files($root);
+        // Composer 描述信息和 JSON 排版不影响资格，文件集合与语义/字节摘要仍须完全一致。
+        $hashes = static fn (array $files): array => array_map(static fn (array $file): string => $file['sha256'], $files);
+        if ($snapshot !== null && self::digest($hashes($actual)) !== self::digest($hashes($snapshot))) {
+            throw new RuntimeException('核验后依赖文件发生变化，请恢复原文件或使用 Composer 部署。');
+        }
+        $generated = array_fill_keys(['vendor/autoload.php', 'vendor/composer/installed.php', 'vendor/composer/installed.json',
+            'vendor/composer/autoload_real.php', 'vendor/composer/autoload_static.php', 'vendor/composer/autoload_classmap.php',
+            'vendor/composer/autoload_namespaces.php', 'vendor/composer/autoload_psr4.php', 'vendor/composer/autoload_files.php',
+            'vendor/composer/platform_check.php'], true);
+        $bins = [];
+        foreach ($expected as $package) {
+            foreach ($package['bin'] ?? [] as $bin) {
+                $bins['vendor/bin/'.basename($bin)] = true;
+                $bins['vendor/bin/'.basename($bin).'.bat'] = true;
+            }
+        }
+        $devPrefixes = array_map(static fn (array $package): string => 'vendor/'.$package['name'].'/', $development ? ($lock['packages-dev'] ?? []) : []);
+        foreach ($target['files'] as $path => $file) {
+            if (isset($generated[$path]) || isset($bins[$path])) {
+                continue;
+            }
+            if (!isset($actual[$path]) || $actual[$path]['sha256'] !== $file['sha256']) {
+                throw new RuntimeException('生产依赖与官方文件不一致：'.$path);
+            }
+        }
+        foreach ($actual as $path => $_) {
+            if (isset($target['files'][$path]) || isset($generated[$path]) || isset($bins[$path])) {
+                continue;
+            }
+            $developmentFile = false;
+            foreach ($devPrefixes as $prefix) {
+                if (str_starts_with($path, $prefix)) {
+                    $developmentFile = true;
+                    break;
+                }
+            }
+            if (!$developmentFile) {
+                throw new RuntimeException('vendor 包含未声明文件：'.$path);
+            }
+        }
+        return ['files' => $actual, 'development_dependencies' => $development];
+    }
+
     public static function verify(string $root, array $target, bool $host = true): void
     {
         self::validate($target);

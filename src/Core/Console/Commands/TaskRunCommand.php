@@ -31,9 +31,11 @@ final class TaskRunCommand extends Command
                 $this->error('Task is already running.');
                 return self::FAILURE;
             }
-            if ($task['type'] === TaskManager::CORE_UPDATE && getenv('PTADMIN_UPDATE_COORDINATOR') !== '1') {
-                app(\PTAdmin\Core\Updates\CoreUpdateLauncher::class)->launch($taskId);
-                $this->info('Core 更新已交给独立进程，请在任务中心查看结果。');
+            $officialUpdate = $task['type'] === TaskManager::CORE_UPDATE
+                || ($task['type'] === TaskManager::ADMIN_FRONTEND_UPDATE && ($task['payload']['official'] ?? false) === true);
+            if ($officialUpdate && getenv('PTADMIN_UPDATE_COORDINATOR') !== '1') {
+                app(\PTAdmin\Core\Updates\OfficialUpdateLauncher::class)->launch($taskId);
+                $this->info('官方更新已交给独立进程，请在任务中心查看结果。');
                 return self::SUCCESS;
             }
             if ($process->taskId !== $taskId) {

@@ -24,7 +24,7 @@ class UpdateEnvironment
             $delivery = file_exists(base_path('.git')) ? 'git' : 'manual';
         }
         $dependency = (new DependencyBaseline())->inspect();
-        return ['dependency' => array_diff_key($dependency, ['target' => true]), 'process_execution' => $process,
+        return ['dependency' => array_diff_key($dependency, ['target' => true, 'source_snapshot' => true]), 'process_execution' => $process,
             'writable' => $writable, 'delivery' => $delivery, 'online_core_update' => $dependency['status'] === 'standard' && $process && class_exists(\ZipArchive::class) && is_executable(config('ptadmin-updates.php_binary')) && !in_array(false, $writable, true) && $delivery === 'manual',
             'scope' => '仅检测当前 PHP 运行账号的 PATH 与文件权限，未执行 Composer；SSH、容器与 CI 的环境可能不同。'];
     }

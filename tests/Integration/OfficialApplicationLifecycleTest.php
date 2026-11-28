@@ -45,6 +45,12 @@ final class OfficialApplicationLifecycleTest extends TestCase
                 foreach (['src', 'config', 'database', 'resources', 'routes', 'composer.json'] as $path) {
                     UpdateFiles::copy($core.'/'.$path, $root.'/vendor/ptadmin/core/'.$path);
                 }
+                // 夹具使用两个独立版本，不依赖工作区当前 Shell 的发布版本。
+                $shellRoot = $root.'/vendor/ptadmin/core/resources/admin-frontend';
+                $shell = UpdateFiles::read($shellRoot.'/manifest.json');
+                $shell['frontend_version'] = $version;
+                $shell['backend_constraint'] = '^0.14';
+                UpdateFiles::write($shellRoot.'/manifest.json', $shell);
                 if ($version === '0.14.1') {
                     $shellRoot = $root.'/vendor/ptadmin/core/resources/admin-frontend';
                     $shell = UpdateFiles::read($shellRoot.'/manifest.json');
@@ -98,12 +104,29 @@ PHP, $code);
                 $reports[$version] = (new ApplicationPackageBuilder())->build($root, $workspace.'/release-'.$version,
                     $version, str_repeat('b', 40), '^0.14', $version === '0.14.1' ? $workspace.'/build-0.14.0' : null);
             }
-            foreach (['full', 'patch'] as $kind) {
+            foreach (['full', 'patch', 'composer'] as $kind) {
                 $root = $workspace.'/runtime-'.$kind;
                 $zip = new \ZipArchive();
                 self::assertTrue($zip->open($workspace.'/release-0.14.0/install.zip'));
                 self::assertTrue($zip->extractTo($root));
                 $zip->close();
+                if ($kind === 'composer') {
+                    // 模拟 create-project 的默认开发依赖与本机生成 autoload，不携带安装包身份。
+                    unlink($root.'/'.PackageManifest::IDENTITY);
+                    $localInstalled = UpdateFiles::read($root.'/vendor/composer/installed.json');
+                    $devNames = array_column($lock['packages-dev'], 'name');
+                    $hostInstalled = UpdateFiles::read($admin.'/vendor/composer/installed.json');
+                    $devPackages = array_values(array_filter($hostInstalled['packages'], static fn ($package) => in_array($package['name'], $devNames, true)));
+                    self::assertCount(count($devNames), $devPackages, '验收宿主必须安装锁定的默认开发依赖');
+                    foreach ($devNames as $name) {
+                        UpdateFiles::copy($admin.'/vendor/'.$name, $root.'/vendor/'.$name);
+                    }
+                    $localInstalled['packages'] = [...$localInstalled['packages'], ...$devPackages];
+                    $localInstalled['dev'] = true;
+                    $localInstalled['dev-package-names'] = $devNames;
+                    UpdateFiles::write($root.'/vendor/composer/installed.json', $localInstalled);
+                    $this->process([PHP_BINARY, $composerBinary, 'dump-autoload', '--no-interaction', '--no-scripts', '--no-plugins'], $root, ['COMPOSER_DISABLE_NETWORK' => '1']);
+                }
                 self::assertFileDoesNotExist($root.'/.env');
                 file_put_contents($root.'/lifecycle.php', file_get_contents(__DIR__.'/../Fixtures/Updates/application-lifecycle.php'));
                 $catalog = $this->catalog($reports, $workspace, $kind);
@@ -123,13 +146,42 @@ PHP, $code);
                     file_put_contents($root.'/public/package_admin/'.$path, 'user-content');
                 }
                 $this->process([PHP_BINARY, 'lifecycle.php', 'check'], $root, $environment);
+                if ($kind === 'full') {
+                    // 从持有共享入口锁的真实 Artisan 发起，验证 Shell 独立协调进程不会自锁。
+                    $this->process([PHP_BINARY, 'artisan', 'ptadmin:updates:install', 'admin-shell', '0.14.1'], $root,
+                        array_replace($environment, ['PTADMIN_UPDATE_COORDINATOR' => '0']));
+                    $deadline = microtime(true) + 45;
+                    $shellTask = null;
+                    do {
+                        foreach (glob($root.'/storage/app/ptadmin/tasks/*/state.json') as $statePath) {
+                            $state = UpdateFiles::read($statePath);
+                            if ($state['type'] === 'admin_frontend.update') {
+                                $shellTask = $state;
+                            }
+                        }
+                        if (in_array($shellTask['status'] ?? '', ['succeeded', 'failed'], true)) {
+                            break;
+                        }
+                        usleep(100000);
+                    } while (microtime(true) < $deadline);
+                    self::assertSame('succeeded', $shellTask['status'] ?? null, json_encode($shellTask, JSON_UNESCAPED_UNICODE));
+                    self::assertSame('0.14.1', UpdateFiles::read($root.'/public/package_admin/manifest.json')['frontend_version']);
+                    self::assertFileDoesNotExist($root.'/storage/framework/down');
+                }
                 $this->process([PHP_BINARY, 'artisan', 'ptadmin:updates:install', 'core', '0.14.1', '--database-backup-confirmed'], $root, $environment);
                 PackageManifest::verify($root, $reports['0.14.1']['target']);
                 $this->process([PHP_BINARY, 'lifecycle.php', 'check'], $root, $environment);
                 self::assertFileDoesNotExist($root.'/storage/framework/down');
-                $plans = glob($root.'/storage/app/ptadmin/updates/operations/*/plan.json');
+                $plans = array_values(array_filter(glob($root.'/storage/app/ptadmin/updates/operations/*/plan.json'),
+                    static fn ($path): bool => isset(UpdateFiles::read($path)['artifact'])));
                 self::assertCount(1, $plans);
-                self::assertSame($kind, UpdateFiles::read($plans[0])['artifact']['kind']);
+                self::assertSame($kind === 'composer' ? 'full' : $kind, UpdateFiles::read($plans[0])['artifact']['kind']);
+                if ($kind === 'composer') {
+                    self::assertNotNull(UpdateFiles::read($plans[0])['composer_source']);
+                    self::assertDirectoryDoesNotExist($root.'/vendor/phpunit/phpunit');
+                    self::assertDirectoryExists(dirname($plans[0]).'/backup/0/phpunit/phpunit');
+                    self::assertSame('standard', (new \PTAdmin\Core\Updates\DependencyBaseline())->inspect($root, true)['status']);
+                }
                 self::assertSame('customer/application', UpdateFiles::read($root.'/composer.json')['name']);
                 $this->process([PHP_BINARY, $composerBinary, 'validate', '--no-check-publish'], $root, ['COMPOSER_DISABLE_NETWORK' => '1']);
                 self::assertSame('0.14.1', UpdateFiles::read($root.'/public/package_admin/manifest.json')['frontend_version']);
@@ -180,11 +232,25 @@ PHP, $code);
         }
         foreach ($reports as $report) {
             $shell = $report['target']['shell'];
+            $shellRoot = $workspace.'/build-'.$report['target']['version'].'/vendor/ptadmin/core/resources/admin-frontend';
+            $shellArchive = $workspace.'/shell-'.$shell['version'].'.zip';
+            $zip = new \ZipArchive();
+            self::assertTrue($zip->open($shellArchive, \ZipArchive::CREATE | \ZipArchive::OVERWRITE));
+            $manifest = UpdateFiles::read($shellRoot.'/manifest.json');
+            foreach ([...array_column($manifest['files'], 'path'), 'manifest.json'] as $path) {
+                $zip->addFile($shellRoot.'/'.$path, $path);
+            }
+            $zip->close();
+            $packages = [];
+            foreach (['source', 'build'] as $type) {
+                $packageUrl = $url.'/api/cloud/official/releases/admin-shell/'.$shell['version'].'/packages/'.$type;
+                $packages[$type] = ['size' => filesize($shellArchive), 'sha256' => hash_file('sha256', $shellArchive), 'url' => $packageUrl];
+                $downloads[$packageUrl] = $shellArchive;
+            }
             $results[] = ['component' => 'admin-shell', 'version' => $shell['version'], 'status' => 'published',
             'artifact_sha256' => $shell['artifact_sha256'], 'compatibility' => ['core' => $shell['backend_constraint'], 'api_protocol' => $shell['api_protocol'], 'schema_protocol' => $shell['schema_protocol']],
             'github_url' => '', 'gitee_url' => '', 'changelog' => '', 'breaking_changes' => '', 'upgrade_steps' => '', 'rollback_steps' => '',
-            'packages' => array_combine(['source', 'build'], array_map(static fn ($type) => ['size' => 1, 'sha256' => str_repeat('a', 64),
-                'url' => $url.'/api/cloud/official/releases/admin-shell/'.$shell['version'].'/packages/'.$type], ['source', 'build']))];
+            'packages' => $packages];
         }
         return ['document' => ['protocol_version' => 2, 'generated_at' => gmdate('c'), 'expires_at' => gmdate('c', time() + 3600), 'results' => $results, 'advisories' => []], 'downloads' => $downloads];
     }

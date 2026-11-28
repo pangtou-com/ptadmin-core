@@ -17,15 +17,18 @@ final class UpdateRecovery
     {
         $journal = $metadata + ['status' => 'switching', 'database_started' => false, 'entries' => []];
         foreach ($entries as $index => $entry) {
-            if (!file_exists($entry['target']) || is_link($entry['target']) || !file_exists($entry['source'])) {
+            $existed = file_exists($entry['target']);
+            if ((!$existed && !($entry['allow_create'] ?? false)) || is_link($entry['target']) || !file_exists($entry['source'])) {
                 throw new RuntimeException('待切换文件缺失或为符号链接。');
             }
-            $journal['entries'][] = $entry + ['backup' => $this->directory.'/backup/'.$index, 'restored' => false];
+            $journal['entries'][] = $entry + ['backup' => $this->directory.'/backup/'.$index, 'restored' => false, 'existed' => $existed];
         }
         UpdateFiles::directory($this->directory.'/backup');
         $this->save($journal);
         foreach ($journal['entries'] as $entry) {
-            UpdateFiles::move($entry['target'], $entry['backup']);
+            if ($entry['existed']) {
+                UpdateFiles::move($entry['target'], $entry['backup']);
+            }
             UpdateFiles::move($entry['source'], $entry['target']);
         }
         $this->stage('switched');
@@ -55,6 +58,15 @@ final class UpdateRecovery
         foreach (array_reverse(array_keys($journal['entries'])) as $index) {
             $entry = $journal['entries'][$index];
             if ($entry['restored']) {
+                continue;
+            }
+            if (($entry['existed'] ?? true) === false) {
+                // 首次更新新增的构建身份也参与失败恢复，不留下未完成版本的身份。
+                if (file_exists($entry['target']) && !file_exists($entry['source'])) {
+                    UpdateFiles::move($entry['target'], $this->directory.'/failed-'.$index.'-'.bin2hex(random_bytes(4)));
+                }
+                $journal['entries'][$index]['restored'] = true;
+                $this->save($journal);
                 continue;
             }
             if (file_exists($entry['backup'])) {

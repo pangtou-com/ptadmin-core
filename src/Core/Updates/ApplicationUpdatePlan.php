@@ -34,7 +34,7 @@ final class ApplicationUpdatePlan
         foreach ($application['artifacts'] as $artifact) {
             if ($artifact['kind'] === 'full') {
                 $full = $artifact;
-            } elseif ($artifact['kind'] === 'patch' && $artifact['source_build_id'] === $source['build_id']) {
+            } elseif (($baseline['installation'] ?? 'package') !== 'composer' && $artifact['kind'] === 'patch' && $artifact['source_build_id'] === $source['build_id']) {
                 $patch = $artifact;
             }
         }

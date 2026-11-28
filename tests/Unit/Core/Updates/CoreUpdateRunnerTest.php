@@ -96,6 +96,51 @@ CODE);
         return $process;
     }
 
+    private function useComposerSource(): void
+    {
+        $target = UpdateFiles::read($this->directory.'/'.PackageManifest::IDENTITY);
+        unlink($this->directory.'/'.PackageManifest::IDENTITY);
+        file_put_contents($this->directory.'/vendor/autoload.php', '<?php // locally generated');
+        $snapshot = PackageManifest::verifyComposerInstallation($this->directory, $target);
+        $plan = UpdateFiles::read($this->operation.'/plan.json');
+        unset($plan['inputs'][PackageManifest::IDENTITY]);
+        $plan['composer_source'] = ['target' => $target, 'files' => $snapshot['files'], 'identity_sha256' => null];
+        UpdateFiles::write($this->operation.'/plan.json', $plan);
+    }
+
+    public function testComposerSourceCreatesOfficialIdentityOnlyAfterSuccessfulSwitch(): void
+    {
+        $this->useComposerSource();
+        $process = $this->runUpdate();
+        self::assertTrue($process->isSuccessful(), $process->getErrorOutput());
+        self::assertSame('1.1.0', UpdateFiles::read($this->directory.'/'.PackageManifest::IDENTITY)['version']);
+        self::assertSame('original', file_get_contents($this->operation.'/backup/0/identity'));
+        self::assertSame('standard', (new \PTAdmin\Core\Updates\DependencyBaseline())->inspect($this->directory, true)['status']);
+    }
+
+    public function testComposerSourceFailureRestoresOriginalAbsenceOfOfficialIdentity(): void
+    {
+        $this->useComposerSource();
+        file_put_contents($this->directory.'/fail-command', 'package:discover');
+        self::assertFalse($this->runUpdate()->isSuccessful());
+        self::assertSame('original', file_get_contents($this->directory.'/vendor/identity'));
+        self::assertFileDoesNotExist($this->directory.'/'.PackageManifest::IDENTITY);
+        self::assertFileDoesNotExist($this->directory.'/storage/framework/down');
+        self::assertSame('restored', UpdateFiles::read($this->operation.'/journal.json')['status']);
+    }
+
+    public function testComposerSourceMutationAfterPreparationCannotBeOverwritten(): void
+    {
+        $this->useComposerSource();
+        file_put_contents($this->directory.'/vendor/autoload.php', '<?php // modified after preparation');
+        $process = $this->runUpdate();
+        self::assertFalse($process->isSuccessful());
+        self::assertStringContainsString('核验后依赖文件发生变化', $process->getErrorOutput());
+        self::assertSame('original', file_get_contents($this->directory.'/vendor/identity'));
+        self::assertFileDoesNotExist($this->directory.'/'.PackageManifest::IDENTITY);
+        self::assertDirectoryDoesNotExist($this->operation.'/backup');
+    }
+
     public function testCompleteUpgradeSwitchesWholeDependenciesRunsMigrationAndPreservesUserFiles(): void
     {
         $process = $this->runUpdate();

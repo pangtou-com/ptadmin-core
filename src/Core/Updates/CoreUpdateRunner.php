@@ -27,7 +27,7 @@ final class CoreUpdateRunner
             $stage = $this->directory.'/project';
             $target = UpdateFiles::read($stage.'/'.PackageManifest::IDENTITY);
             PackageManifest::verify($stage, $target, false);
-            PackageManifest::verify($root, UpdateFiles::read($root.'/'.PackageManifest::IDENTITY));
+            $this->verifySource($root);
             if ($target['version'] !== $this->plan['version'] || $target['core_commit'] !== $this->plan['git_commit']) {
                 throw new RuntimeException('完整目标与官方发行身份不一致。');
             }
@@ -69,7 +69,7 @@ final class CoreUpdateRunner
                 usleep(100000);
             }
             // 取得独占锁后复核来源、宿主与输入，防止准备期间的部署或业务写入被覆盖。
-            PackageManifest::verify($root, UpdateFiles::read($root.'/'.PackageManifest::IDENTITY));
+            $this->verifySource($root);
             foreach ($target['host_files'] as $path => $sha) {
                 if (!is_file($root.'/'.$path) || hash_file('sha256', $root.'/'.$path) !== $sha) {
                     throw new RuntimeException('目标宿主前置条件发生变化：'.$path);
@@ -89,7 +89,8 @@ final class CoreUpdateRunner
             chmod($this->directory.'/cache', fileperms($root.'/bootstrap/cache') & 0777);
             $entries = [];
             foreach (['vendor', 'composer.json', 'composer.lock', PackageManifest::IDENTITY] as $name) {
-                $entries[] = ['source' => $stage.'/'.$name, 'target' => $root.'/'.$name];
+                $entries[] = ['source' => $stage.'/'.$name, 'target' => $root.'/'.$name,
+                    'allow_create' => $name === PackageManifest::IDENTITY && ($this->plan['composer_source'] ?? null) !== null];
             }
             $entries[] = ['source' => $this->directory.'/cache', 'target' => $root.'/bootstrap/cache'];
             if (isset($this->plan['shell_target'])) {
@@ -148,6 +149,20 @@ final class CoreUpdateRunner
                 fclose($runtimeLock);
             }
         }
+    }
+
+    private function verifySource(string $root): void
+    {
+        $source = $this->plan['composer_source'] ?? null;
+        if ($source === null) {
+            PackageManifest::verify($root, UpdateFiles::read($root.'/'.PackageManifest::IDENTITY));
+            return;
+        }
+        $identity = is_file($root.'/'.PackageManifest::IDENTITY) ? hash_file('sha256', $root.'/'.PackageManifest::IDENTITY) : null;
+        if ($identity !== $source['identity_sha256']) {
+            throw new RuntimeException('准备期间官方构建身份发生变化。');
+        }
+        PackageManifest::verifyComposerInstallation($root, $source['target'], $source['files']);
     }
 
     private function command(array $command, string $cwd, string $label): void

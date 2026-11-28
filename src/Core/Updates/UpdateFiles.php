@@ -60,6 +60,24 @@ final class UpdateFiles
         }
     }
 
+    /** 公开构建新增目录显式可遍历；已有用户目录权限不调整，私有 staging 父目录仍保持私有。 */
+    public static function copyPublicAsset(string $source, string $target): void
+    {
+        $missing = [];
+        for ($parent = dirname($target); !is_dir($parent); $parent = dirname($parent)) {
+            $missing[] = $parent;
+        }
+        foreach (array_reverse($missing) as $directory) {
+            if (!mkdir($directory, 0755) || !chmod($directory, 0755)) {
+                throw new RuntimeException('无法创建公开资源目录：'.$directory);
+            }
+        }
+        self::copy($source, $target);
+        if (!chmod($target, 0644)) {
+            throw new RuntimeException('无法设置公开资源文件权限：'.$target);
+        }
+    }
+
     public static function move(string $source, string $target): void
     {
         if (!rename($source, $target)) {

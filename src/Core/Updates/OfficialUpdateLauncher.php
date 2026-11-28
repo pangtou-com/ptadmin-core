@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace PTAdmin\Core\Updates;
 
 /** 发起进程只负责排队后退出，使 HTTP / CLI 入口的共享执行锁能够释放。 */
-final class CoreUpdateLauncher
+final class OfficialUpdateLauncher
 {
     public function launch(string $taskId): void
     {

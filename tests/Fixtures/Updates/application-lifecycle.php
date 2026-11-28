@@ -29,6 +29,25 @@ if ($response->getStatusCode() !== 200 || empty($body['data']['access_token'])) 
 }
 $kernel->terminate($request, $response);
 if (\Composer\InstalledVersions::getPrettyVersion('ptadmin/core') === '0.14.0') {
+    $updates = app(\PTAdmin\Core\Updates\OfficialUpdateService::class);
+    if (!is_file(__DIR__.'/'.\PTAdmin\Core\Updates\PackageManifest::IDENTITY)) {
+        if (!$updates->checkOnLogin('baseline-login', time() + 3600)) {
+            throw new RuntimeException('首次登录自动检查应成功获取目录');
+        }
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+        if (is_file(__DIR__.'/'.\PTAdmin\Core\Updates\DependencyBaseline::COMPOSER_IDENTITY)) {
+            throw new RuntimeException('登录自动检查不应下载完整包或建立 Composer 基线');
+        }
+        $store = app(\PTAdmin\Core\Updates\UpdateStateStore::class);
+        $store->locked(fn () => $store->write(array_replace($store->read(), ['last_attempt_at' => 0])));
+    }
+    $updates->check();
+    $overview = $updates->overview(1, true, ['core' => true]);
+    $core = array_column($overview['components'], null, 'component')['core'];
+    if (!$core['update']['available']) {
+        throw new RuntimeException('标准安装必须允许后台更新：'.json_encode([$core['update'], $overview['check']], JSON_UNESCAPED_UNICODE));
+    }
+
     $composerPath = __DIR__.'/composer.json';
     $original = file_get_contents($composerPath);
     try {

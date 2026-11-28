@@ -105,6 +105,25 @@ final class OfficialUpdatesTest extends TestCase
         Http::assertSent(static fn ($request): bool => !$request->hasHeader('Authorization') && $request->data() === []);
     }
 
+    public function testBaselineFailureDoesNotTurnSuccessfulCatalogCheckIntoNetworkFailure(): void
+    {
+        $this->app->setBasePath($this->directory.'/host');
+        \PTAdmin\Core\Updates\UpdateFiles::write(base_path('vendor/composer/installed.json'), ['dev' => true, 'packages' => []]);
+        file_put_contents(base_path('composer.lock'), 'invalid lock');
+        $this->upstream();
+        $service = app(OfficialUpdateService::class);
+        $service->check();
+        $result = $service->overview(1, true);
+        self::assertSame('current', $result['check']['status']);
+        self::assertNull($result['check']['error']);
+        self::assertNotNull($result['check']['last_success_at']);
+        self::assertSame('1.1.0', $result['components'][0]['recommended']['version']);
+        self::assertFalse($result['components'][0]['update']['available']);
+        self::assertStringContainsString('标准依赖核验失败', $result['environment']['dependency']['reason']);
+        self::assertContains($result['environment']['dependency']['reason'], $result['components'][0]['update']['reasons']);
+        self::assertNotContains($result['environment']['dependency']['reason'], $result['components'][1]['update']['reasons']);
+    }
+
     public function testFailureKeepsTrustedWarningsAndReadDoesNotClearRisk(): void
     {
         $this->upstream();
