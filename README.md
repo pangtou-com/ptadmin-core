@@ -44,6 +44,8 @@
 - JSONL 任务中心：任务文件位于 `storage/app/ptadmin/tasks/{task_id}/`，后台接口提供任务创建、状态、事件 cursor、重试和取消；任务支持幂等键、心跳恢复和不可逆阶段保护，快照持久化当前消息并派生 `can_retry`/`can_cancel`，事件/载荷/结果统一脱敏并使用文件锁；核心前端可通过独立发布器校验清单后原子更新，同时保留插件 `plugins/` 目录。
 - 任务执行通过 `php artisan ptadmin:task:run {task_id}` 完成。后台前端更新和云交付任务在 HTTP 响应后自动调度；读取遗留的 `pending` 任务时会再次触发调度，避免请求中断后任务永久悬挂。其他任务仍由独立进程或宿主调度器执行。执行器采用 `TaskExecutorRegistry` 扩展，目前内置 `admin_frontend.update`，未注册的核心/插件任务会进入 `blocked`，不会在 PHP-FPM 请求中伪成功。
 - 可使用 `php artisan ptadmin:task:recover` 扫描超时心跳任务；默认按重试次数重新排队，也可通过 `--no-requeue` 直接标记失败。
+- 管理员无法登录时，可用 `php artisan ptadmin:auth reset --username=root` 重置密码；未指定密码时生成一次性随机密码。自定义密码使用 `--prompt-password` 隐藏输入，或通过 `--password-stdin` 从标准输入读取，不能把明文密码作为命令参数。
+- 可通过 `php artisan ptadmin:auth create --username=operator` 创建普通管理员，账号默认启用但没有角色或直接权限；通过已登录管理员完成授权。`php artisan ptadmin:auth delete --username=operator` 软删除普通管理员并清理授权，交互确认后执行；非交互环境必须显式加 `--yes`。创始人账号不能删除。
 - 插件信任链基础位于 `src/Addon`：`Manifest\ManifestVerifier` 校验 manifest、文件清单、摘要、兼容范围和 OpenSSL 签名；`Lifecycle\LifecycleStore` 持久化插件生命周期状态并防止非法状态跳转。
 - `Frontend\FrontendPublisher` 将插件前端以临时目录加原子替换发布到 `public/{PTADMIN_WEB_PREFIX}/plugins/{code}`，失败时保留旧版本，卸载时仅删除对应插件目录。
 

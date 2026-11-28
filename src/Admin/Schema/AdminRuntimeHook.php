@@ -6,6 +6,7 @@ namespace PTAdmin\Admin\Schema;
 
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Facades\Hash;
+use PTAdmin\Admin\Auth\AdminAccountManager;
 use PTAdmin\Admin\Models\Admin;
 use PTAdmin\Admin\Models\AdminRole;
 use PTAdmin\Admin\Models\AdminMenu;
@@ -28,6 +29,7 @@ final class AdminRuntimeHook
     public function __construct(
         private ConnectionInterface $database,
         private SessionManager $sessions,
+        private AdminAccountManager $adminAccounts,
         private DataScopeRegistry $scopes,
         private NoticeTemplateValidator $noticeTemplates,
     ) {
@@ -282,8 +284,7 @@ final class AdminRuntimeHook
             if ($password !== $confirmation) {
                 throw $this->error('invalid_input', '两次输入的新密码不一致。', ['field' => 'password_confirmation']);
             }
-            Admin::query()->whereKey($id)->update(['password' => Hash::make($password), 'updated_at' => now()]);
-            $this->sessions->revokeSubject(Admin::class, $id, 'admin');
+            $this->adminAccounts->resetPasswordFor(Admin::query()->findOrFail($id), $password);
             return ['id' => $id, 'success' => true];
         }
         if ($resourceKey === 'admin.admin_users' && $action === 'revoke_sessions') {

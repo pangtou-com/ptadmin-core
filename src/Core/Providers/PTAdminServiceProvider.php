@@ -11,6 +11,7 @@ use PTAdmin\Admin\Auth\AdminAuthenticator;
 use PTAdmin\Admin\Dashboard\DashboardService;
 use PTAdmin\Admin\Dashboard\DashboardWidgetRegistry;
 use PTAdmin\Admin\Schema\AdminRuntimeHook;
+use PTAdmin\Admin\Console\Commands\AuthCommand;
 use PTAdmin\Admin\Console\Commands\AdminSyncCommand;
 use PTAdmin\Admin\Console\Commands\MenuSyncCommand;
 use PTAdmin\Admin\Navigation\MenuSynchronizer;
@@ -630,6 +631,7 @@ final class PTAdminServiceProvider extends ServiceProvider
             AdminSyncCommand::class,
             MenuSyncCommand::class,
             AddonSetupCommand::class,
+            AuthCommand::class,
         ]);
     }
 
