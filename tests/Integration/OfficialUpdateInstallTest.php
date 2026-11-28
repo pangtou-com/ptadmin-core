@@ -57,7 +57,7 @@ final class OfficialUpdateInstallTest extends TestCase
         };
         $reader->versions = &$this->versions;
         $this->app->instance(InstalledVersions::class, $reader);
-        $this->catalog = ['protocol_version' => 1, 'generated_at' => gmdate('c', time() - 10), 'expires_at' => gmdate('c', time() + 3600),
+        $this->catalog = ['protocol_version' => 2, 'generated_at' => gmdate('c', time() - 10), 'expires_at' => gmdate('c', time() + 3600),
             'results' => [$this->release('1.0.0', $old), $this->release('1.1.0', $new)], 'advisories' => []];
         Http::preventStrayRequests();
         Http::fake(function ($request) {
@@ -124,6 +124,30 @@ final class OfficialUpdateInstallTest extends TestCase
         self::assertSame('succeeded', $this->execute()['status']);
     }
 
+    public function testJointUpdateRetainsCompatibleNewerShellButRejectsProtocolOrSameVersionDigestMismatch(): void
+    {
+        $shell = UpdateFiles::read(public_path('admin_test/manifest.json'));
+        $target = ['version' => '1.1.0', 'shell' => ['version' => '0.9.0',
+            'artifact_sha256' => $shell['artifact_sha256'], 'api_protocol' => 1, 'schema_protocol' => 1]];
+        $stage = new \PTAdmin\Core\Updates\ApplicationShellStage();
+        self::assertNull($stage->prepare($this->directory, $target));
+        foreach (['protocol', 'digest'] as $case) {
+            $invalid = $target;
+            if ($case === 'protocol') {
+                $invalid['shell']['schema_protocol'] = 2;
+            } else {
+                $invalid['shell']['version'] = '1.0.0';
+                $invalid['shell']['artifact_sha256'] = str_repeat('f', 64);
+            }
+            try {
+                $stage->prepare($this->directory, $invalid);
+                self::fail('不允许保留协议或摘要不匹配的 Shell');
+            } catch (UpdateException $error) {
+                self::assertStringContainsString($case === 'protocol' ? '协议不兼容' : '摘要不一致', $error->getMessage());
+            }
+        }
+    }
+
     public function testSequenceChecksIntermediateCompatibilityAndRecoveryBeforeOfferingUpdates(): void
     {
         $this->versions['application-template'] = ['version' => null, 'known' => false];
@@ -136,7 +160,7 @@ final class OfficialUpdateInstallTest extends TestCase
         $service = app(\PTAdmin\Core\Updates\OfficialUpdateService::class);
         $service->check();
         $overview = $service->overview(1, true, ['core' => true, 'admin-shell' => true]);
-        self::assertSame(['component' => 'core', 'version' => '1.1.0', 'target_version' => '1.1.0'], $overview['components'][1]['prerequisite']);
+        self::assertNull($overview['components'][1]['prerequisite'], '没有应用包和标准基线时不能建议自动升级 Core');
         self::assertFalse($overview['components'][1]['update']['available']);
         self::assertTrue($overview['components'][0]['update']['permitted']);
         $this->versions['core']['version'] = '1.1.0';

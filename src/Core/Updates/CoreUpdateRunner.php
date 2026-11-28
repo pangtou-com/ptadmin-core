@@ -21,44 +21,15 @@ final class CoreUpdateRunner
     {
         $root = $this->plan['root'];
         $recovery = new UpdateRecovery($this->directory);
+        $runtimeLock = null;
         try {
-            $this->event('preparing_dependencies', 15, '正在隔离目录准备 Core 及完整依赖。');
+            $this->event('verifying_target', 50, '正在复核已准备的完整目标与来源依赖。');
             $stage = $this->directory.'/project';
-            UpdateFiles::directory($stage);
-            $composer = UpdateFiles::read($root.'/composer.json');
-            $composer['require']['ptadmin/core'] = $this->plan['version'];
-            UpdateFiles::write($stage.'/composer.json', $composer);
-            UpdateFiles::copy($root.'/composer.lock', $stage.'/composer.lock');
-            foreach (['psr-4', 'psr-0', 'classmap', 'files'] as $kind) {
-                foreach ($composer['autoload'][$kind] ?? [] as $paths) {
-                    foreach ((array) $paths as $path) {
-                        $path = rtrim($path, '/');
-                        if ($path === '' || str_contains($path, '..') || str_starts_with($path, '/') || str_contains($path, '\\')
-                            || str_contains($path, '*') || in_array(explode('/', $path)[0], ['vendor', 'storage', '.git'], true)) {
-                            throw new RuntimeException('项目自动加载路径不支持隔离构建，请通过项目部署流程更新。');
-                        }
-                        if (file_exists($root.'/'.$path)) {
-                            UpdateFiles::copy($root.'/'.$path, $stage.'/'.$path);
-                        }
-                    }
-                }
-            }
-            $base = [$this->plan['php'], $this->plan['composer']];
-            $this->command([...$base, 'update', 'ptadmin/core', '--with-all-dependencies', '--no-dev', '--no-scripts', '--no-plugins', '--prefer-dist', '--no-interaction', '--no-progress', '--no-audit'], $stage, 'Composer 依赖准备');
-            $this->command([...$base, 'check-platform-reqs', '--no-dev'], $stage, 'PHP 扩展及运行平台校验');
-            chmod($stage.'/composer.json', fileperms($root.'/composer.json') & 0777);
-            chmod($stage.'/composer.lock', fileperms($root.'/composer.lock') & 0777);
-            $lock = UpdateFiles::read($stage.'/composer.lock');
-            foreach ($lock['packages'] as $package) {
-                if (($package['type'] ?? '') === 'composer-plugin') {
-                    throw new RuntimeException('目标依赖需要 Composer 插件，请通过部署流程更新。');
-                }
-            }
-            $packages = array_column($lock['packages'], null, 'name');
-            $core = $packages['ptadmin/core'] ?? [];
-            if (ltrim($core['version'] ?? '', 'v') !== $this->plan['version']
-                || ($core['source']['reference'] ?? '') !== $this->plan['git_commit']) {
-                throw new RuntimeException('Composer 解析的 Core 版本或提交与官方记录不一致。');
+            $target = UpdateFiles::read($stage.'/'.PackageManifest::IDENTITY);
+            PackageManifest::verify($stage, $target, false);
+            PackageManifest::verify($root, UpdateFiles::read($root.'/'.PackageManifest::IDENTITY));
+            if ($target['version'] !== $this->plan['version'] || $target['core_commit'] !== $this->plan['git_commit']) {
+                throw new RuntimeException('完整目标与官方发行身份不一致。');
             }
             // 准备期间项目可能被外部部署修改，不允许以旧快照覆盖新的锁文件。
             foreach ($this->plan['inputs'] as $path => $sha) {
@@ -66,7 +37,8 @@ final class CoreUpdateRunner
                     throw new RuntimeException('准备期间项目依赖文件变化，请重新发起更新。');
                 }
             }
-            $this->command([$this->plan['php'], $root.'/artisan', 'ptadmin:updates:verify-target', 'core', $this->plan['version'], '--commit='.$this->plan['git_commit']], $root, '切换前发布状态与环境复核');
+            $verifyCommand = [$this->plan['php'], $root.'/artisan', 'ptadmin:updates:verify-target', 'core', $this->plan['version'], '--commit='.$this->plan['git_commit'], '--build='.$target['build_id'], '--artifact='.($this->plan['artifact']['sha256'] ?? '')];
+            $this->command($verifyCommand, $root, '切换前发布状态与环境复核');
             $this->event('replacing', 65, '正在保存备份并切换依赖，应用将短暂进入维护状态。中断恢复入口：'.$this->directory.'/recover.php');
             $framework = $this->plan['storage'].'/framework';
             UpdateFiles::directory($framework);
@@ -82,14 +54,47 @@ final class CoreUpdateRunner
                 throw new RuntimeException('无法进入维护状态。');
             }
             UpdateFiles::write($maintenance[1], ['time' => time(), 'retry' => 60]);
+            $runtimeLock = fopen($framework.'/ptadmin-runtime.lock', 'c+');
+            if ($runtimeLock === false) {
+                throw new RuntimeException('无法打开应用执行锁。');
+            }
+            $deadline = microtime(true) + 60;
+            while (!flock($runtimeLock, LOCK_EX | LOCK_NB)) {
+                if (microtime(true) >= $deadline) {
+                    throw new RuntimeException('旧请求或常驻命令尚未退出，请暂停队列、调度和长任务后重试。');
+                }
+                if (time() - $this->lastHeartbeat >= 5) {
+                    $this->event('draining', 60, '等待已进入的请求和命令完成。');
+                }
+                usleep(100000);
+            }
+            // 取得独占锁后复核来源、宿主与输入，防止准备期间的部署或业务写入被覆盖。
+            PackageManifest::verify($root, UpdateFiles::read($root.'/'.PackageManifest::IDENTITY));
+            foreach ($target['host_files'] as $path => $sha) {
+                if (!is_file($root.'/'.$path) || hash_file('sha256', $root.'/'.$path) !== $sha) {
+                    throw new RuntimeException('目标宿主前置条件发生变化：'.$path);
+                }
+            }
+            if (isset($this->plan['shell_input']) && PackageManifest::digest(PackageManifest::files($root, [$this->plan['shell_input']['path']])) !== $this->plan['shell_input']['sha256']) {
+                throw new RuntimeException('准备期间后台界面或用户前端资源变化，请重新发起更新。');
+            }
+            foreach ($this->plan['inputs'] as $path => $sha) {
+                if (!is_file($root.'/'.$path) || hash_file('sha256', $root.'/'.$path) !== $sha) {
+                    throw new RuntimeException('切换前项目依赖输入已变化。');
+                }
+            }
+            $this->command([...$verifyCommand, '--publication-only'], $root, '排空后发布状态复核');
             // 使用空的新缓存目录启动新 vendor；旧缓存随目标目录一并备份。
             UpdateFiles::directory($this->directory.'/cache');
             chmod($this->directory.'/cache', fileperms($root.'/bootstrap/cache') & 0777);
             $entries = [];
-            foreach (['vendor', 'composer.json', 'composer.lock'] as $name) {
+            foreach (['vendor', 'composer.json', 'composer.lock', PackageManifest::IDENTITY] as $name) {
                 $entries[] = ['source' => $stage.'/'.$name, 'target' => $root.'/'.$name];
             }
             $entries[] = ['source' => $this->directory.'/cache', 'target' => $root.'/bootstrap/cache'];
+            if (isset($this->plan['shell_target'])) {
+                $entries[] = ['source' => $this->directory.'/shell', 'target' => $this->plan['shell_target']];
+            }
             $recovery->switch($entries, $metadata);
             foreach (['config:clear', 'route:clear', 'event:clear', 'view:clear', 'package:discover'] as $command) {
                 $this->command([$this->plan['php'], $root.'/artisan', $command, '--no-interaction'], $root, '刷新应用缓存');
@@ -137,13 +142,20 @@ final class CoreUpdateRunner
             }
             $this->finish('failed', $result);
             throw new RuntimeException($message, previous: $error);
+        } finally {
+            if (is_resource($runtimeLock)) {
+                flock($runtimeLock, LOCK_UN);
+                fclose($runtimeLock);
+            }
         }
     }
 
     private function command(array $command, string $cwd, string $label): void
     {
         $pipes = [];
-        $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $cwd);
+        $environment = getenv();
+        $environment['PTADMIN_UPDATE_COORDINATOR'] = '1';
+        $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $cwd, $environment);
         if (!is_resource($process)) {
             throw new RuntimeException($label.'无法启动。');
         }
@@ -154,7 +166,7 @@ final class CoreUpdateRunner
         $exit = -1;
         try {
             do {
-                // 子进程原始输出不写入公开任务日志，防止 Composer 私有仓库凭据泄露。
+                // 子进程原始输出不写入公开任务日志，防止业务命令的敏感信息泄露。
                 stream_get_contents($pipes[1]);
                 stream_get_contents($pipes[2]);
                 $status = proc_get_status($process);

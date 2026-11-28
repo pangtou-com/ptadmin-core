@@ -15,7 +15,7 @@ final class OfficialCatalogVerifier
     public function verify(array $envelope, bool $allowExpired = false): array
     {
         $document = $envelope['document'] ?? null;
-        if (!is_array($document) || ($document['protocol_version'] ?? null) !== 1) {
+        if (!is_array($document) || ($document['protocol_version'] ?? null) !== 2) {
             throw new UpdateException('官方目录协议不受当前 Core 支持，请由维护者核对兼容版本。', 'unsupported_protocol');
         }
         $generated = is_string($document['generated_at'] ?? null) ? strtotime($document['generated_at']) : false;
@@ -77,6 +77,58 @@ final class OfficialCatalogVerifier
         }
         foreach ($required as $field) {
             $this->constraint($compatibility[$field] ?? null);
+        }
+        if (isset($release['application'])) {
+            $application = $release['application'];
+            $target = $application['target'] ?? [];
+            foreach (['build_id', 'baseline_sha256', 'tree_sha256'] as $field) {
+                if (!is_string($target[$field] ?? null) || !preg_match('/^[a-f0-9]{64}$/D', $target[$field])) {
+                    throw new UpdateException('官方构建身份无效。', 'invalid_catalog');
+                }
+            }
+            if (($target['version'] ?? null) !== $release['version'] || !is_array($target['platform'] ?? null)
+                || !is_array($target['host_files'] ?? null) || !is_array($target['shell'] ?? null)
+                || ($target['profile'] ?? null) !== 'php-standard' || !is_int($target['managed_bytes'] ?? null) || $target['managed_bytes'] < 1
+                || !is_array($application['artifacts'] ?? null) || !array_is_list($application['artifacts'])) {
+                throw new UpdateException('官方应用构建描述无效。', 'invalid_catalog');
+            }
+            foreach ($target['platform'] as $name => $constraints) {
+                if (!is_string($name) || !preg_match('/^(php|php-64bit|ext-[a-z0-9_-]+|lib-[a-z0-9_-]+)$/D', $name)
+                    || !is_array($constraints) || !array_is_list($constraints) || $constraints === []) {
+                    throw new UpdateException('官方平台要求无效。', 'invalid_catalog');
+                }
+                foreach ($constraints as $constraint) {
+                    $this->constraint($constraint);
+                }
+            }
+            foreach ($target['host_files'] as $path => $sha) {
+                PackageManifest::path($path);
+                if (!is_string($sha) || !preg_match('/^[a-f0-9]{64}$/D', $sha)) {
+                    throw new UpdateException('官方宿主前置摘要无效。', 'invalid_catalog');
+                }
+            }
+            $this->constraint($target['upgrade_from'] ?? null);
+            $identities = [];
+            foreach ($application['artifacts'] as $artifact) {
+                if (!is_int($artifact['id'] ?? null) || $artifact['id'] < 1 || !in_array($artifact['kind'] ?? null, ['install', 'full', 'patch'], true)
+                    || ($artifact['build_id'] ?? null) !== $target['build_id'] || !is_int($artifact['size'] ?? null) || $artifact['size'] < 1
+                    || !preg_match('/^[a-f0-9]{64}$/D', $artifact['sha256'] ?? '')
+                    || ($artifact['url'] ?? '') !== CloudProtocol::SITE_URL.'/api/cloud/official/artifacts/'.$artifact['id']) {
+                    throw new UpdateException('官方应用产物地址或身份无效。', 'invalid_catalog');
+                }
+                $source = $artifact['source_build_id'] ?? null;
+                if (!is_string($source) || ($artifact['kind'] === 'patch' ? !preg_match('/^[a-f0-9]{64}$/D', $source) : $source !== '')) {
+                    throw new UpdateException('官方补丁来源无效。', 'invalid_catalog');
+                }
+                $identity = $artifact['kind'].'@'.$source;
+                if (isset($identities[$identity])) {
+                    throw new UpdateException('官方应用产物重复。', 'invalid_catalog');
+                }
+                $identities[$identity] = true;
+            }
+            if (!isset($identities['full@'], $identities['install@'])) {
+                throw new UpdateException('官方应用缺少完整发行包。', 'invalid_catalog');
+            }
         }
         if ($release['component'] === 'admin-shell') {
             foreach (['api_protocol', 'schema_protocol'] as $field) {

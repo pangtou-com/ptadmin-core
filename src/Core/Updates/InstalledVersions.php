@@ -34,6 +34,10 @@ class InstalledVersions
         }
         $upstream = config('ptadmin-updates.shell_upstream_version');
         $template = config('ptadmin-updates.template_version');
+        $baseline = (new DependencyBaseline())->inspect();
+        if ($baseline['status'] === 'standard' && $baseline['target']['version'] === $core) {
+            $template = $baseline['target']['version'];
+        }
         return [
             'core' => ['version' => $core, 'source' => $linkedCore ? 'development_path' : 'composer', 'known' => ReleaseVersion::valid($core) && !$linkedCore],
             'admin-shell' => ['version' => $shell, 'source' => 'deployed_manifest', 'known' => ReleaseVersion::valid($shell),

@@ -25,12 +25,13 @@ final class OfficialUpdatePolicy
         if (!$versions['admin-shell']['known'] || ($versions['admin-shell']['integrity'] ?? '') !== 'verified') {
             $issues[] = '当前 Shell 清单缺失或文件未通过校验，请先修复后再更新 Core。';
         }
-        $manifestPath = public_path(config('ptadmin.web_prefix').'/manifest.json');
-        if (is_file($manifestPath)) {
-            $manifest = UpdateFiles::read($manifestPath);
-            if (!Semver::satisfies($version, $manifest['backend_constraint'] ?? '0.0.0')) {
-                $issues[] = '当前 Shell 不兼容目标 Core，请先部署兼容 Shell。';
-            }
+        if ($versions['admin-shell']['custom'] ?? false) {
+            $issues[] = '定制后台界面请通过项目部署流程合并更新。';
+        }
+        try {
+            (new ApplicationUpdatePlan())->select($release, (new DependencyBaseline())->inspect());
+        } catch (UpdateException $error) {
+            $issues[] = $error->getMessage();
         }
         foreach (glob(config('ptadmin.addon.path', base_path('addons')).'/*/manifest.json') ?: [] as $path) {
             $addon = UpdateFiles::read($path);
@@ -80,7 +81,15 @@ final class OfficialUpdatePolicy
                 $reasons[] = '后台前端目录不可写。';
             }
         } else {
+            if (PHP_OS_FAMILY === 'Windows') {
+                $reasons[] = '后台 Core 更新需要 Unix 进程环境，请通过部署流程更新当前系统。';
+            }
+            $baseline = (new DependencyBaseline())->inspect();
+            if ($baseline['status'] !== 'standard') {
+                $reasons[] = $baseline['reason'];
+            }
             if (realpath(storage_path()) !== realpath(base_path('storage'))
+                || realpath(public_path()) !== realpath(base_path('public'))
                 || app()->getCachedConfigPath() !== base_path('bootstrap/cache/config.php')
                 || app()->getCachedRoutesPath() !== base_path('bootstrap/cache/routes-v7.php')) {
                 $reasons[] = '自定义 storage 或缓存目录请通过项目部署流程更新。';
@@ -98,7 +107,7 @@ final class OfficialUpdatePolicy
                 $reasons[] = 'Composer 环境变量修改了项目布局，请通过部署流程更新。';
             }
             if (!$environment['online_core_update']) {
-                $reasons[] = 'Core 在线更新需要可执行的 PHP CLI、Composer、进程能力和可写依赖目录。';
+                $reasons[] = 'Core 在线更新需要可执行的 PHP CLI、ZIP、进程能力和可写依赖目录。';
             }
             $composer = is_file(base_path('composer.json')) ? UpdateFiles::read(base_path('composer.json')) : [];
             if (isset($composer['config']['vendor-dir']) && $composer['config']['vendor-dir'] !== 'vendor') {

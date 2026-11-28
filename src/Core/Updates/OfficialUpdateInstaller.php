@@ -57,6 +57,14 @@ final class OfficialUpdateInstaller
         } else {
             $issues = [...$issues, ...$this->policy->releaseBlockers($release, $versions)];
         }
+        if ($component === 'core') {
+            $baseline = (new DependencyBaseline())->inspect(null, true);
+            $known = array_filter($document['results'], static fn (array $entry): bool =>
+                $entry['component'] === 'application-template' && ($entry['application']['target']['build_id'] ?? null) === ($baseline['build_id'] ?? null));
+            if ($baseline['status'] !== 'standard' || $known === []) {
+                $issues[] = $baseline['reason'] ?: '当前构建基线未在官方发布目录中确认。';
+            }
+        }
         if ($issues !== []) {
             throw new UpdateException(implode(' ', $issues), 'incompatible_release');
         }

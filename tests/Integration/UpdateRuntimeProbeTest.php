@@ -21,31 +21,16 @@ final class UpdateRuntimeProbeTest extends TestCase
         self::assertStringContainsString('网页 PHP 缺少扩展：redis', $issues[2]);
     }
 
-    public function testDetectedComposerMustActuallyExecuteAndDoesNotExposeRawOutput(): void
+    public function testPhpProbeDoesNotRequireComposer(): void
     {
-        $composer = tempnam(sys_get_temp_dir(), 'ptadmin-composer-probe-');
-        try {
-            file_put_contents($composer, '<?php fwrite(STDERR, "secret-token"); exit(7);');
-            try {
-                (new UpdateRuntimeProbe())->assertUsable(PHP_BINARY, $composer);
-                self::fail('不可用的 Composer 不应通过执行探测');
-            } catch (UpdateException $error) {
-                self::assertSame('runtime_unavailable', $error->reason);
-                self::assertStringContainsString('Composer 执行失败（退出码 7）', $error->getMessage());
-                self::assertStringNotContainsString('secret-token', $error->getMessage());
-            }
-            file_put_contents($composer, '<?php exit(in_array("--version", $argv, true) && in_array("--no-plugins", $argv, true) && in_array("--no-scripts", $argv, true) ? 0 : 8);');
-            (new UpdateRuntimeProbe())->assertUsable(PHP_BINARY, $composer);
-            self::assertFileExists($composer);
-        } finally {
-            unlink($composer);
-        }
+        (new UpdateRuntimeProbe())->assertUsable(PHP_BINARY);
+        self::assertSame([], (new UpdateRuntimeProbe())->runtimeIssues(PHP_VERSION, get_loaded_extensions(), PHP_VERSION, get_loaded_extensions()));
     }
 
     public function testUnavailablePhpReportsTerminalRemediation(): void
     {
         $this->expectException(UpdateException::class);
         $this->expectExceptionMessage('PHP CLI');
-        (new UpdateRuntimeProbe())->assertUsable('/missing-ptadmin-php', '/missing-composer');
+        (new UpdateRuntimeProbe())->assertUsable('/missing-ptadmin-php');
     }
 }

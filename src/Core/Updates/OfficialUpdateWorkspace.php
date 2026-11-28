@@ -32,7 +32,7 @@ final class OfficialUpdateWorkspace
             UpdateFiles::directory($directory);
             UpdateFiles::write($directory.'/operation.json', ['task_directory' => $this->tasks->taskDirectory($taskId)]);
             // 恢复所需代码位于私有工作目录，vendor 被替换或损坏时仍可运行。
-            foreach (['UpdateFiles', 'UpdateRecovery', 'CoreUpdateRunner'] as $class) {
+            foreach (['UpdateFiles', 'UpdateRecovery', 'CoreUpdateRunner', 'PackageManifest', 'ReleaseVersion'] as $class) {
                 UpdateFiles::copy(__DIR__.'/'.$class.'.php', $directory.'/'.$class.'.php');
             }
             UpdateFiles::copy(__DIR__.'/../../../resources/update-recovery.php', $directory.'/recover.php');

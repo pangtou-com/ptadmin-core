@@ -9,13 +9,6 @@ class UpdateEnvironment
 {
     public function inspect(): array
     {
-        $configured = config('ptadmin-updates.composer_path');
-        $composer = $configured !== '' ? $configured : $this->findComposer();
-        if ($composer === null && is_file(base_path('composer.phar'))) {
-            $composer = base_path('composer.phar');
-        }
-        $phar = is_string($composer) && str_ends_with($composer, '.phar');
-        $found = is_string($composer) && is_file($composer) && is_readable($composer) && ($phar || is_executable($composer));
         $process = function_exists('proc_open');
         $paths = [
             'composer.json' => base_path('composer.json'), 'composer.lock' => base_path('composer.lock'),
@@ -30,27 +23,10 @@ class UpdateEnvironment
         if (!in_array($delivery, ['manual', 'git', 'ci'], true)) {
             $delivery = file_exists(base_path('.git')) ? 'git' : 'manual';
         }
-        return ['composer' => $found ? 'detected' : 'not_found', 'process_execution' => $process,
-            'writable' => $writable, 'delivery' => $delivery, 'online_core_update' => $found && $process && is_executable(config('ptadmin-updates.php_binary')) && !in_array(false, $writable, true) && $delivery === 'manual',
+        $dependency = (new DependencyBaseline())->inspect();
+        return ['dependency' => array_diff_key($dependency, ['target' => true]), 'process_execution' => $process,
+            'writable' => $writable, 'delivery' => $delivery, 'online_core_update' => $dependency['status'] === 'standard' && $process && class_exists(\ZipArchive::class) && is_executable(config('ptadmin-updates.php_binary')) && !in_array(false, $writable, true) && $delivery === 'manual',
             'scope' => '仅检测当前 PHP 运行账号的 PATH 与文件权限，未执行 Composer；SSH、容器与 CI 的环境可能不同。'];
-    }
-
-    /** 只遍历 PATH 文件；通用 ExecutableFinder 在未找到时可能调用 exec，不适合受限宿主。 */
-    public function findComposer(): ?string
-    {
-        $names = DIRECTORY_SEPARATOR === '\\' ? ['composer.exe', 'composer.bat', 'composer.cmd', 'composer'] : ['composer'];
-        foreach (explode(PATH_SEPARATOR, getenv('PATH') ?: getenv('Path') ?: '') as $directory) {
-            if ($directory === '') {
-                continue;
-            }
-            foreach ($names as $name) {
-                $path = $directory.DIRECTORY_SEPARATOR.$name;
-                if (@is_file($path) && @is_readable($path) && (DIRECTORY_SEPARATOR === '\\' || @is_executable($path))) {
-                    return $path;
-                }
-            }
-        }
-        return null;
     }
 
     public function guidance(array $environment, ?string $target, bool $canManage): array
@@ -59,8 +35,8 @@ class UpdateEnvironment
         if (!$canManage) {
             $issues[] = ['code' => 'permission_required', 'message' => '当前账号不能发起官方版本检查，请联系有权限的管理员；实际部署还需要服务器或 CI 的部署权限。'];
         }
-        if ($environment['composer'] === 'not_found') {
-            $issues[] = ['code' => 'composer_not_found', 'message' => '当前 PHP 环境未找到可读取的 Composer。请部署负责人在命令行核对 composer --version；已有 composer.phar 时可配置 PTADMIN_COMPOSER_PATH。不能在服务器安装 Composer时，可在兼容的本地环境或 CI 安装依赖后交付包含 vendor 的部署包。'];
+        if ($environment['dependency']['status'] !== 'standard') {
+            $issues[] = ['code' => 'dependency_'.$environment['dependency']['status'], 'message' => $environment['dependency']['reason']];
         }
         if (!is_executable(config('ptadmin-updates.php_binary'))) {
             $issues[] = ['code' => 'php_cli_unavailable', 'message' => '配置的 PHP CLI 不可执行，请核对 PTADMIN_UPDATE_PHP_BINARY 的路径与权限；也可由部署负责人在终端使用匹配版本的 PHP 更新。'];
@@ -84,8 +60,8 @@ class UpdateEnvironment
             ];
         }
         return ['mode' => 'maintainer_deployment', 'target_version' => $commands !== [] ? $target : null, 'issues' => $issues,
-            'summary' => '标准可写安装可确认目标版本后执行更新；Git/CI 和受限环境按以下部署流程处理，依赖兼容性仍需验证。',
-            'commands' => $commands, 'command_context' => '在包含 composer.json 的项目源码根目录或隔离构建环境执行，使用有部署权限的终端账号；先备份并阅读目标版本说明。网页账号找到 Composer 不代表可以运行或成功解决依赖。',
+            'summary' => '官方标准依赖使用完整包或补丁更新，无需 Composer；自定义依赖及 Git/CI 项目按以下流程处理。',
+            'commands' => $commands, 'command_context' => '在包含 composer.json 的项目源码根目录或隔离构建环境执行，使用有部署权限的终端账号；先备份并阅读目标版本说明。后台不执行以下 Composer 命令。',
             'steps' => [
                 '先备份数据库、.env、用户上传文件与当前部署版本，并阅读目标版本的兼容要求、升级步骤及恢复说明。',
                 '在有 Composer 的开发环境或 CI 更新 Core 约束和锁文件，测试宿主业务、插件及 Shell；依赖冲突时根据 Composer 报错调整，不使用 --ignore-platform-reqs 绕过要求。',

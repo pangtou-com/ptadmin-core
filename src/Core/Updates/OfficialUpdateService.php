@@ -206,11 +206,15 @@ final class OfficialUpdateService
             if ($component === 'core' && $recommended !== null) {
                 $updateReasons = [...$updateReasons, ...$policy->releaseBlockers($recommended, $versions)];
             }
+            $package = null;
+            if ($component === 'core' && $recommended !== null && $updateReasons === []) {
+                $package = (new ApplicationUpdatePlan())->select($recommended, (new DependencyBaseline())->inspect())['artifact'];
+            }
             $components[] = ['component' => $component, 'current' => $current, 'comparison' => $comparison,
                 'latest' => $latest, 'recommended' => $recommended,
                 'blockers' => $latest ? $this->compatibility($latest, $versions) : [],
                 'prerequisite' => null,
-                'update' => ['permitted' => $canInstall[$component] ?? false, 'available' => ($canInstall[$component] ?? false) && $recommended !== null && !$expired && $error === null && $updateReasons === [], 'reasons' => $updateReasons],
+                'update' => ['package' => $package, 'permitted' => $canInstall[$component] ?? false, 'available' => ($canInstall[$component] ?? false) && $recommended !== null && !$expired && $error === null && $updateReasons === [], 'reasons' => $updateReasons],
                 'release_url' => CloudProtocol::AUTHORIZATION_URL.'/releases'.($latest ? '/'.$component.'/'.rawurlencode($latest['version']) : '')];
         }
         $coreTarget = $components[0]['recommended'];
@@ -314,6 +318,9 @@ final class OfficialUpdateService
         $reasons = [];
         foreach (['php' => 'PHP', 'laravel' => 'Laravel', 'core' => 'Core'] as $key => $label) {
             if (!isset($release['compatibility'][$key])) {
+                continue;
+            }
+            if ($key === 'laravel' && $release['component'] === 'core' && isset($release['application'])) {
                 continue;
             }
             $current = $key === 'core' ? $versions['core']['version'] : $versions[$key];

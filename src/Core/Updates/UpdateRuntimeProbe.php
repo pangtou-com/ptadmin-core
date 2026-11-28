@@ -9,7 +9,7 @@ use Symfony\Component\Process\Process;
 /** 只在准备 Core 更新时探测执行能力，输出不包含子进程的环境和凭据。 */
 final class UpdateRuntimeProbe
 {
-    public function assertUsable(string $php, string $composer): void
+    public function assertUsable(string $php): void
     {
         $probe = $this->run([$php, '-r', 'echo json_encode([PHP_SAPI, PHP_VERSION, get_loaded_extensions()]);'], 'PHP CLI');
         $runtime = json_decode($probe->getOutput(), true);
@@ -20,7 +20,6 @@ final class UpdateRuntimeProbe
         if ($issues !== []) {
             throw new UpdateException(implode(' ', $issues).' 请核对 CLI 配置和扩展，或在匹配的终端环境手动更新。', 'php_runtime_mismatch');
         }
-        $this->run([$php, $composer, '--version', '--no-plugins', '--no-scripts', '--no-interaction'], 'Composer');
     }
 
     public function runtimeIssues(string $webVersion, array $webExtensions, string $cliVersion, array $cliExtensions): array

@@ -69,7 +69,7 @@ final class OfficialUpdatesTest extends TestCase
 
     private function document(): array
     {
-        return ['protocol_version' => 1, 'generated_at' => gmdate(DATE_ATOM, time() - 10), 'expires_at' => gmdate(DATE_ATOM, time() + 3600),
+        return ['protocol_version' => 2, 'generated_at' => gmdate(DATE_ATOM, time() - 10), 'expires_at' => gmdate(DATE_ATOM, time() + 3600),
             'results' => [$this->release(), $this->release('2.0.0', ['compatibility' => ['php' => '^8.4', 'laravel' => '^12.68']]), $this->release('3.0.0-rc.1')],
             'advisories' => [['identifier' => 'PT-2026-001', 'component' => 'core', 'severity' => 'critical', 'summary' => '需修复的安全问题',
                 'affected_versions' => '<1.1.0', 'fixed_version' => '1.1.0', 'mitigation' => '暂停受影响入口', 'revision' => 1]]];
@@ -98,7 +98,7 @@ final class OfficialUpdatesTest extends TestCase
         self::assertSame('1.1.0', $result['components'][0]['recommended']['version']);
         self::assertStringContainsString('PHP', $result['components'][0]['blockers'][0]);
         self::assertSame('https://gitee.com/ptadmin/core', $result['components'][0]['recommended']['gitee_url']);
-        self::assertSame('composer_not_found', $result['core_guidance']['issues'][0]['code']);
+        self::assertSame('dependency_unknown', $result['core_guidance']['issues'][0]['code']);
         self::assertStringContainsString('vendor', implode(' ', $result['core_guidance']['steps']));
         self::assertStringContainsString('1.1.0', $result['core_guidance']['commands'][0]);
         self::assertFalse($result['environment']['online_core_update']);
@@ -162,7 +162,7 @@ final class OfficialUpdatesTest extends TestCase
     public function testVerifierRejectsMissingDocumentProtocolAndUnsafeLinks(): void
     {
         $protocol = $this->document();
-        $protocol['protocol_version'] = 2;
+        $protocol['protocol_version'] = 1;
         $unsafe = $this->document();
         $unsafe['results'][0]['github_url'] = 'javascript:alert(1)';
         $malformed = $this->document();
@@ -306,7 +306,7 @@ final class OfficialUpdatesTest extends TestCase
 
     public function testPermissionsAndProcessRestrictionsHaveActionableInstructions(): void
     {
-        $environment = ['composer' => 'detected', 'process_execution' => false, 'writable' => ['vendor' => false, 'composer.lock' => false], 'delivery' => 'ci'];
+        $environment = ['dependency' => ['status' => 'standard'], 'process_execution' => false, 'writable' => ['vendor' => false, 'composer.lock' => false], 'delivery' => 'ci'];
         $guide = (new UpdateEnvironment())->guidance($environment, '1.2.0', false);
         self::assertSame(['permission_required', 'process_disabled', 'deployment_not_writable', 'managed_delivery'], array_column($guide['issues'], 'code'));
         self::assertStringContainsString('不要设置 777', $guide['issues'][2]['message']);
@@ -318,9 +318,10 @@ final class OfficialUpdatesTest extends TestCase
         $path = $this->directory.'/composer.phar';
         file_put_contents($path, '<?php throw new RuntimeException("must not execute");');
         config(['ptadmin-updates.composer_path' => $path]);
-        self::assertSame('detected', (new UpdateEnvironment())->inspect()['composer']);
+        $before = (new UpdateEnvironment())->inspect();
+        self::assertArrayNotHasKey('composer', $before);
         unlink($path);
-        self::assertSame('not_found', (new UpdateEnvironment())->inspect()['composer']);
+        self::assertSame($before, (new UpdateEnvironment())->inspect());
     }
 
     public function testCatalogRollbackAndMalformedCacheAreNotSilentlyAccepted(): void
